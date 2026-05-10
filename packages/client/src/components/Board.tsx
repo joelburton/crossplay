@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { forwardRef, useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Cell as CellT } from "@crossplay/shared";
 import type { Cursor } from "../cursor";
@@ -19,8 +19,9 @@ const VERTICAL_OVERHEAD_PX = 50;
 const MAX_CELL_PX = 60;
 // Must match the breakpoint in PuzzleView.module.css that hides .clues.
 const NARROW_QUERY = "(max-width: 1023px)";
-// When clues are hidden the board can take essentially the whole width.
-const NARROW_PCT = 92;
+// In narrow mode the board fills the available width: viewport minus the
+// .main 0.5rem L/R padding (= 1rem total) minus the board's 2x2px border.
+const NARROW_HORIZ_RESERVE_CSS = "1rem + 4px";
 
 function targetWidthPercent(width: number): number {
   // Linear interp: 40% at 15-col, 55% at 21-col, clamped at the endpoints.
@@ -41,18 +42,23 @@ function useNarrowViewport(): boolean {
   return narrow;
 }
 
-export function Board({ cells, cursor, highlighted, recentFills, onCellClick }: Props) {
+export const Board = forwardRef<HTMLDivElement, Props>(function Board(
+  { cells, cursor, highlighted, recentFills, onCellClick },
+  ref,
+) {
   const width = cells[0]?.length ?? 0;
   const height = cells.length;
   const narrow = useNarrowViewport();
-  const pct = narrow ? NARROW_PCT : targetWidthPercent(width);
-  const cellSize = `min(calc(${pct}vw / ${width}), calc((100vh - ${VERTICAL_OVERHEAD_PX}px) / ${height}), ${MAX_CELL_PX}px)`;
+  const horiz = narrow
+    ? `calc((100vw - (${NARROW_HORIZ_RESERVE_CSS})) / ${width})`
+    : `calc(${targetWidthPercent(width)}vw / ${width})`;
+  const cellSize = `min(${horiz}, calc((100vh - ${VERTICAL_OVERHEAD_PX}px) / ${height}), ${MAX_CELL_PX}px)`;
   const style: CSSProperties = {
     fontSize: cellSize,
     gridTemplateColumns: `repeat(${width}, 1em)`,
   };
   return (
-    <div className={styles.board} style={style}>
+    <div ref={ref} className={styles.board} style={style}>
       {cells.flatMap((row, r) =>
         row.map((cell, c) => {
           const key = `${r}:${c}`;
@@ -72,4 +78,4 @@ export function Board({ cells, cursor, highlighted, recentFills, onCellClick }: 
       )}
     </div>
   );
-}
+});

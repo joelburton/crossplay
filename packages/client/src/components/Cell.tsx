@@ -29,7 +29,7 @@ function CellImpl({ cell, row, col, isCursor, isInWord, recentColor, onClick }: 
       ) : null}
       {cell.fill && (
         <span
-          className={styles.fill}
+          className={`${styles.fill} ${cell.pencil ? styles.pencil : ""}`}
           style={recentColor ? { color: recentColor } : undefined}
         >
           {cell.fill}

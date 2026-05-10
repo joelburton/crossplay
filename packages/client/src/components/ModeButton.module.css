@@ -1,0 +1,33 @@
+.button {
+  font: inherit;
+  width: 1.7rem;
+  height: 1.7rem;
+  border: 1px solid #333;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.pen {
+  background: #333;
+  color: #fff;
+  font-weight: 700;
+}
+
+.pencil {
+  background: #fff;
+  color: #333;
+  font-style: italic;
+  font-weight: 500;
+}
+
+.button:hover {
+  outline: 2px solid #888;
+  outline-offset: 1px;
+}

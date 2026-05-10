@@ -3,9 +3,12 @@ import type { PuzzleState } from "@crossplay/shared";
 import { HttpError, fetchPuzzle } from "./api";
 import { navigate, puzzlePath, useRoute } from "./routing";
 import type { PuzzleActions } from "./puzzleActions";
+import { FeedbackBar } from "./components/FeedbackBar";
 import { Menu } from "./components/Menu";
+import { ModeButton } from "./components/ModeButton";
 import { UploadForm } from "./components/UploadForm";
-import { PuzzleView, type ActiveClue } from "./components/PuzzleView";
+import { PuzzleView, type ActiveClue, type Mode } from "./components/PuzzleView";
+import type { Feedback } from "./feedback";
 import styles from "./App.module.css";
 
 type LoadState =
@@ -19,7 +22,39 @@ export function App() {
   const [load, setLoad] = useState<LoadState>({ kind: "idle" });
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeClue, setActiveClue] = useState<ActiveClue | null>(null);
+  const [mode, setMode] = useState<Mode>("pen");
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onActiveClueChange = useCallback((c: ActiveClue | null) => setActiveClue(c), []);
+  const onToggleMode = useCallback(
+    () => setMode((m) => (m === "pen" ? "pencil" : "pen")),
+    [],
+  );
+
+  const dismissFeedback = useCallback(() => {
+    if (feedbackTimerRef.current) {
+      clearTimeout(feedbackTimerRef.current);
+      feedbackTimerRef.current = null;
+    }
+    setFeedback(null);
+  }, []);
+
+  const showFeedback = useCallback((f: Feedback) => {
+    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+    setFeedback(f);
+    if (f.autoVanishMs && f.autoVanishMs > 0) {
+      feedbackTimerRef.current = setTimeout(() => {
+        feedbackTimerRef.current = null;
+        setFeedback((cur) => (cur && cur.id === f.id ? null : cur));
+      }, f.autoVanishMs);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+    };
+  }, []);
   const triedDev = useRef(false);
   const actionsRef = useRef<PuzzleActions | null>(null);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
@@ -70,10 +105,20 @@ export function App() {
     };
   }, [route]);
 
-  // close menu / clear active clue when puzzle changes
+  // close menu / clear active clue / reset mode when puzzle changes
+  // Also: show the welcome feedback every time a puzzle loads.
   useEffect(() => {
     setMenuOpen(false);
     setActiveClue(null);
+    setMode("pen");
+    if (load.kind === "loaded") {
+      showFeedback({
+        id: `welcome-${load.puzzle.meta.id}`,
+        text: "Welcome! Click the site name for a menu.",
+        level: "info",
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load.kind === "loaded" ? load.puzzle.meta.id : null]);
 
   function onUploaded(id: string) {
@@ -108,15 +153,20 @@ export function App() {
             />
           )}
         </div>
-        {activeClue && (
-          <div className={styles.activeClue}>
-            <span className={styles.activeClueLabel}>
-              {activeClue.number}
-              {activeClue.direction === "across" ? "A" : "D"}
-            </span>
-            <span className={styles.activeClueText}>{activeClue.text}</span>
-          </div>
-        )}
+        {load.kind === "loaded" && <ModeButton mode={mode} onToggle={onToggleMode} />}
+        <div className={styles.headerSlot}>
+          {feedback ? (
+            <FeedbackBar feedback={feedback} onDismiss={dismissFeedback} />
+          ) : activeClue ? (
+            <div className={styles.activeClue}>
+              <span className={styles.activeClueLabel}>
+                {activeClue.number}
+                {activeClue.direction === "across" ? "A" : "D"}
+              </span>
+              <span className={styles.activeClueText}>{activeClue.text}</span>
+            </div>
+          ) : null}
+        </div>
       </header>
       <main className={styles.main}>
         {load.kind === "loading" && <p>Loading…</p>}
@@ -129,8 +179,13 @@ export function App() {
         {load.kind === "loaded" && (
           <PuzzleView
             puzzle={load.puzzle}
+            mode={mode}
+            onToggleMode={onToggleMode}
             actionsRef={actionsRef}
             onActiveClueChange={onActiveClueChange}
+            onFeedback={showFeedback}
+            onActivity={dismissFeedback}
+            feedbackVisible={feedback != null}
           />
         )}
         {load.kind === "idle" && <UploadForm onUploaded={onUploaded} />}

@@ -41,6 +41,12 @@
   transform: translate(0.08em, 0.08em);
 }
 
+.fill.pencil {
+  color: #555;
+  font-weight: 500;
+  font-style: italic;
+}
+
 .mark {
   position: absolute;
   top: 0;

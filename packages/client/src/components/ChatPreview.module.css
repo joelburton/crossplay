@@ -1,7 +1,7 @@
 .preview {
   position: fixed;
   top: 0.85rem;
-  right: 3.2rem;
+  right: calc(var(--chat-right, 0.5rem) + 2.7rem);
   max-width: 40vw;
   display: flex;
   align-items: baseline;

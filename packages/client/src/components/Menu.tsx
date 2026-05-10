@@ -57,6 +57,12 @@ export function Menu({ actions, triggerRef, onUploadAnother, onClose }: Props) {
         </button>
       )}
       {actions && (
+        <button type="button" className={styles.item} onClick={run(actions.togglePencil)}>
+          <span>Switch to {actions.mode === "pen" ? "pencil" : "pen"}</span>
+          <span className={styles.shortcut}>⌥P</span>
+        </button>
+      )}
+      {actions && (
         <button
           type="button"
           className={styles.item}

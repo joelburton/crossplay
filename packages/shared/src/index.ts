@@ -8,6 +8,7 @@ export type Cell =
       fill: string | null;
       revealed?: boolean;
       wrong?: boolean;
+      pencil?: boolean;
     };
 
 export type Clue = {
@@ -48,6 +49,7 @@ export type ClientMessage =
       letter: string | null;
       clientVersion: number;
       senderColor?: string;
+      pencil?: boolean;
     }
   | {
       type: "reveal";
@@ -66,7 +68,8 @@ export type ClientMessage =
     }
   | { type: "clear" }
   | { type: "chat"; name: string; color: string; text: string }
-  | { type: "showNotes" };
+  | { type: "showNotes" }
+  | { type: "hello"; name: string; color: string };
 
 export type ServerMessage =
   | { type: "snapshot"; snapshot: GridSnapshot }
@@ -79,4 +82,11 @@ export type ServerMessage =
       senderColor?: string;
     }
   | { type: "chatMessage"; name: string; color: string; text: string; ts: number }
-  | { type: "notesShown" };
+  | { type: "notesShown" }
+  | {
+      type: "feedback";
+      id: string;
+      text: string;
+      level: "info" | "warning" | "celebration";
+      autoVanishMs?: number;
+    };

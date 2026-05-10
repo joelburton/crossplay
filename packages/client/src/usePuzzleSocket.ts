@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Cell, ClientMessage, GridSnapshot, ServerMessage } from "@crossplay/shared";
+import type { Feedback } from "./feedback";
 
 export type ConnState = "connecting" | "open" | "closed";
 
@@ -21,6 +22,8 @@ type Handlers = {
   ) => void;
   onChatMessage?: (line: ChatLine) => void;
   onNotesShown?: () => void;
+  onFeedback?: (feedback: Feedback) => void;
+  onOpen?: () => void;
 };
 
 const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000, 16000, 30000];
@@ -47,6 +50,7 @@ export function usePuzzleSocket(puzzleId: string, handlers: Handlers) {
         if (cancelled) return;
         attempt = 0;
         setState("open");
+        handlersRef.current.onOpen?.();
       });
       ws.addEventListener("close", () => {
         if (cancelled) return;
@@ -83,6 +87,13 @@ export function usePuzzleSocket(puzzleId: string, handlers: Handlers) {
           });
         } else if (msg.type === "notesShown") {
           handlersRef.current.onNotesShown?.();
+        } else if (msg.type === "feedback") {
+          handlersRef.current.onFeedback?.({
+            id: msg.id,
+            text: msg.text,
+            level: msg.level,
+            autoVanishMs: msg.autoVanishMs,
+          });
         }
       });
     }

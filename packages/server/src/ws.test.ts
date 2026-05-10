@@ -48,7 +48,7 @@ function entry(): StoredPuzzle {
     ["E", "F", "G", "H", "I"],
     [null, null, "J", null, null],
   ];
-  return { state, solution, sockets: new Set() };
+  return { state, solution, sockets: new Set(), recentHellos: new Map() };
 }
 
 const fill = (row: number, col: number, letter: string | null) =>
@@ -129,6 +129,54 @@ describe("applyFill", () => {
   });
 });
 
+describe("applyFill pencil", () => {
+  it("sets pencil flag when fill carries pencil:true", () => {
+    const e = entry();
+    const change = applyFill(e, { type: "fill", row: 0, col: 0, letter: "Z", clientVersion: 0, pencil: true });
+    expect(change).not.toBeNull();
+    const cell = e.state.snapshot.cells[0]![0] as Cell & { kind: "cell" };
+    expect(cell.pencil).toBe(true);
+  });
+  it("clears pencil flag when later fill omits pencil", () => {
+    const e = entry();
+    applyFill(e, { type: "fill", row: 0, col: 0, letter: "Z", clientVersion: 0, pencil: true });
+    applyFill(e, { type: "fill", row: 0, col: 0, letter: "A", clientVersion: 0 });
+    const cell = e.state.snapshot.cells[0]![0] as Cell & { kind: "cell" };
+    expect(cell.pencil).toBeUndefined();
+  });
+  it("clears pencil flag when fill is null", () => {
+    const e = entry();
+    applyFill(e, { type: "fill", row: 0, col: 0, letter: "Z", clientVersion: 0, pencil: true });
+    applyFill(e, { type: "fill", row: 0, col: 0, letter: null, clientVersion: 0, pencil: true });
+    const cell = e.state.snapshot.cells[0]![0] as Cell & { kind: "cell" };
+    expect(cell.pencil).toBeUndefined();
+    expect(cell.fill).toBeNull();
+  });
+});
+
+describe("applyCheck with pencil", () => {
+  it("skips pencil cells (no wrong flag, no change)", () => {
+    const e = entry();
+    applyFill(e, { type: "fill", row: 0, col: 0, letter: "Z", clientVersion: 0, pencil: true });
+    const changes = applyCheck(e, { type: "check", scope: "letter", row: 0, col: 0 });
+    expect(changes).toHaveLength(0);
+    const cell = e.state.snapshot.cells[0]![0] as Cell & { kind: "cell" };
+    expect(cell.wrong).toBeUndefined();
+  });
+});
+
+describe("applyReveal with pencil", () => {
+  it("clears pencil flag when revealing", () => {
+    const e = entry();
+    applyFill(e, { type: "fill", row: 0, col: 0, letter: "Z", clientVersion: 0, pencil: true });
+    applyReveal(e, { type: "reveal", scope: "letter", row: 0, col: 0 });
+    const cell = e.state.snapshot.cells[0]![0] as Cell & { kind: "cell" };
+    expect(cell.pencil).toBeUndefined();
+    expect(cell.revealed).toBe(true);
+    expect(cell.fill).toBe("A"); // matches solution from entry()
+  });
+});
+
 describe("applyReveal", () => {
   it("reveals a single letter", () => {
     const e = entry();
@@ -206,6 +254,24 @@ describe("parseMessage showNotes", () => {
     expect(parseMessage(JSON.stringify({ type: "showNotes" }))).toEqual({
       type: "showNotes",
     });
+  });
+});
+
+describe("parseMessage hello", () => {
+  it("parses a valid hello", () => {
+    expect(
+      parseMessage(JSON.stringify({ type: "hello", name: "Joel", color: "#1f77b4" })),
+    ).toEqual({ type: "hello", name: "Joel", color: "#1f77b4" });
+  });
+  it("rejects bad color", () => {
+    expect(
+      parseMessage(JSON.stringify({ type: "hello", name: "Joel", color: "blue" })),
+    ).toBeNull();
+  });
+  it("rejects empty name", () => {
+    expect(
+      parseMessage(JSON.stringify({ type: "hello", name: "", color: "#1f77b4" })),
+    ).toBeNull();
   });
 });
 

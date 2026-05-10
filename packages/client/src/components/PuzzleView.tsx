@@ -16,6 +16,7 @@ import {
 } from "../cursor";
 import { type ChatLine, usePuzzleSocket } from "../usePuzzleSocket";
 import { type ChatIdentity, makeIdentity, persistName, readChatIdentity } from "../chatIdentity";
+import type { Feedback } from "../feedback";
 import type { PuzzleActions } from "../puzzleActions";
 import { Board } from "./Board";
 import { ChatIndicator } from "./ChatIndicator";
@@ -31,10 +32,17 @@ export type ActiveClue = {
   text: string;
 };
 
+export type Mode = "pen" | "pencil";
+
 type Props = {
   puzzle: PuzzleState;
+  mode: Mode;
+  onToggleMode: () => void;
   actionsRef?: MutableRefObject<PuzzleActions | null>;
   onActiveClueChange?: (clue: ActiveClue | null) => void;
+  onFeedback?: (f: Feedback) => void;
+  onActivity?: () => void;
+  feedbackVisible?: boolean;
 };
 
 const ARROWS: ReadonlySet<string> = new Set([
@@ -49,14 +57,21 @@ function setCellFill(
   row: number,
   col: number,
   letter: string | null,
+  pencil: boolean,
 ): Cell[][] {
   const cell = cells[row]?.[col];
   if (!cell || cell.kind !== "cell") return cells;
-  if (cell.fill === letter && !cell.wrong) return cells;
+  const willPencil = letter != null && pencil;
+  if (
+    cell.fill === letter &&
+    !cell.wrong &&
+    (cell.pencil ?? false) === willPencil
+  ) return cells;
   const next = cells.slice();
   const nextRow = next[row]!.slice();
   const updated: Cell = { kind: "cell", number: cell.number, fill: letter };
   if (cell.revealed) updated.revealed = true;
+  if (willPencil) updated.pencil = true;
   nextRow[col] = updated;
   next[row] = nextRow;
   return next;
@@ -77,7 +92,16 @@ function replaceCell(
   return next;
 }
 
-export function PuzzleView({ puzzle, actionsRef, onActiveClueChange }: Props) {
+export function PuzzleView({
+  puzzle,
+  mode,
+  onToggleMode,
+  actionsRef,
+  onActiveClueChange,
+  onFeedback,
+  onActivity,
+  feedbackVisible,
+}: Props) {
   const { meta } = puzzle;
   const [snapshot, setSnapshot] = useState<GridSnapshot>(puzzle.snapshot);
   const cells = snapshot.cells;
@@ -102,6 +126,35 @@ export function PuzzleView({ puzzle, actionsRef, onActiveClueChange }: Props) {
   chatOpenRef.current = chatOpen;
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const boardRef = useRef<HTMLDivElement | null>(null);
+  const [chatRightPx, setChatRightPx] = useState<number | null>(null);
+
+  // When the clues are hidden (narrow viewport), align the chat indicator
+  // and preview to the board's right edge instead of the viewport's, so
+  // they don't waste horizontal space outside the board.
+  useEffect(() => {
+    const el = boardRef.current;
+    if (!el) return;
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const update = () => {
+      if (!mq.matches) {
+        setChatRightPx(null);
+        return;
+      }
+      const r = el.getBoundingClientRect();
+      setChatRightPx(Math.max(0, Math.round(window.innerWidth - r.right)));
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    window.addEventListener("resize", update);
+    mq.addEventListener("change", update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+      mq.removeEventListener("change", update);
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -150,6 +203,12 @@ export function PuzzleView({ puzzle, actionsRef, onActiveClueChange }: Props) {
     onNotesShown: useCallback(() => {
       setNotesOpen(true);
     }, []),
+    onFeedback: useCallback(
+      (f: Feedback) => {
+        onFeedback?.(f);
+      },
+      [onFeedback],
+    ),
     onChatMessage: useCallback((line: ChatLine) => {
       setChatMessages((prev) => [...prev, line]);
 
@@ -181,6 +240,13 @@ export function PuzzleView({ puzzle, actionsRef, onActiveClueChange }: Props) {
     [send, identity.name, identity.color],
   );
 
+  // Announce ourselves whenever the socket opens (initial connect + reconnects).
+  useEffect(() => {
+    if (connState === "open") {
+      send({ type: "hello", name: identity.name, color: identity.color });
+    }
+  }, [connState, send, identity.name, identity.color]);
+
   const renameMe = useCallback((newName: string) => {
     const next = makeIdentity(newName);
     setIdentity(next);
@@ -203,6 +269,7 @@ export function PuzzleView({ puzzle, actionsRef, onActiveClueChange }: Props) {
 
   const onCellClick = useCallback(
     (row: number, col: number) => {
+      onActivity?.();
       setCursor((cur) => {
         if (cur.row === row && cur.col === col) {
           return { ...cur, dir: cur.dir === "across" ? "down" : "across" };
@@ -210,16 +277,17 @@ export function PuzzleView({ puzzle, actionsRef, onActiveClueChange }: Props) {
         return { row, col, dir: cur.dir };
       });
     },
-    [],
+    [onActivity],
   );
 
   const onClueClick = useCallback(
     (number: number, direction: Direction) => {
+      onActivity?.();
       const pos = findCellByNumber(cells, number);
       if (!pos) return;
       setCursor({ row: pos.row, col: pos.col, dir: direction });
     },
-    [cells],
+    [cells, onActivity],
   );
 
   const triggerShowNotes = useCallback(() => {
@@ -234,6 +302,8 @@ export function PuzzleView({ puzzle, actionsRef, onActiveClueChange }: Props) {
     const sendMsg = (msg: ClientMessage) => send(msg);
     actionsRef.current = {
       meta,
+      mode,
+      togglePencil: onToggleMode,
       clearBoard: () => sendMsg({ type: "clear" }),
       revealLetter: () =>
         sendMsg({
@@ -347,25 +417,34 @@ export function PuzzleView({ puzzle, actionsRef, onActiveClueChange }: Props) {
           triggerShowNotes();
           return;
         }
+        if (e.code === "KeyP") {
+          e.preventDefault();
+          onToggleMode();
+          return;
+        }
       }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (ARROWS.has(e.key)) {
         e.preventDefault();
+        onActivity?.();
         setCursor((cur) => moveCursor(cells, cur, e.key as ArrowKey));
         return;
       }
       if (e.key === "Tab") {
         e.preventDefault();
+        onActivity?.();
         setCursor((cur) => jumpClue(cells, cur, e.shiftKey ? -1 : 1));
         return;
       }
       if (/^[a-zA-Z]$/.test(e.key)) {
         e.preventDefault();
+        onActivity?.();
         const letter = e.key.toUpperCase();
         const { row, col } = cursor;
+        const isPencil = mode === "pencil";
         setSnapshot((prev) => ({
           version: prev.version,
-          cells: setCellFill(prev.cells, row, col, letter),
+          cells: setCellFill(prev.cells, row, col, letter, isPencil),
         }));
         send({
           type: "fill",
@@ -374,18 +453,20 @@ export function PuzzleView({ puzzle, actionsRef, onActiveClueChange }: Props) {
           letter,
           clientVersion: snapshot.version,
           senderColor: identity.color,
+          ...(isPencil ? { pencil: true } : {}),
         });
         setCursor((cur) => advanceAfterFill(cells, cur));
         return;
       }
       if (e.key === "Backspace") {
         e.preventDefault();
+        onActivity?.();
         const { row, col } = cursor;
         const cell = cells[row]?.[col];
         if (cell?.kind === "cell" && cell.fill != null) {
           setSnapshot((prev) => ({
             version: prev.version,
-            cells: setCellFill(prev.cells, row, col, null),
+            cells: setCellFill(prev.cells, row, col, null, false),
           }));
           send({
             type: "fill",
@@ -400,7 +481,7 @@ export function PuzzleView({ puzzle, actionsRef, onActiveClueChange }: Props) {
           if (back.row !== cursor.row || back.col !== cursor.col) {
             setSnapshot((prev) => ({
               version: prev.version,
-              cells: setCellFill(prev.cells, back.row, back.col, null),
+              cells: setCellFill(prev.cells, back.row, back.col, null, false),
             }));
             send({
               type: "fill",
@@ -444,8 +525,13 @@ export function PuzzleView({ puzzle, actionsRef, onActiveClueChange }: Props) {
     onActiveClueChange?.(activeClue);
   }, [activeClue, onActiveClueChange]);
 
+  const wrapStyle =
+    chatRightPx != null
+      ? ({ ["--chat-right" as never]: `${chatRightPx}px` } as React.CSSProperties)
+      : undefined;
+
   return (
-    <div className={styles.wrap}>
+    <div className={styles.wrap} style={wrapStyle}>
       {connState !== "open" && (
         <div className={styles.conn}>
           {connState === "connecting" ? "connecting…" : "disconnected"}
@@ -453,6 +539,7 @@ export function PuzzleView({ puzzle, actionsRef, onActiveClueChange }: Props) {
       )}
       <div className={styles.layout}>
         <Board
+          ref={boardRef}
           cells={cells}
           cursor={cursor}
           highlighted={highlighted}
@@ -478,7 +565,7 @@ export function PuzzleView({ puzzle, actionsRef, onActiveClueChange }: Props) {
           />
         </div>
       </div>
-      {previewLine && <ChatPreview line={previewLine} />}
+      {previewLine && !feedbackVisible && <ChatPreview line={previewLine} />}
       <ChatIndicator
         unreadCount={unreadCount}
         unreadColor={unreadColor}

@@ -49,6 +49,7 @@ export function parseMessage(raw: unknown): ClientMessage | null {
     ) return null;
     if (m.letter !== null && typeof m.letter !== "string") return null;
     const senderColor = isHexColor(m.senderColor) ? m.senderColor : undefined;
+    const pencil = m.pencil === true;
     return {
       type: "fill",
       row: m.row,
@@ -56,6 +57,7 @@ export function parseMessage(raw: unknown): ClientMessage | null {
       letter: m.letter,
       clientVersion: m.clientVersion,
       ...(senderColor ? { senderColor } : {}),
+      ...(pencil ? { pencil: true } : {}),
     };
   }
 
@@ -75,6 +77,17 @@ export function parseMessage(raw: unknown): ClientMessage | null {
     if (m.name.length === 0 || m.name.length > 32) return null;
     if (!/^#[0-9a-f]{6}$/i.test(m.color)) return null;
     return { type: "chat", name: m.name, color: m.color, text };
+  }
+
+  if (m.type === "hello") {
+    if (
+      typeof m.name !== "string" ||
+      typeof m.color !== "string" ||
+      m.name.length === 0 ||
+      m.name.length > 32 ||
+      !isHexColor(m.color)
+    ) return null;
+    return { type: "hello", name: m.name, color: m.color };
   }
 
   if (m.type === "reveal" || m.type === "check") {
@@ -163,6 +176,11 @@ export function applyFill(
   if (letter !== null && !/^[A-Z]$/.test(letter)) return null;
   cell.fill = letter;
   delete cell.wrong;
+  if (letter === null || !msg.pencil) {
+    delete cell.pencil;
+  } else {
+    cell.pencil = true;
+  }
   snapshot.version += 1;
   return {
     row: msg.row,
@@ -180,6 +198,7 @@ function revealAt(entry: StoredPuzzle, row: number, col: number): CellChange | n
   cell.fill = sol;
   cell.revealed = true;
   delete cell.wrong;
+  delete cell.pencil;
   return { row, col, cell };
 }
 
@@ -187,6 +206,7 @@ function checkAt(entry: StoredPuzzle, row: number, col: number): CellChange | nu
   const cell = entry.state.snapshot.cells[row]?.[col];
   if (!cell || cell.kind !== "cell") return null;
   if (cell.fill == null) return null; // skip empty cells
+  if (cell.pencil) return null; // skip pencil cells
   const sol = entry.solution[row]?.[col];
   const wasWrong = cell.wrong === true;
   if (cell.fill !== sol) {
@@ -245,10 +265,11 @@ export function applyClear(entry: StoredPuzzle): CellChange[] {
     for (let c = 0; c < meta.width; c++) {
       const cell = snapshot.cells[r]![c]!;
       if (cell.kind !== "cell") continue;
-      if (cell.fill == null && !cell.wrong && !cell.revealed) continue;
+      if (cell.fill == null && !cell.wrong && !cell.revealed && !cell.pencil) continue;
       cell.fill = null;
       delete cell.wrong;
       delete cell.revealed;
+      delete cell.pencil;
       snapshot.version += 1;
       changes.push({ row: r, col: c, cell });
     }
@@ -270,6 +291,26 @@ export function applyCheck(
   }
   return changes;
 }
+
+// Per-puzzle counter so generated feedback ids are unique enough as React keys.
+let feedbackCounter = 0;
+function nextFeedbackId(): string {
+  feedbackCounter = (feedbackCounter + 1) >>> 0;
+  return `f${Date.now().toString(36)}_${feedbackCounter.toString(36)}`;
+}
+
+function checkScopeHasPencil(
+  entry: StoredPuzzle,
+  msg: Extract<ClientMessage, { type: "check" }>,
+): boolean {
+  for (const { row, col } of targetCells(entry, msg)) {
+    const c = entry.state.snapshot.cells[row]?.[col];
+    if (c?.kind === "cell" && c.fill && c.pencil) return true;
+  }
+  return false;
+}
+
+const HELLO_DEBOUNCE_MS = 30_000;
 
 function broadcastChanges(entry: StoredPuzzle, changes: CellChange[]): void {
   if (changes.length === 0) return;
@@ -339,7 +380,17 @@ export function registerWsRoutes(app: FastifyInstance): void {
           return;
         }
         if (msg.type === "check") {
+          const hadPencil = checkScopeHasPencil(entry, msg);
           broadcastChanges(entry, applyCheck(entry, msg));
+          if (hadPencil) {
+            broadcast(entry, {
+              type: "feedback",
+              id: nextFeedbackId(),
+              text: "Check skips pencil cells",
+              level: "warning",
+              autoVanishMs: 5000,
+            });
+          }
           return;
         }
         if (msg.type === "clear") {
@@ -358,6 +409,25 @@ export function registerWsRoutes(app: FastifyInstance): void {
         }
         if (msg.type === "showNotes") {
           broadcast(entry, { type: "notesShown" });
+          return;
+        }
+        if (msg.type === "hello") {
+          const last = entry.recentHellos.get(msg.name);
+          const now = Date.now();
+          entry.recentHellos.set(msg.name, now);
+          if (last == null || now - last > HELLO_DEBOUNCE_MS) {
+            // Broadcast to others only — sender doesn't see their own join.
+            const payload = JSON.stringify({
+              type: "feedback",
+              id: nextFeedbackId(),
+              text: `${msg.name} joined the game`,
+              level: "info",
+              autoVanishMs: 5000,
+            });
+            for (const s of entry.sockets) {
+              if (s !== socket && s.readyState === s.OPEN) s.send(payload);
+            }
+          }
           return;
         }
       });
