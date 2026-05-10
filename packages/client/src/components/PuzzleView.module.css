@@ -1,3 +1,11 @@
+/*
+ * `.layout` is a 2-column grid (clue panels, then the board column);
+ * below the narrow breakpoint we collapse to one column and hide the
+ * clues entirely. The `min-height: 0` chain on `.wrap` / `.layout` /
+ * `.clues` is load-bearing — it lets the board column claim the
+ * remaining viewport height without overflow. Don't remove.
+ */
+
 .wrap {
   display: flex;
   flex-direction: column;
@@ -29,6 +37,7 @@
   min-height: 0;
 }
 
+/* Narrow viewport: keep in sync with NARROW_QUERY in Board.tsx (see index.css). */
 @media (max-width: 1023px) {
   .layout {
     grid-template-columns: auto;

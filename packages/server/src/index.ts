@@ -1,3 +1,19 @@
+/**
+ * Crossplay server entrypoint.
+ *
+ * Three concerns, in order:
+ *   1. Boot Fastify with the multipart and websocket plugins, register
+ *      the ws route at `/ws/puzzles/:id`.
+ *   2. Scan `GAME_DIR` for `.puz` files and load them into the in‑memory
+ *      store (slugified filenames are the puzzle ids).
+ *   3. Mount REST routes under `/api` and — only in production — serve
+ *      the built client static files with an SPA fallback so deep links
+ *      like `/p/<id>` resolve to `index.html`.
+ *
+ * In dev, Vite serves the client and proxies `/api` and `/ws` here
+ * unchanged, so the same paths work in both modes.
+ */
+
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,6 +40,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 const fixtureDir = resolve(here, "..", "fixtures");
 const GAME_DIR = process.env.GAME_DIR ?? fixtureDir;
 
+/** Lowercase, replace non-alphanumeric runs with `-`, trim. Empty input
+ *  becomes the literal string "game". Used to turn `.puz` filenames into
+ *  URL-safe puzzle ids. */
 function slugify(name: string): string {
   return (
     name
@@ -33,6 +52,9 @@ function slugify(name: string): string {
   );
 }
 
+/** Read a `.puz` file from disk, parse it, and put it into the store
+ *  under `id`. Returns `false` and logs a warning on any failure (so a
+ *  single malformed file doesn't abort library load). */
 function loadGame(id: string, path: string): boolean {
   try {
     const buf = readFileSync(path);
@@ -132,7 +154,10 @@ if (isProd) {
   }
   await app.register(staticPlugin, { root: clientDist });
   app.setNotFoundHandler((req, reply) => {
-    if (req.method !== "GET") {
+    // SPA fallback: GET (page navigation) or HEAD (link previews,
+    // monitoring probes) for non-API/WS paths return index.html so the
+    // client router handles the route. Everything else 404s.
+    if (req.method !== "GET" && req.method !== "HEAD") {
       return reply.code(404).send({ error: "not found" });
     }
     if (req.url.startsWith("/api/") || req.url.startsWith("/ws/")) {

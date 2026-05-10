@@ -19,6 +19,17 @@ type LoadState =
   | { kind: "loaded"; puzzle: PuzzleState }
   | { kind: "error"; message: string };
 
+/**
+ * Top-level component. Owns:
+ *  - the route (home vs puzzle, via the hand-rolled router in routing.ts);
+ *  - the load state for the current puzzle;
+ *  - pen/pencil mode (here, not in PuzzleView, so the always-visible
+ *    ModeButton in the header re-renders on toggle);
+ *  - the header feedback bar with its auto-vanish timer.
+ *
+ * Renders either HomePage (no puzzle) or PuzzleView (loaded). The Menu
+ * reads its actions from a ref written by PuzzleView; see puzzleActions.ts.
+ */
 export function App() {
   const route = useRoute();
   const [load, setLoad] = useState<LoadState>({ kind: "idle" });
@@ -32,9 +43,6 @@ export function App() {
     () => setMode((m) => (m === "pen" ? "pencil" : "pen")),
     [],
   );
-  // (the previous "tried dev once on first mount" ref is gone; users
-  // now pick a game from the home page or upload their own)
-
   const dismissFeedback = useCallback(() => {
     if (feedbackTimerRef.current) {
       clearTimeout(feedbackTimerRef.current);

@@ -14,6 +14,9 @@
   min-width: 0;
 }
 
+/* Reserves a fixed-height slot for either the active clue or a feedback
+   pill. The min-height keeps the header from shifting vertically when
+   feedback appears or vanishes (see CLAUDE.md "Feedback bar"). */
 .headerSlot {
   flex: 1;
   min-width: 0;
@@ -71,6 +74,7 @@
   margin-right: 0.35rem;
 }
 
+/* Narrow viewport: keep in sync with NARROW_QUERY in Board.tsx (see index.css). */
 @media (max-width: 1023px) {
   .titleText {
     display: none;

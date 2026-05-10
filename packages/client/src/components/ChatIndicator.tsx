@@ -9,6 +9,16 @@ type Props = {
 
 const SUBTLE = "#d0d0d0";
 
+/**
+ * Floating round button at the top-right that opens/closes the chat
+ * panel. When closed and there are unread messages, the button takes on
+ * the most-recent sender's color and shows a small unread-count badge;
+ * otherwise it stays a subtle gray.
+ *
+ * Position: `position: fixed` with right edge on `--chat-right`, which
+ * PuzzleView keeps in sync with the board's right edge in narrow
+ * viewports.
+ */
 export function ChatIndicator({ unreadCount, unreadColor, open, onToggle }: Props) {
   const showColor = unreadCount > 0 && unreadColor ? unreadColor : SUBTLE;
   const ariaLabel = open

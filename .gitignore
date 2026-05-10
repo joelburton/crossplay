@@ -7,3 +7,4 @@ dist
 .claude/
 *.tsbuildinfo
 CLAUDE.md
+code-review-*

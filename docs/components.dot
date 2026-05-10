@@ -1,0 +1,76 @@
+// React component tree for Crossplay's client.
+// Render with: dot -Tpng docs/components.dot -o docs/components.png
+//
+// Edges are parent → child render relationships (what a component
+// actually mounts). Dashed edges indicate a component is rendered
+// conditionally (route, idle/loaded state, or panel-open flag).
+//
+// Hooks and pure helpers (cursor.ts, chatIdentity.ts, draggablePanel.ts,
+// linkify.tsx, previewText.ts, usePuzzleSocket.ts) are intentionally
+// omitted — this is a render tree, not a module graph.
+
+digraph CrossplayComponents {
+  rankdir=TB;
+  splines=true;
+  nodesep=0.4;
+  ranksep=0.5;
+  bgcolor="white";
+  node [
+    shape=box,
+    style="rounded,filled",
+    fontname="Helvetica",
+    fontsize=11,
+    color="#444",
+    penwidth=1
+  ];
+  edge [color="#666", arrowsize=0.7];
+
+  // Top-level shell + always-visible chrome
+  App           [fillcolor="#e3eefc"];
+  SiteIcon      [fillcolor="#f6f6f6"];
+  Menu          [fillcolor="#f6f6f6"];
+  ModeButton    [fillcolor="#f6f6f6"];
+  FeedbackBar   [fillcolor="#f6f6f6"];
+
+  // Route-level views
+  HomePage      [fillcolor="#fff4d6"];
+  PuzzleView    [fillcolor="#dff5e1"];
+  UploadForm    [fillcolor="#f6f6f6"];
+
+  // PuzzleView's children
+  Board         [fillcolor="#dff5e1"];
+  Cell          [fillcolor="#dff5e1"];
+  ClueList      [fillcolor="#dff5e1"];
+  ChatIndicator [fillcolor="#fde0e0"];
+  ChatPreview   [fillcolor="#fde0e0"];
+  ChatPanel     [fillcolor="#fde0e0"];
+  NoteDialog    [fillcolor="#ecdcfb"];
+
+  // App always renders these
+  App -> SiteIcon;
+  App -> Menu;
+  App -> ModeButton;
+  App -> FeedbackBar;
+
+  // Route / load-state branches
+  App -> HomePage   [style=dashed, label="idle"];
+  App -> UploadForm [style=dashed, label="upload state"];
+  App -> PuzzleView [style=dashed, label="puzzle loaded"];
+
+  HomePage -> UploadForm;
+
+  // PuzzleView's render tree
+  PuzzleView -> Board;
+  PuzzleView -> ClueList    [label="across + down"];
+  PuzzleView -> ChatIndicator;
+  PuzzleView -> ChatPreview [style=dashed, label="recent msg"];
+  PuzzleView -> ChatPanel   [style=dashed, label="chat open"];
+  PuzzleView -> NoteDialog  [style=dashed, label="notes open"];
+
+  Board -> Cell [label="N×M"];
+
+  // Layout hints
+  { rank=same; SiteIcon; Menu; ModeButton; FeedbackBar; }
+  { rank=same; HomePage; UploadForm; PuzzleView; }
+  { rank=same; ChatIndicator; ChatPreview; ChatPanel; NoteDialog; }
+}

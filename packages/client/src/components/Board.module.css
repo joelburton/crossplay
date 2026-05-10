@@ -1,3 +1,9 @@
+/*
+ * The board is a CSS grid with `gap: 0` over a black background, which
+ * lets each cell's own `outline: 1px solid #000` (see Cell.module.css)
+ * draw the inter-cell lines. The 2px outer border closes the frame.
+ */
+
 .board {
   display: grid;
   gap: 0;

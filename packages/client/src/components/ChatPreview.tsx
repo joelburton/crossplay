@@ -1,20 +1,19 @@
 import type { ChatLine } from "../usePuzzleSocket";
+import { previewText } from "../previewText";
 import styles from "./ChatPreview.module.css";
 
 type Props = {
   line: ChatLine;
 };
 
-const MAX_WORDS = 12;
-
-function previewText(text: string): string {
-  const stripped = text.startsWith("!") ? text.slice(1) : text;
-  const firstLine = stripped.split("\n")[0]!;
-  const words = firstLine.trim().split(/\s+/);
-  if (words.length <= MAX_WORDS) return firstLine;
-  return words.slice(0, MAX_WORDS).join(" ") + "...";
-}
-
+/**
+ * Small "toast" pill that briefly shows a new chat message above the
+ * board when the chat panel is closed. PuzzleView sets a 3-second
+ * timer on each new message; this component renders during that
+ * window. Purely visual: shows a truncated preview, never marks
+ * messages as read, and is `aria-hidden` (the full chat panel is the
+ * canonical surface).
+ */
 export function ChatPreview({ line }: Props) {
   return (
     <div className={styles.preview} aria-hidden="true">

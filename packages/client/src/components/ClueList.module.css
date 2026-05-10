@@ -14,9 +14,9 @@
   font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #eee;
-  background: #444;
-  border-bottom: 1px solid #2a2a2a;
+  color: var(--c-header-fg);
+  background: var(--c-header-bg);
+  border-bottom: 1px solid var(--c-header-border);
   flex-shrink: 0;
 }
 
@@ -44,7 +44,7 @@
 }
 
 .active:hover {
-  background: #e6b833;
+  background: var(--c-cursor-strong);
 }
 
 .secondary:hover {
@@ -52,11 +52,11 @@
 }
 
 .active {
-  background: #ffd24d;
+  background: var(--c-cursor);
 }
 
 .secondary {
-  background: #fff2c2;
+  background: var(--c-cursor-soft);
 }
 
 .num {

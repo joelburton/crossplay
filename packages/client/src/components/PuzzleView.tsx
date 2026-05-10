@@ -18,7 +18,7 @@ import { type ChatLine, usePuzzleSocket } from "../usePuzzleSocket";
 import { type ChatIdentity, makeIdentity, persistName, readChatIdentity } from "../chatIdentity";
 import type { Feedback } from "../feedback";
 import type { PuzzleActions } from "../puzzleActions";
-import { Board } from "./Board";
+import { Board, NARROW_QUERY } from "./Board";
 import { ChatIndicator } from "./ChatIndicator";
 import { ChatPanel } from "./ChatPanel";
 import { ChatPreview } from "./ChatPreview";
@@ -62,6 +62,10 @@ function setCellFill(
   const cell = cells[row]?.[col];
   if (!cell || cell.kind !== "cell") return cells;
   const willPencil = letter != null && pencil;
+  // Early-exit when nothing visible would change. The server echoes back
+  // every fill (including ones we just optimistically wrote locally), so
+  // without this guard we'd allocate a new row + grid on every echo —
+  // and re-render the whole board for no visible change.
   if (
     cell.fill === letter &&
     !cell.wrong &&
@@ -92,6 +96,22 @@ function replaceCell(
   return next;
 }
 
+/**
+ * The central play surface. Owns:
+ *  - the cursor (row/col + direction);
+ *  - the live grid snapshot (mutated by both local typing and server
+ *    `cellUpdate` broadcasts; "newer version wins");
+ *  - the WebSocket connection (via usePuzzleSocket);
+ *  - chat state (panel open, unread count, recent preview);
+ *  - notes dialog state (locally dismissed, globally opened).
+ *
+ * Receives `mode` (pen/pencil) as a prop from App and pushes the menu's
+ * available actions up via `actionsRef` so the menu can fire them without
+ * subscribing to every cursor change.
+ *
+ * Optimistic typing is non-negotiable here: letter input renders locally
+ * before any server round-trip (see CLAUDE.md "Optimistic typing").
+ */
 export function PuzzleView({
   puzzle,
   mode,
@@ -131,11 +151,15 @@ export function PuzzleView({
 
   // When the clues are hidden (narrow viewport), align the chat indicator
   // and preview to the board's right edge instead of the viewport's, so
-  // they don't waste horizontal space outside the board.
+  // they don't waste horizontal space outside the board. We expose this
+  // as the CSS custom property `--chat-right` (px from the right viewport
+  // edge); ChatIndicator.module.css and ChatPreview.module.css both read
+  // it via `right: var(--chat-right, ...)`. When the variable is unset
+  // (wide viewport) the modules fall back to their default offsets.
   useEffect(() => {
     const el = boardRef.current;
     if (!el) return;
-    const mq = window.matchMedia("(max-width: 1023px)");
+    const mq = window.matchMedia(NARROW_QUERY);
     const update = () => {
       if (!mq.matches) {
         setChatRightPx(null);
@@ -291,10 +315,18 @@ export function PuzzleView({
   );
 
   const triggerShowNotes = useCallback(() => {
-    if (!meta.note) return;
+    if (!meta.note) {
+      onFeedback?.({
+        id: `no-notes-${meta.id}-${Date.now()}`,
+        text: "No notes for this puzzle",
+        level: "info",
+        autoVanishMs: 2500,
+      });
+      return;
+    }
     setNotesOpen(true);
     send({ type: "showNotes" });
-  }, [meta.note, send]);
+  }, [meta.note, meta.id, send, onFeedback]);
 
   useEffect(() => {
     if (!actionsRef) return;
@@ -341,7 +373,18 @@ export function PuzzleView({
         actionsRef.current = null;
       }
     };
-  });
+  }, [
+    actionsRef,
+    send,
+    cursor.row,
+    cursor.col,
+    cursor.dir,
+    mode,
+    meta,
+    identity.color,
+    onToggleMode,
+    triggerShowNotes,
+  ]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -499,7 +542,19 @@ export function PuzzleView({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [cells, cursor, snapshot.version, send]);
+  }, [
+    cells,
+    cursor,
+    snapshot.version,
+    send,
+    mode,
+    identity.color,
+    triggerShowNotes,
+    onActivity,
+    closeChat,
+    openChat,
+    onToggleMode,
+  ]);
 
   const highlighted = useMemo(() => {
     const set = new Set<string>();

@@ -1,3 +1,20 @@
+/**
+ * Authoritative server‑side game logic.
+ *
+ * Every grid mutation flows through this module: clients send a
+ * `ClientMessage`, `parseMessage` validates it, an `apply*` helper
+ * mutates the stored snapshot, and the result is broadcast as
+ * `cellUpdate` (and possibly `feedback`) to the room.
+ *
+ * The `apply*` helpers are pure(‑ish): they take a `StoredPuzzle` and a
+ * message, mutate the snapshot, and return the change list. They're
+ * exported so unit tests can drive them without spinning up Fastify.
+ *
+ * The Fastify route at the bottom (`registerWsRoutes`) is the only thing
+ * that actually owns the WebSocket — it dispatches to `apply*` and
+ * handles heartbeats, hello debouncing, and chat broadcast.
+ */
+
 import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
 import type {
@@ -9,12 +26,14 @@ import type {
 } from "@crossplay/shared";
 import { getPuzzle, type StoredPuzzle } from "./store.js";
 
+/** Send a message on a single socket if it's still OPEN; no‑op otherwise. */
 function send(socket: WebSocket, msg: ServerMessage): void {
   if (socket.readyState === socket.OPEN) {
     socket.send(JSON.stringify(msg));
   }
 }
 
+/** Broadcast a message to every OPEN socket in the room. Serializes once. */
 function broadcast(entry: StoredPuzzle, msg: ServerMessage): void {
   const payload = JSON.stringify(msg);
   for (const s of entry.sockets) {
@@ -30,6 +49,17 @@ function isDirection(v: unknown): v is Direction {
   return v === "across" || v === "down";
 }
 
+/**
+ * Validate and normalize an inbound client message.
+ *
+ * Returns a typed `ClientMessage` on success, `null` on any kind of
+ * failure (non‑string, malformed JSON, unknown type, missing fields,
+ * out‑of‑range values). Optional fields like `senderColor` are silently
+ * dropped if invalid rather than rejecting the whole message — that lets
+ * future clients add fields without breaking older servers.
+ *
+ * Pure; exported so unit tests can drive every branch without a socket.
+ */
 export function parseMessage(raw: unknown): ClientMessage | null {
   if (typeof raw !== "string" && !(raw instanceof Buffer)) return null;
   let parsed: unknown;
@@ -74,20 +104,17 @@ export function parseMessage(raw: unknown): ClientMessage | null {
     const text = m.text.trim();
     if (!text) return null;
     if (text.length > 500) return null;
-    if (m.name.length === 0 || m.name.length > 32) return null;
+    const name = sanitizeName(m.name);
+    if (name.length === 0 || name.length > 32) return null;
     if (!/^#[0-9a-f]{6}$/i.test(m.color)) return null;
-    return { type: "chat", name: m.name, color: m.color, text };
+    return { type: "chat", name, color: m.color, text };
   }
 
   if (m.type === "hello") {
-    if (
-      typeof m.name !== "string" ||
-      typeof m.color !== "string" ||
-      m.name.length === 0 ||
-      m.name.length > 32 ||
-      !isHexColor(m.color)
-    ) return null;
-    return { type: "hello", name: m.name, color: m.color };
+    if (typeof m.name !== "string" || typeof m.color !== "string") return null;
+    const name = sanitizeName(m.name);
+    if (name.length === 0 || name.length > 32 || !isHexColor(m.color)) return null;
+    return { type: "hello", name, color: m.color };
   }
 
   if (m.type === "reveal" || m.type === "check") {
@@ -112,18 +139,43 @@ export function parseMessage(raw: unknown): ClientMessage | null {
   return null;
 }
 
+/** Strict #rrggbb (lowercase or uppercase) check. Used to validate the
+ *  optional `senderColor` and the chat `color`. */
 function isHexColor(v: unknown): v is string {
   return typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v);
 }
 
+/**
+ * Normalize a player name before length validation: strip C0/DEL
+ * control characters (so "alice\n[admin]" can't masquerade as two
+ * lines in the chat list), collapse internal whitespace runs to a
+ * single space, and trim. Pure; exported for direct unit testing.
+ *
+ * The output is the canonical form we both validate and broadcast,
+ * so two clients sending visually equivalent names always see the
+ * same string.
+ */
+export function sanitizeName(name: string): string {
+  // \u0000-\u001f covers the C0 control range; \u007f is DEL. Written as
+  // \u escapes (rather than literal bytes) so the source stays plain ASCII.
+  return name
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 type CellChange = { row: number; col: number; cell: Cell; senderColor?: string };
 
+/** True iff `(r, c)` is inside the grid and is a fillable (non‑block) cell. */
 function isOpen(entry: StoredPuzzle, r: number, c: number): boolean {
   const { meta, snapshot } = entry.state;
   if (r < 0 || c < 0 || r >= meta.height || c >= meta.width) return false;
   return snapshot.cells[r]![c]!.kind === "cell";
 }
 
+/** Walk back to the start of the word that contains `(row, col)` in the
+ *  given direction. Returns the input cell unchanged if it is itself a
+ *  block (callers should guard with `isOpen` first). */
 function findWordStart(
   entry: StoredPuzzle,
   row: number,
@@ -141,6 +193,8 @@ function findWordStart(
   return { row: r, col: c };
 }
 
+/** Every cell in the word containing `(row, col)` in `dir`, in word order
+ *  from start to end. Empty array if `(row, col)` is a block. */
 function wordCells(
   entry: StoredPuzzle,
   row: number,
@@ -162,6 +216,18 @@ function wordCells(
   return out;
 }
 
+/**
+ * Apply a single‑cell fill (letter or erase).
+ *
+ * Validates bounds, cell kind, and letter shape (single A–Z after
+ * uppercasing). On a successful fill, clears any prior `wrong` flag
+ * (the user is editing, so the server should re‑check on the next
+ * `check`), preserves `revealed` (it stays true even if the user types
+ * a different letter), and toggles `pencil` based on `msg.pencil`.
+ *
+ * Bumps `snapshot.version` exactly once per accepted change. Returns
+ * `null` if the message is invalid (no broadcast happens in that case).
+ */
 export function applyFill(
   entry: StoredPuzzle,
   msg: Extract<ClientMessage, { type: "fill" }>,
@@ -190,11 +256,16 @@ export function applyFill(
   };
 }
 
+/** Reveal the solution letter at one cell. Sets `revealed: true`, clears
+ *  `wrong` and `pencil`. Returns `null` if the cell is a block, has no
+ *  solution, or is already in the post-reveal state (consistent with
+ *  `applyCheck` / `applyClear`: don't re-broadcast no-ops). */
 function revealAt(entry: StoredPuzzle, row: number, col: number): CellChange | null {
   const cell = entry.state.snapshot.cells[row]?.[col];
   if (!cell || cell.kind !== "cell") return null;
   const sol = entry.solution[row]?.[col];
   if (sol == null) return null;
+  if (cell.revealed && cell.fill === sol && !cell.wrong && !cell.pencil) return null;
   cell.fill = sol;
   cell.revealed = true;
   delete cell.wrong;
@@ -202,6 +273,16 @@ function revealAt(entry: StoredPuzzle, row: number, col: number): CellChange | n
   return { row, col, cell };
 }
 
+/**
+ * Check one cell against the solution.
+ *
+ * Returns a change only when the visible state needs to update:
+ *   - newly wrong → set `wrong: true`;
+ *   - was wrong, now right → clear the `wrong` flag.
+ * Empty cells and pencil cells are skipped (no change emitted).
+ * Already‑wrong cells that are still wrong return `null` (no spurious
+ * re‑broadcast).
+ */
 function checkAt(entry: StoredPuzzle, row: number, col: number): CellChange | null {
   const cell = entry.state.snapshot.cells[row]?.[col];
   if (!cell || cell.kind !== "cell") return null;
@@ -221,6 +302,9 @@ function checkAt(entry: StoredPuzzle, row: number, col: number): CellChange | nu
   return null;
 }
 
+/** Resolve the set of cells a reveal/check message applies to:
+ *  letter → just `(row, col)`; word → the across/down word containing it;
+ *  puzzle → every open cell in the grid. */
 function targetCells(
   entry: StoredPuzzle,
   msg: Extract<ClientMessage, { type: "reveal" | "check" }>,
@@ -242,6 +326,14 @@ function targetCells(
   return wordCells(entry, msg.row, msg.col, msg.dir);
 }
 
+/**
+ * Apply a reveal at letter / word / puzzle scope.
+ *
+ * Bumps `snapshot.version` once per cell that actually changed (so each
+ * resulting `cellUpdate` carries a distinct version, see
+ * `broadcastChanges`). Carries `senderColor` through so other clients
+ * can briefly flash the revealing player's color on the cell.
+ */
 export function applyReveal(
   entry: StoredPuzzle,
   msg: Extract<ClientMessage, { type: "reveal" }>,
@@ -258,6 +350,11 @@ export function applyReveal(
   return changes;
 }
 
+/**
+ * Wipe every fill, `wrong` flag, `revealed` flag, and `pencil` flag from
+ * the grid. Cells that were already empty are skipped (no spurious
+ * broadcast). Bumps `snapshot.version` once per affected cell.
+ */
 export function applyClear(entry: StoredPuzzle): CellChange[] {
   const changes: CellChange[] = [];
   const { meta, snapshot } = entry.state;
@@ -277,6 +374,15 @@ export function applyClear(entry: StoredPuzzle): CellChange[] {
   return changes;
 }
 
+/**
+ * Apply a check at letter / word / puzzle scope.
+ *
+ * Pencil cells are skipped at the per‑cell level (`checkAt` returns
+ * `null` for them); the route handler separately broadcasts a "Check
+ * skips pencil cells" feedback when at least one such cell was in
+ * scope (see `checkScopeHasPencil` and the `case "check"` block in
+ * `registerWsRoutes`).
+ */
 export function applyCheck(
   entry: StoredPuzzle,
   msg: Extract<ClientMessage, { type: "check" }>,
@@ -292,14 +398,22 @@ export function applyCheck(
   return changes;
 }
 
-// Per-puzzle counter so generated feedback ids are unique enough as React keys.
-let feedbackCounter = 0;
-function nextFeedbackId(): string {
-  feedbackCounter = (feedbackCounter + 1) >>> 0;
-  return `f${Date.now().toString(36)}_${feedbackCounter.toString(36)}`;
+// Counter feeding the `id` field on broadcast `feedback` messages.
+// IDs need only be unique enough that React's reconciler treats two
+// successive feedback events as distinct keys. We seed with the current
+// `Date.now()` (base‑36) and append a per‑room monotonic counter; the
+// `>>> 0` keeps the counter in 32‑bit unsigned territory so the base‑36
+// string stays short. Per‑puzzle so two rooms' feedback streams stay
+// independent and log lines are easier to attribute.
+function nextFeedbackId(entry: StoredPuzzle): string {
+  entry.feedbackCounter = (entry.feedbackCounter + 1) >>> 0;
+  return `f${Date.now().toString(36)}_${entry.feedbackCounter.toString(36)}`;
 }
 
-function checkScopeHasPencil(
+/** True if any cell in the requested check scope is currently a pencil
+ *  fill. Used to decide whether to broadcast the "check skips pencil
+ *  cells" warning feedback. Exported for direct unit testing. */
+export function checkScopeHasPencil(
   entry: StoredPuzzle,
   msg: Extract<ClientMessage, { type: "check" }>,
 ): boolean {
@@ -312,10 +426,60 @@ function checkScopeHasPencil(
 
 const HELLO_DEBOUNCE_MS = 30_000;
 
+// How long an entry can sit in `recentHellos` before being pruned.
+// 4× the debounce window means a returning player still gets the silent
+// reconnect within the debounce, but a one-off visitor's name is gone
+// well before the map can grow without bound.
+const HELLO_PRUNE_AFTER_MS = HELLO_DEBOUNCE_MS * 4;
+
+/**
+ * Decide whether to broadcast an "Alice joined" feedback for a given hello.
+ * A hello is announced if there's no prior record for the name, or if the
+ * last hello for that name is older than `debounceMs`. Pure; exported for
+ * direct unit testing.
+ */
+export function shouldAnnounceHello(
+  last: number | undefined,
+  now: number,
+  debounceMs: number,
+): boolean {
+  return last == null || now - last > debounceMs;
+}
+
+/**
+ * Drop entries from a `recentHellos` map whose timestamps are older than
+ * `now - maxAgeMs`. Mutates the map in place. Pure (apart from that
+ * mutation); exported for direct unit testing.
+ *
+ * Called opportunistically on each hello, so the cost is amortized
+ * across normal traffic and we never need a periodic timer.
+ */
+export function pruneRecentHellos(
+  recentHellos: Map<string, number>,
+  now: number,
+  maxAgeMs: number,
+): void {
+  const cutoff = now - maxAgeMs;
+  for (const [name, ts] of recentHellos) {
+    if (ts < cutoff) recentHellos.delete(name);
+  }
+}
+
+/**
+ * Broadcast a batch of cell changes as individual `cellUpdate` messages,
+ * each carrying its own snapshot version.
+ *
+ * Each change bumped `snapshot.version` once when applied, so we can
+ * reconstruct per‑change versions by walking backwards from the final
+ * version. Worked example: 3 changes ending at version 7 → versions
+ * 5, 6, 7 (i = 0, 1, 2 with `final - len + 1 + i` = 5, 6, 7).
+ *
+ * One‑message‑per‑change is intentional: the client's "newer version
+ * wins" check (`if (version <= prev.version) return prev`) then applies
+ * every update from a batch, in order.
+ */
 function broadcastChanges(entry: StoredPuzzle, changes: CellChange[]): void {
   if (changes.length === 0) return;
-  // Reconstruct per-change versions: each change bumped the version once,
-  // so the i-th change's version is (final - changes.length + 1 + i).
   const final = entry.state.snapshot.version;
   for (let i = 0; i < changes.length; i++) {
     const { row, col, cell, senderColor } = changes[i]!;
@@ -333,7 +497,31 @@ function broadcastChanges(entry: StoredPuzzle, changes: CellChange[]): void {
 
 const HEARTBEAT_INTERVAL_MS = 15_000;
 
-export function registerWsRoutes(app: FastifyInstance): void {
+export type WsRouteOptions = {
+  // Override the per-connection ping cadence. The integration test lowers
+  // this to drive the silent-disconnect path in milliseconds rather than
+  // the production 15s.
+  heartbeatIntervalMs?: number;
+};
+
+/**
+ * Register the `/ws/puzzles/:id` WebSocket route.
+ *
+ * Per connection:
+ *   - On open: add to the room, send a `snapshot`, start a heartbeat.
+ *   - On message: validate via `parseMessage`, dispatch to the matching
+ *     `apply*` helper or chat/notes/hello side effect, broadcast.
+ *   - On close: clear the heartbeat, remove from the room set.
+ *
+ * The heartbeat pings every `HEARTBEAT_INTERVAL_MS` and terminates the
+ * socket if no `pong` came back since the previous tick — so silent
+ * disconnects (broken NAT, sleeping laptop) clear within ~30s.
+ */
+export function registerWsRoutes(
+  app: FastifyInstance,
+  opts: WsRouteOptions = {},
+): void {
+  const heartbeatIntervalMs = opts.heartbeatIntervalMs ?? HEARTBEAT_INTERVAL_MS;
   app.get<{ Params: { id: string } }>(
     "/ws/puzzles/:id",
     { websocket: true },
@@ -365,7 +553,7 @@ export function registerWsRoutes(app: FastifyInstance): void {
         } catch {
           socket.terminate();
         }
-      }, HEARTBEAT_INTERVAL_MS);
+      }, heartbeatIntervalMs);
 
       socket.on("message", (raw) => {
         const msg = parseMessage(raw);
@@ -385,7 +573,7 @@ export function registerWsRoutes(app: FastifyInstance): void {
           if (hadPencil) {
             broadcast(entry, {
               type: "feedback",
-              id: nextFeedbackId(),
+              id: nextFeedbackId(entry),
               text: "Check skips pencil cells",
               level: "warning",
               autoVanishMs: 5000,
@@ -412,14 +600,17 @@ export function registerWsRoutes(app: FastifyInstance): void {
           return;
         }
         if (msg.type === "hello") {
-          const last = entry.recentHellos.get(msg.name);
           const now = Date.now();
+          // Opportunistic GC: keeps the map bounded for long-lived rooms
+          // with high name churn (`Rando<NN>` defaults, etc.).
+          pruneRecentHellos(entry.recentHellos, now, HELLO_PRUNE_AFTER_MS);
+          const last = entry.recentHellos.get(msg.name);
           entry.recentHellos.set(msg.name, now);
-          if (last == null || now - last > HELLO_DEBOUNCE_MS) {
+          if (shouldAnnounceHello(last, now, HELLO_DEBOUNCE_MS)) {
             // Broadcast to others only — sender doesn't see their own join.
             const payload = JSON.stringify({
               type: "feedback",
-              id: nextFeedbackId(),
+              id: nextFeedbackId(entry),
               text: `${msg.name} joined the game`,
               level: "info",
               autoVanishMs: 5000,

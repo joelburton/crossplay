@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { Cell, PuzzleState } from "@crossplay/shared";
 import type { StoredPuzzle } from "./store.js";
-import { applyCheck, applyClear, applyFill, applyReveal, parseMessage } from "./ws.js";
+import {
+  applyCheck,
+  applyClear,
+  applyFill,
+  applyReveal,
+  checkScopeHasPencil,
+  parseMessage,
+  pruneRecentHellos,
+  sanitizeName,
+  shouldAnnounceHello,
+} from "./ws.js";
 
 // Mini grid (solution shown):
 //   A B # C D    block at (0,2)
@@ -49,7 +59,13 @@ function entry(): StoredPuzzle {
     ["E", "F", "G", "H", "I"],
     [null, null, "J", null, null],
   ];
-  return { state, solution, sockets: new Set(), recentHellos: new Map() };
+  return {
+    state,
+    solution,
+    sockets: new Set(),
+    recentHellos: new Map(),
+    feedbackCounter: 0,
+  };
 }
 
 const fill = (row: number, col: number, letter: string | null) =>
@@ -372,5 +388,282 @@ describe("applyCheck", () => {
     const changes = applyCheck(e, { type: "check", scope: "puzzle" });
     expect(changes).toHaveLength(1);
     expect(changes[0]).toMatchObject({ row: 0, col: 0 });
+  });
+});
+
+describe("shouldAnnounceHello", () => {
+  const DEBOUNCE = 30_000;
+
+  it("announces when there's no prior hello", () => {
+    expect(shouldAnnounceHello(undefined, 1_000_000, DEBOUNCE)).toBe(true);
+  });
+
+  it("suppresses an immediate reconnect within the debounce window", () => {
+    expect(shouldAnnounceHello(1_000_000, 1_005_000, DEBOUNCE)).toBe(false);
+  });
+
+  it("suppresses right at the boundary (<=)", () => {
+    expect(shouldAnnounceHello(1_000_000, 1_000_000 + DEBOUNCE, DEBOUNCE)).toBe(false);
+  });
+
+  it("announces past the debounce window", () => {
+    expect(shouldAnnounceHello(1_000_000, 1_000_000 + DEBOUNCE + 1, DEBOUNCE)).toBe(true);
+  });
+});
+
+describe("sanitizeName", () => {
+  it("leaves a normal name alone", () => {
+    expect(sanitizeName("Joel")).toBe("Joel");
+  });
+
+  it("strips control characters (newline, tab, NUL)", () => {
+    expect(sanitizeName("alice\n[admin]")).toBe("alice[admin]");
+    expect(sanitizeName("a\tb")).toBe("ab");
+    expect(sanitizeName("a b")).toBe("ab");
+  });
+
+  it("strips DEL (\\u007f)", () => {
+    expect(sanitizeName("ab")).toBe("ab");
+  });
+
+  it("collapses internal whitespace runs to a single space", () => {
+    expect(sanitizeName("a   b\t c")).toBe("a b c");
+  });
+
+  it("trims surrounding whitespace", () => {
+    expect(sanitizeName("   alice   ")).toBe("alice");
+  });
+
+  it("returns the empty string for whitespace-only input", () => {
+    expect(sanitizeName("   \t\n  ")).toBe("");
+  });
+});
+
+describe("parseMessage chat name sanitization", () => {
+  it("strips control chars from chat names", () => {
+    const m = parseMessage(
+      JSON.stringify({
+        type: "chat",
+        name: "alice\n[admin]",
+        color: "#1f77b4",
+        text: "hi",
+      }),
+    );
+    expect(m).toMatchObject({ type: "chat", name: "alice[admin]" });
+  });
+
+  it("rejects a chat name that's empty after sanitization", () => {
+    expect(
+      parseMessage(JSON.stringify({ type: "chat", name: "\n\t\n", color: "#1f77b4", text: "hi" })),
+    ).toBeNull();
+  });
+
+  it("strips control chars from hello names", () => {
+    const m = parseMessage(
+      JSON.stringify({ type: "hello", name: "joel ok", color: "#1f77b4" }),
+    );
+    expect(m).toMatchObject({ type: "hello", name: "joelok" });
+  });
+});
+
+describe("pruneRecentHellos", () => {
+  const MAX_AGE = 120_000;
+
+  it("removes entries older than the cutoff", () => {
+    const now = 1_000_000;
+    const m = new Map<string, number>([
+      ["alice", now - MAX_AGE - 1], // older → drop
+      ["bob", now - 5_000],         // recent → keep
+    ]);
+    pruneRecentHellos(m, now, MAX_AGE);
+    expect(m.has("alice")).toBe(false);
+    expect(m.has("bob")).toBe(true);
+  });
+
+  it("keeps entries exactly at the cutoff", () => {
+    const now = 1_000_000;
+    const m = new Map<string, number>([["edge", now - MAX_AGE]]);
+    pruneRecentHellos(m, now, MAX_AGE);
+    expect(m.has("edge")).toBe(true);
+  });
+
+  it("is a no-op on an empty map", () => {
+    const m = new Map<string, number>();
+    pruneRecentHellos(m, 1_000_000, MAX_AGE);
+    expect(m.size).toBe(0);
+  });
+
+  it("mutates the input map in place", () => {
+    const m = new Map<string, number>([["old", 0]]);
+    const ref = m;
+    pruneRecentHellos(m, 1_000_000, MAX_AGE);
+    expect(ref).toBe(m); // same reference
+    expect(m.size).toBe(0);
+  });
+});
+
+describe("parseMessage senderColor type-juggling", () => {
+  // The contract: an invalid senderColor is silently dropped (so the
+  // rest of the message still gets through). Numbers, null, objects,
+  // booleans — none should cause parseMessage to reject the message
+  // outright, and none should appear on the parsed result.
+  const cases: Array<[string, unknown]> = [
+    ["number", 42],
+    ["null", null],
+    ["empty object", {}],
+    ["array", ["#1f77b4"]],
+    ["boolean", true],
+  ];
+  for (const [label, senderColor] of cases) {
+    it(`drops ${label} senderColor on fill without rejecting the message`, () => {
+      const m = parseMessage(
+        JSON.stringify({ type: "fill", row: 0, col: 0, letter: "A", clientVersion: 0, senderColor }),
+      );
+      expect(m).toMatchObject({ type: "fill", row: 0, col: 0, letter: "A" });
+      expect(m).not.toHaveProperty("senderColor");
+    });
+    it(`drops ${label} senderColor on reveal without rejecting the message`, () => {
+      const m = parseMessage(
+        JSON.stringify({ type: "reveal", scope: "letter", row: 0, col: 0, senderColor }),
+      );
+      expect(m).toMatchObject({ type: "reveal", scope: "letter" });
+      expect(m).not.toHaveProperty("senderColor");
+    });
+  }
+});
+
+describe("parseMessage pencil flag", () => {
+  // pencil is parsed by `m.pencil === true`, so any other value (including
+  // an explicit `false`) is treated as "no pencil flag attached" — the
+  // parsed result has no `pencil` key at all. This matters because the
+  // `applyFill` pencil branch keys off the presence of the flag.
+  const base = { type: "fill", row: 0, col: 0, letter: "A", clientVersion: 0 };
+
+  it("absent pencil produces a result with no pencil key", () => {
+    const m = parseMessage(JSON.stringify(base));
+    expect(m).not.toHaveProperty("pencil");
+  });
+  it("pencil:false produces the same shape as absent", () => {
+    const m = parseMessage(JSON.stringify({ ...base, pencil: false }));
+    expect(m).not.toHaveProperty("pencil");
+  });
+  it("pencil:true is preserved", () => {
+    const m = parseMessage(JSON.stringify({ ...base, pencil: true }));
+    expect(m).toMatchObject({ pencil: true });
+  });
+  it("pencil:'true' (string, truthy but not ===true) is dropped", () => {
+    const m = parseMessage(JSON.stringify({ ...base, pencil: "true" }));
+    expect(m).not.toHaveProperty("pencil");
+  });
+});
+
+describe("applyFill non-A-Z input", () => {
+  const cases: Array<[string, string]> = [
+    ["digit", "5"],
+    ["accented letter", "é"],
+    ["control char", ""],
+    ["space", " "],
+    ["punctuation", "!"],
+    ["multi-code-unit emoji", "😀"],
+    ["multi-char string", "AB"],
+  ];
+  for (const [label, letter] of cases) {
+    it(`rejects ${label} (${JSON.stringify(letter)})`, () => {
+      const e = entry();
+      const change = applyFill(e, fill(0, 0, letter));
+      expect(change).toBeNull();
+      // Snapshot stays untouched: no version bump, fill still null.
+      expect(e.state.snapshot.version).toBe(0);
+      expect((e.state.snapshot.cells[0]![0] as { fill: string | null }).fill).toBeNull();
+    });
+  }
+});
+
+describe("applyReveal idempotence", () => {
+  it("does not re-emit when the cell is already revealed to the solution", () => {
+    const e = entry();
+    const first = applyReveal(e, { type: "reveal", scope: "letter", row: 0, col: 0 });
+    expect(first).toHaveLength(1);
+    const versionAfterFirst = e.state.snapshot.version;
+    const second = applyReveal(e, { type: "reveal", scope: "letter", row: 0, col: 0 });
+    expect(second).toHaveLength(0);
+    expect(e.state.snapshot.version).toBe(versionAfterFirst);
+  });
+
+  it("re-emits if the cell is revealed but currently shows wrong=true", () => {
+    // Edge case: a previous check marked it wrong, then the user revealed.
+    // After reveal, wrong must clear. If we then somehow set wrong back
+    // and reveal again, the post-reveal state changes (wrong cleared),
+    // so we expect a change.
+    const e = entry();
+    applyReveal(e, { type: "reveal", scope: "letter", row: 0, col: 0 });
+    const cell = e.state.snapshot.cells[0]![0] as Cell & { kind: "cell" };
+    cell.wrong = true; // simulate a check after reveal
+    const changes = applyReveal(e, { type: "reveal", scope: "letter", row: 0, col: 0 });
+    expect(changes).toHaveLength(1);
+    expect(cell.wrong).toBeUndefined();
+  });
+
+  it("word-scope reveal over a partially-revealed word emits only the still-pending cells", () => {
+    const e = entry();
+    // Pre-reveal one cell of the across word at row 1.
+    applyReveal(e, { type: "reveal", scope: "letter", row: 1, col: 2 });
+    const before = e.state.snapshot.version;
+    const changes = applyReveal(e, {
+      type: "reveal",
+      scope: "word",
+      row: 1,
+      col: 0,
+      dir: "across",
+    });
+    // The word is 5 cells; one was already revealed, so 4 new emissions.
+    expect(changes).toHaveLength(4);
+    expect(e.state.snapshot.version).toBe(before + 4);
+  });
+});
+
+describe("checkScopeHasPencil", () => {
+  it("returns false when nothing is filled in scope", () => {
+    const e = entry();
+    expect(
+      checkScopeHasPencil(e, { type: "check", scope: "word", row: 1, col: 0, dir: "across" }),
+    ).toBe(false);
+  });
+
+  it("returns false when the word has only pen fills", () => {
+    const e = entry();
+    (e.state.snapshot.cells[1]![0] as { fill: string | null }).fill = "E";
+    (e.state.snapshot.cells[1]![1] as { fill: string | null }).fill = "F";
+    expect(
+      checkScopeHasPencil(e, { type: "check", scope: "word", row: 1, col: 0, dir: "across" }),
+    ).toBe(false);
+  });
+
+  it("returns true when at least one cell in the word is pencil", () => {
+    const e = entry();
+    applyFill(e, { type: "fill", row: 1, col: 0, letter: "X", clientVersion: 0 }); // pen
+    applyFill(e, { type: "fill", row: 1, col: 2, letter: "Z", clientVersion: 0, pencil: true }); // pencil
+    expect(
+      checkScopeHasPencil(e, { type: "check", scope: "word", row: 1, col: 0, dir: "across" }),
+    ).toBe(true);
+  });
+
+  it("ignores empty pencil-flagged cells (no fill = nothing to check)", () => {
+    // A cell with pencil:true but fill:null shouldn't count — there's no
+    // letter to skip. (Today applyFill never produces this state, but
+    // checkScopeHasPencil shouldn't depend on that.)
+    const e = entry();
+    const cell = e.state.snapshot.cells[1]![0] as Cell & { kind: "cell" };
+    cell.pencil = true;
+    cell.fill = null;
+    expect(
+      checkScopeHasPencil(e, { type: "check", scope: "word", row: 1, col: 0, dir: "across" }),
+    ).toBe(false);
+  });
+
+  it("scans the whole grid at puzzle scope", () => {
+    const e = entry();
+    applyFill(e, { type: "fill", row: 2, col: 2, letter: "J", clientVersion: 0, pencil: true });
+    expect(checkScopeHasPencil(e, { type: "check", scope: "puzzle" })).toBe(true);
   });
 });

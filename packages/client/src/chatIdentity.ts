@@ -1,3 +1,16 @@
+/**
+ * Player identity for chat and presence.
+ *
+ * A "chat identity" is just a (name, color) pair. The name is whatever
+ * the user typed (or a generated default); the color is derived
+ * deterministically from the name via `colorForName` so the same name
+ * always renders in the same color across all clients in a room without
+ * any server coordination.
+ *
+ * Identity also flows to the board: optimistic fills carry `senderColor`
+ * so other players see the typer's color flash on the cell for 3s.
+ */
+
 // Eight high-saturation colors picked across the hue wheel so adjacent
 // players are easy to distinguish at a glance and stay legible on white.
 export const CHAT_PALETTE = [
@@ -11,6 +24,10 @@ export const CHAT_PALETTE = [
   "#ec4899", // pink
 ];
 
+/** Map a name to one of the eight palette colors via a small string
+ *  hash. Deterministic — every client that sees the name "Alice" will
+ *  pick the same color, which is how we agree on player colors without
+ *  any server round‑trip. */
 export function colorForName(name: string): string {
   let h = 0;
   for (let i = 0; i < name.length; i++) {
@@ -45,14 +62,23 @@ function clean(name: string): string {
   return name.trim().slice(0, MAX_NAME_LEN);
 }
 
+/** Build an identity from a (possibly messy) name input. Trims and caps
+ *  to 32 chars, then derives the color. */
 export function makeIdentity(name: string): ChatIdentity {
   const cleaned = clean(name);
   return { name: cleaned, color: colorForName(cleaned) };
 }
 
-// Priority: ?name= URL param > localStorage > random Rando<2 digits>.
-// URL param and explicit edits also write through to localStorage so the next
-// visit (without a URL param) picks up the same name.
+/**
+ * Resolve the current player's identity at app startup.
+ *
+ * Priority (highest first):
+ *   1. `?name=` URL parameter — useful for "share two URLs with two
+ *      friends" testing; also written through to localStorage so the
+ *      next visit without `?name=` keeps the same name.
+ *   2. Previously stored name in localStorage.
+ *   3. A random fallback `Rando<NN>` (NN = 10–99).
+ */
 export function readChatIdentity(): ChatIdentity {
   const params = new URLSearchParams(location.search);
   const fromUrl = params.get("name")?.trim();
@@ -66,6 +92,8 @@ export function readChatIdentity(): ChatIdentity {
   return makeIdentity(`Rando${Math.floor(Math.random() * 90 + 10)}`);
 }
 
+/** Save a name to localStorage so the next visit (without `?name=`)
+ *  picks it up. Called on rename and on URL-param-driven loads. */
 export function persistName(name: string): void {
   saveStoredName(clean(name));
 }

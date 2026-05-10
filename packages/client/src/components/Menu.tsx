@@ -13,6 +13,15 @@ type Props = {
   onClose: () => void;
 };
 
+/**
+ * Dropdown menu anchored under the title. Opens on title click; closes
+ * on outside click, Escape, or after firing any action.
+ *
+ * Action handlers are pulled from `actions` (a `PuzzleActions` ref —
+ * see `puzzleActions.ts` for why it's a ref). When `actions` is null
+ * (home page, no puzzle loaded) only "New game" is shown. Disabled
+ * states: "Show notes" greys out when the puzzle has no note text.
+ */
 export function Menu({ actions, triggerRef, onNewGame, onClose }: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
 

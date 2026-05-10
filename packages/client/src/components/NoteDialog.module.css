@@ -1,54 +1,36 @@
 .rnd {
-  z-index: 200;
+  z-index: var(--z-note-dialog);
 }
 
 .card {
-  width: 100%;
-  height: 100%;
-  background: #fff;
-  border-radius: 8px;
+  composes: card from "./Panel.module.css";
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border: 1px solid #ccc;
 }
 
 .header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  composes: header from "./Panel.module.css";
   gap: 1rem;
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid #ddd;
   background: #f0f0f0;
-  flex-shrink: 0;
 }
 
 .dragHandle {
-  cursor: move;
-  user-select: none;
+  composes: dragHandle from "./Panel.module.css";
+}
+
+.close {
+  composes: close from "./Panel.module.css";
+  font-size: 1.4rem;
+}
+
+.close:hover {
+  background: #e2e2e2;
 }
 
 .title {
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
-}
-
-.close {
-  background: none;
-  border: 0;
-  font-size: 1.4rem;
-  line-height: 1;
-  cursor: pointer;
-  color: #555;
-  padding: 0.1rem 0.4rem;
-  border-radius: 4px;
-}
-
-.close:hover {
-  background: #e2e2e2;
 }
 
 .body {

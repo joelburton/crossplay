@@ -49,6 +49,8 @@
   border-color: #ecd58a;
 }
 
+/* Reserved: emitted by the future "puzzle solved!" message once
+   completion detection lands. Currently unused — keep it. */
 .celebration {
   background: #e0f4e3;
   color: #1d6e2e;

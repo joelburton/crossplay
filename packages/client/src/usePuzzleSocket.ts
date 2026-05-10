@@ -28,6 +28,24 @@ type Handlers = {
 
 const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000, 16000, 30000];
 
+/**
+ * Maintains a single WebSocket connection to a puzzle room, with
+ * exponential-backoff auto-reconnect (500ms → 30s cap; resets on each
+ * successful open).
+ *
+ * The latest handler bag is read from a ref on every message, so callers
+ * don't have to memoize `handlers` — pass fresh closures every render.
+ *
+ * Returns:
+ *   - `state`: "connecting" | "open" | "closed".
+ *   - `send(msg)`: serializes and writes a ClientMessage if the socket
+ *     is OPEN; otherwise silently drops. (Optimistic UI is the caller's
+ *     responsibility — see CLAUDE.md "Optimistic typing".)
+ *
+ * Caveat: a fresh `snapshot` arrives on every reconnect and replaces local
+ * state. Fills typed during a disconnect are not buffered or replayed —
+ * see code-review-1.md §1.3.
+ */
 export function usePuzzleSocket(puzzleId: string, handlers: Handlers) {
   const [state, setState] = useState<ConnState>("connecting");
   const socketRef = useRef<WebSocket | null>(null);

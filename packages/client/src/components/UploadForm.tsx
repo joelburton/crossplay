@@ -6,6 +6,12 @@ type Props = {
   onUploaded: (puzzleId: string) => void;
 };
 
+/**
+ * Multipart `.puz` upload form. Used on the home page and as a
+ * fallback under the error state in App. Shows "Loading…" while the
+ * upload is in flight, an inline error message on failure, and calls
+ * `onUploaded(puzzleId)` on success — App handles the navigation.
+ */
 export function UploadForm({ onUploaded }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

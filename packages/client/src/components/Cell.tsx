@@ -12,6 +12,19 @@ type Props = {
   onClick: (row: number, col: number) => void;
 };
 
+/**
+ * One grid cell. Pure and memoized — re-renders only when its props
+ * change, which keeps typing fast on large grids.
+ *
+ * Renders one of:
+ *  - a black block (cell.kind === "block");
+ *  - an empty white cell with optional clue number, optional fill letter
+ *    (pen or pencil styled), and an optional triangle marker in the
+ *    top-right corner (red for `wrong`, blue for `revealed`).
+ *
+ * `recentColor` is the 3-second flash color shown when *another* player
+ * fills this cell; PuzzleView clears it on a per-cell timer.
+ */
 function CellImpl({ cell, row, col, isCursor, isInWord, recentColor, onClick }: Props) {
   if (cell.kind === "block") {
     return <div className={`${styles.cell} ${styles.block}`} />;

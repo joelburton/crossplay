@@ -17,8 +17,11 @@ type Props = {
 const VERTICAL_OVERHEAD_PX = 50;
 // Sanity cap so cells don't get absurd on very large monitors.
 const MAX_CELL_PX = 60;
-// Must match the breakpoint in PuzzleView.module.css that hides .clues.
-const NARROW_QUERY = "(max-width: 1023px)";
+// Re-export so PuzzleView and any future narrow-mode code use the same
+// query string. CSS modules can't read this directly — keep the
+// `@media (max-width: 1023px)` rules in App.module.css and
+// PuzzleView.module.css in sync (they're flagged with a comment).
+export const NARROW_QUERY = "(max-width: 1023px)";
 // In narrow mode the board fills the available width: viewport minus the
 // .main 0.5rem L/R padding (= 1rem total) minus the board's 2x2px border.
 const NARROW_HORIZ_RESERVE_CSS = "1rem + 4px";
@@ -42,6 +45,20 @@ function useNarrowViewport(): boolean {
   return narrow;
 }
 
+/**
+ * Renders the crossword grid. Sizes itself by computing a single cell
+ * dimension and applying it as inline `font-size`; every child uses `em`
+ * units so the whole grid scales uniformly under both Chrome page-zoom
+ * and Safari text-only-zoom (see CLAUDE.md "Cell sizing").
+ *
+ * In narrow viewports (max-width 1023px) the clue panels are hidden and
+ * the board fills the available width minus the .main padding. Wide
+ * viewports use a percentage of viewport width interpolated by puzzle
+ * size (see `targetWidthPercent`).
+ *
+ * Forwards a ref to the outer grid element so PuzzleView can observe the
+ * board's right edge for the chat indicator alignment.
+ */
 export const Board = forwardRef<HTMLDivElement, Props>(function Board(
   { cells, cursor, highlighted, recentFills, onCellClick },
   ref,

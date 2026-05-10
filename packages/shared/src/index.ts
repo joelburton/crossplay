@@ -1,3 +1,15 @@
+/**
+ * Single source of truth for the client/server wire protocol.
+ *
+ * The server validates inbound messages against `ClientMessage` shapes in
+ * `parseMessage` (see `packages/server/src/ws.ts`); the client constructs
+ * them by hand. Both sides import the same types, so any rename here is
+ * caught by `tsc` in both packages.
+ *
+ * Keep this file dependency‑free — no Node, no DOM, no framework imports —
+ * so it stays a pure type module that either side can pull in.
+ */
+
 export type Direction = "across" | "down";
 
 export type Cell =
@@ -48,6 +60,10 @@ export type ClientMessage =
       row: number;
       col: number;
       letter: string | null;
+      // Reserved for future last-writer-wins / race-to-cell logic.
+      // Currently sent by the client (snapshot.version at send time) and
+      // type-validated by the server, but never compared to the server's
+      // version. See code-review-1.md §1.5.
       clientVersion: number;
       senderColor?: string;
       pencil?: boolean;

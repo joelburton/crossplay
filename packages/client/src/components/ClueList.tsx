@@ -11,6 +11,18 @@ type Props = {
   onClueClick: (number: number, direction: Direction) => void;
 };
 
+/**
+ * Scrollable clue list — one per direction. Two highlight tiers:
+ *
+ *   - `activeNumber`: the clue whose word the cursor is currently
+ *     navigating. Rendered with the strong cursor color.
+ *   - `secondaryNumber`: the cross word's number — i.e. when the
+ *     cursor is on a cell going across, the down clue list shows the
+ *     down word that *passes through* the cell, and vice versa.
+ *     Rendered in a softer tint so the user always sees both.
+ *
+ * Both highlighted entries scroll into view when they change.
+ */
 export function ClueList({
   title,
   direction,

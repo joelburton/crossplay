@@ -1,3 +1,47 @@
+/* Shared design tokens. See code-review-1.md §4.2.
+   Per-component CSS modules consume these via var(--…). */
+:root {
+  /* Color palette */
+  --c-text: #111;
+  --c-text-mute: #555;
+  --c-text-fade: #999;
+  --c-link: #1a73e8;
+  --c-link-hover: #0b5cce;
+
+  /* Cursor / word highlight on the board and clue list. */
+  --c-cursor: #ffd24d;          /* the cell under the cursor */
+  --c-cursor-strong: #e6b833;   /* hover-on-active in clue list */
+  --c-cursor-soft: #fff2c2;     /* secondary (cross-direction) clue highlight */
+  --c-in-word: #cfe5ff;         /* other cells in the current word */
+
+  /* "Header bar" pattern: dark strip + light text. Used by App header
+     blocks, ClueList section titles, and the Menu brand bar. */
+  --c-header-bg: #444;
+  --c-header-fg: #eee;
+  --c-header-border: #2a2a2a;
+
+  /* Surfaces */
+  --c-card-bg: #fff;
+  --c-card-bg-soft: #fafafa;
+  --c-card-border: #ccc;
+  --c-card-border-soft: #e0e0e0;
+
+  /* Stacking order for floating UI. Higher = on top.
+     notes > chat indicator > chat preview > chat panel > menu. */
+  --z-menu: 100;
+  --z-chat-panel: 150;
+  --z-chat-preview: 155;
+  --z-chat-indicator: 160;
+  --z-note-dialog: 200;
+}
+
+/*
+ * Narrow-viewport breakpoint: any `@media (max-width: 1023px)` rule in
+ * this codebase (App.module.css, PuzzleView.module.css) MUST stay in
+ * sync with `NARROW_QUERY` in components/Board.tsx. CSS custom
+ * properties don't work inside @media queries, so we can't tokenize it.
+ */
+
 html, body {
   margin: 0;
   padding: 0;

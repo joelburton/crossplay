@@ -6,6 +6,27 @@ type ParseResult = {
   solution: (string | null)[][];
 };
 
+/**
+ * Parse a `.puz` file buffer into the shape we serve to clients.
+ *
+ * Returns two pieces:
+ *   - `state`: meta + an empty grid snapshot. This is what we send to
+ *     clients; it never contains the solution letters.
+ *   - `solution`: a parallel grid of correct letters (or `null` for
+ *     blocks). Stays server‑side and is consulted by `applyReveal` /
+ *     `applyCheck`.
+ *
+ * Cell numbering is computed here, not read from puzjs. The library
+ * exposes clue **text** keyed by number but does not tell us which cells
+ * start a word — so we walk the grid in reading order and assign numbers
+ * the standard way (a cell starts a word if its left/up neighbour is a
+ * block or edge and its right/down neighbour is open).
+ *
+ * @param id  The puzzle id used in `meta.id` (slug for library puzzles,
+ *            UUID for uploads).
+ * @param buffer  Raw `.puz` bytes. Latin‑1 encoded — see CLAUDE.md
+ *            ".puz format gotchas" before patching strings.
+ */
 export function parsePuzBuffer(id: string, buffer: Buffer): ParseResult {
   const decoded = Puz.decode(new Uint8Array(buffer));
   const rawGrid = decoded.grid;

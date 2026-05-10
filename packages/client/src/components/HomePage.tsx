@@ -8,6 +8,16 @@ type Props = {
   onUploaded: (puzzleId: string) => void;
 };
 
+/**
+ * Landing page when no puzzle is loaded. Two columns:
+ *   - Left: scrollable list of pre-loaded library puzzles fetched from
+ *     `/api/games`. Click an entry to navigate to `/p/:id`.
+ *   - Right: a `.puz` file upload form.
+ *
+ * The library section hides itself when the fetch returns an empty
+ * list (or fails — we fall through to `[]` rather than show an error,
+ * since the upload form is still useful).
+ */
 export function HomePage({ onUploaded }: Props) {
   const [games, setGames] = useState<GameSummary[] | null>(null);
 
