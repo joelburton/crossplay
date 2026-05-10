@@ -339,6 +339,37 @@ describe("PuzzleView happy path", () => {
     expect(screen.getByText("BLOCK")).toBeTruthy();
   });
 
+  it("Backspace on a multi-char fill sends letter:null (clears the whole rebus)", () => {
+    const puzzle = makePuzzle();
+    puzzle.snapshot.cells[0]![0] = { kind: "cell", number: 1, fill: "BLOCK" };
+    render(
+      <PuzzleView
+        puzzle={puzzle}
+        mode="pen"
+        onToggleMode={() => {}}
+        collapseRebus={false}
+        onToggleCollapseRebus={() => {}}
+      />,
+    );
+    const ws = FakeWebSocket.instances[0]!;
+    act(() => ws.emitOpen());
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace" }));
+    });
+
+    const fills = ws.sent.filter(
+      (m): m is { type: "fill"; row: number; col: number; letter: string | null } =>
+        (m as { type: string }).type === "fill",
+    );
+    expect(fills).toHaveLength(1);
+    // The wire shape is `letter: null` — not `""` — so the server's
+    // applyFill treats it as a clear, not a malformed empty string.
+    expect(fills[0]!.letter).toBeNull();
+    expect(fills[0]!.row).toBe(0);
+    expect(fills[0]!.col).toBe(0);
+  });
+
   it("ignores letter keys when an input/textarea has focus", () => {
     render(
       <PuzzleView
