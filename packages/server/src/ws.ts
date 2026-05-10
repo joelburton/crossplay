@@ -25,6 +25,7 @@ import type {
   Scope,
   ServerMessage,
 } from "@crossplay/shared";
+import { MAX_REBUS_LEN } from "./ipuz.js";
 import { flushAndEvict, getOrLoadBoard, markDirty, type StoredBoard } from "./store.js";
 
 /** Send a message on a single socket if it's still OPEN; no‑op otherwise. */
@@ -167,6 +168,11 @@ export function sanitizeName(name: string): string {
 
 type CellChange = { row: number; col: number; cell: Cell; senderColor?: string };
 
+// Accepted fill: 1–MAX_REBUS_LEN uppercase letters. Rebus answers
+// flow through the same `fill` message as single letters (`letter`
+// just gets longer), so this regex gates both paths.
+const FILL_RE = new RegExp(`^[A-Z]{1,${MAX_REBUS_LEN}}$`);
+
 /** True iff `(r, c)` is inside the grid and is a fillable (non‑block) cell. */
 function isOpen(entry: StoredBoard, r: number, c: number): boolean {
   const { meta, snapshot } = entry.state;
@@ -238,9 +244,8 @@ export function applyFill(
   if (msg.col < 0 || msg.col >= meta.width) return null;
   const cell = snapshot.cells[msg.row]![msg.col]!;
   if (cell.kind !== "cell") return null;
-  if (msg.letter !== null && msg.letter.length !== 1) return null;
   const letter = msg.letter == null ? null : msg.letter.toUpperCase();
-  if (letter !== null && !/^[A-Z]$/.test(letter)) return null;
+  if (letter !== null && !FILL_RE.test(letter)) return null;
   cell.fill = letter;
   delete cell.wrong;
   if (letter === null || !msg.pencil) {
@@ -291,7 +296,7 @@ function checkAt(entry: StoredBoard, row: number, col: number): CellChange | nul
   if (cell.pencil) return null; // skip pencil cells
   const sol = entry.solution[row]?.[col];
   const wasWrong = cell.wrong === true;
-  if (cell.fill !== sol) {
+  if (!fillMatchesSolution(cell.fill, sol)) {
     if (wasWrong) return null; // already marked, no change
     cell.wrong = true;
     return { row, col, cell };
@@ -301,6 +306,19 @@ function checkAt(entry: StoredBoard, row: number, col: number): CellChange | nul
     return { row, col, cell };
   }
   return null;
+}
+
+/** True if `fill` is an acceptable answer for `sol`. Single-letter
+ *  solutions require an exact match. For rebus solutions (length > 1)
+ *  we also accept the first letter alone — it's a long-standing NYT
+ *  convention and saves players from having to type out the full
+ *  rebus on small screens. The fill stays whatever the player typed;
+ *  only the check decision is affected. */
+function fillMatchesSolution(fill: string, sol: string | null | undefined): boolean {
+  if (sol == null) return false;
+  if (fill === sol) return true;
+  if (sol.length > 1 && fill === sol[0]) return true;
+  return false;
 }
 
 /** Resolve the set of cells a reveal/check message applies to:

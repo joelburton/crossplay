@@ -36,6 +36,27 @@ export function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeClue, setActiveClue] = useState<ActiveClue | null>(null);
   const [mode, setMode] = useState<Mode>("pen");
+  // Persisted across sessions: collapse-rebuses preference. Display
+  // only — server-side fills stay full. localStorage read is wrapped
+  // because SSR / privacy modes can throw on access.
+  const [collapseRebus, setCollapseRebus] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem("collapseRebus") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleCollapseRebus = useCallback(() => {
+    setCollapseRebus((v) => {
+      const next = !v;
+      try {
+        window.localStorage.setItem("collapseRebus", next ? "1" : "0");
+      } catch {
+        // ignore: read-only storage just means we don't persist
+      }
+      return next;
+    });
+  }, []);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onActiveClueChange = useCallback((c: ActiveClue | null) => setActiveClue(c), []);
@@ -178,6 +199,8 @@ export function App() {
             puzzle={load.puzzle}
             mode={mode}
             onToggleMode={onToggleMode}
+            collapseRebus={collapseRebus}
+            onToggleCollapseRebus={toggleCollapseRebus}
             actionsRef={actionsRef}
             onActiveClueChange={onActiveClueChange}
             onFeedback={showFeedback}

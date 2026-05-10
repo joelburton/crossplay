@@ -147,8 +147,15 @@ describe("applyFill", () => {
   it("rejects block cells", () => {
     expect(applyFill(entry(), fill(0, 2, "A"))).toBeNull();
   });
-  it("rejects multi-character letters", () => {
-    expect(applyFill(entry(), fill(0, 0, "AB"))).toBeNull();
+  it("accepts multi-character (rebus) letters up to the cap", () => {
+    const e = entry();
+    const change = applyFill(e, fill(0, 0, "BLOCK"));
+    expect(change).not.toBeNull();
+    const cell = e.state.snapshot.cells[0]![0] as Cell & { kind: "cell" };
+    expect(cell.fill).toBe("BLOCK");
+  });
+  it("rejects rebus letters over the cap", () => {
+    expect(applyFill(entry(), fill(0, 0, "ABCDEFGHI"))).toBeNull();
   });
 });
 
@@ -591,7 +598,7 @@ describe("applyFill non-A-Z input", () => {
     ["space", " "],
     ["punctuation", "!"],
     ["multi-code-unit emoji", "😀"],
-    ["multi-char string", "AB"],
+    ["over-cap rebus", "ABCDEFGHI"],
   ];
   for (const [label, letter] of cases) {
     it(`rejects ${label} (${JSON.stringify(letter)})`, () => {

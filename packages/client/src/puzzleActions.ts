@@ -15,7 +15,9 @@ import type { PuzzleMeta } from "@crossplay/shared";
 export type PuzzleActions = {
   meta: PuzzleMeta;
   mode: "pen" | "pencil";
+  collapseRebus: boolean;
   togglePencil: () => void;
+  toggleCollapseRebus: () => void;
   clearBoard: () => void;
   revealLetter: () => void;
   revealWord: () => void;

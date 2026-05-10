@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import type { Cell, ClientMessage, GridSnapshot, PuzzleState } from "@crossplay/shared";
-import type { Direction } from "@crossplay/shared";
+import { MAX_REBUS_LEN, type Direction } from "@crossplay/shared";
 import {
   type ArrowKey,
   type Cursor,
@@ -38,6 +38,8 @@ type Props = {
   puzzle: PuzzleState;
   mode: Mode;
   onToggleMode: () => void;
+  collapseRebus: boolean;
+  onToggleCollapseRebus: () => void;
   actionsRef?: MutableRefObject<PuzzleActions | null>;
   onActiveClueChange?: (clue: ActiveClue | null) => void;
   onFeedback?: (f: Feedback) => void;
@@ -116,6 +118,8 @@ export function PuzzleView({
   puzzle,
   mode,
   onToggleMode,
+  collapseRebus,
+  onToggleCollapseRebus,
   actionsRef,
   onActiveClueChange,
   onFeedback,
@@ -140,6 +144,12 @@ export function PuzzleView({
   const [unreadColor, setUnreadColor] = useState<string | null>(null);
   const [previewLine, setPreviewLine] = useState<ChatLine | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [rebusOpen, setRebusOpen] = useState(false);
+  // SPACE on a multi-char fill shows a read-only zoom-peek of the
+  // full string (useful when collapse-rebuses is on, or when the
+  // shrunk rebus is hard to read at small cell sizes). Any other
+  // handled keystroke dismisses it before acting.
+  const [zoomPeek, setZoomPeek] = useState(false);
   const [recentFills, setRecentFills] = useState<Map<string, string>>(new Map());
   const recentTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const chatOpenRef = useRef(chatOpen);
@@ -294,6 +304,7 @@ export function PuzzleView({
   const onCellClick = useCallback(
     (row: number, col: number) => {
       onActivity?.();
+      setZoomPeek(false);
       setCursor((cur) => {
         if (cur.row === row && cur.col === col) {
           return { ...cur, dir: cur.dir === "across" ? "down" : "across" };
@@ -307,6 +318,7 @@ export function PuzzleView({
   const onClueClick = useCallback(
     (number: number, direction: Direction) => {
       onActivity?.();
+      setZoomPeek(false);
       const pos = findCellByNumber(cells, number);
       if (!pos) return;
       setCursor({ row: pos.row, col: pos.col, dir: direction });
@@ -335,7 +347,9 @@ export function PuzzleView({
     actionsRef.current = {
       meta,
       mode,
+      collapseRebus,
       togglePencil: onToggleMode,
+      toggleCollapseRebus: onToggleCollapseRebus,
       clearBoard: () => sendMsg({ type: "clear" }),
       revealLetter: () =>
         sendMsg({
@@ -390,9 +404,11 @@ export function PuzzleView({
     cursor.col,
     cursor.dir,
     mode,
+    collapseRebus,
     meta,
     identity.color,
     onToggleMode,
+    onToggleCollapseRebus,
     triggerShowNotes,
   ]);
 
@@ -477,6 +493,35 @@ export function PuzzleView({
         }
       }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // Spacebar: peek at a multi-char rebus fill in the same overlay
+      // box used for editing, but read-only. Does NOT take focus, so
+      // any subsequent navigation key still flows through this handler
+      // — and we dismiss the peek at the top of every other branch.
+      if (e.key === " ") {
+        e.preventDefault();
+        const { row, col } = cursor;
+        const cell = cells[row]?.[col];
+        if (cell?.kind === "cell" && cell.fill && cell.fill.length > 1) {
+          setZoomPeek(true);
+        }
+        return;
+      }
+      // For every other handled key, drop the peek so it doesn't
+      // linger over the new cursor position.
+      setZoomPeek(false);
+      // Enter opens the rebus overlay over the focused cell. The overlay
+      // takes focus immediately, so subsequent keystrokes hit it instead
+      // of this handler (the INPUT bail above).
+      if (e.key === "Enter") {
+        const { row, col } = cursor;
+        const cell = cells[row]?.[col];
+        if (cell?.kind === "cell") {
+          e.preventDefault();
+          onActivity?.();
+          setRebusOpen(true);
+        }
+        return;
+      }
       if (ARROWS.has(e.key)) {
         e.preventDefault();
         onActivity?.();
@@ -595,6 +640,53 @@ export function PuzzleView({
       ? ({ ["--chat-right" as never]: `${chatRightPx}px` } as React.CSSProperties)
       : undefined;
 
+  const onRebusCommit = useCallback(
+    (raw: string) => {
+      const value = raw.toUpperCase().replace(/[^A-Z]/g, "").slice(0, MAX_REBUS_LEN);
+      const { row, col } = cursor;
+      const cell = cells[row]?.[col];
+      setRebusOpen(false);
+      if (!cell || cell.kind !== "cell") return;
+      const isPencil = mode === "pencil";
+      // Empty commit clears the cell — same wire shape as a Backspace.
+      const letter = value.length === 0 ? null : value;
+      setSnapshot((prev) => ({
+        version: prev.version,
+        cells: setCellFill(prev.cells, row, col, letter, isPencil),
+      }));
+      send({
+        type: "fill",
+        row,
+        col,
+        letter,
+        clientVersion: snapshot.version,
+        senderColor: identity.color,
+        ...(isPencil && letter ? { pencil: true } : {}),
+      });
+      setCursor((cur) => advanceAfterFill(cells, cur));
+    },
+    [cells, cursor, mode, send, snapshot.version, identity.color],
+  );
+
+  const onRebusCancel = useCallback(() => {
+    setRebusOpen(false);
+  }, []);
+
+  const rebusInitial = (() => {
+    if (!rebusOpen) return "";
+    const c = cells[cursor.row]?.[cursor.col];
+    return c?.kind === "cell" && c.fill ? c.fill : "";
+  })();
+
+  // The peek string follows the cursor cell's fill; if the player
+  // moves while the peek is open we'd just dismiss it, so reading
+  // straight from the current cursor is fine.
+  const zoomPeekValue = (() => {
+    if (!zoomPeek) return null;
+    const c = cells[cursor.row]?.[cursor.col];
+    return c?.kind === "cell" && c.fill && c.fill.length > 1 ? c.fill : null;
+  })();
+
   return (
     <div className={styles.wrap} style={wrapStyle}>
       {connState !== "open" && (
@@ -609,7 +701,19 @@ export function PuzzleView({
           cursor={cursor}
           highlighted={highlighted}
           recentFills={recentFills}
+          collapseRebus={collapseRebus}
           onCellClick={onCellClick}
+          rebus={
+            rebusOpen
+              ? {
+                  initial: rebusInitial,
+                  maxLength: MAX_REBUS_LEN,
+                  onCommit: onRebusCommit,
+                  onCancel: onRebusCancel,
+                }
+              : null
+          }
+          zoom={zoomPeek ? zoomPeekValue : null}
         />
         <div className={styles.clues}>
           <ClueList

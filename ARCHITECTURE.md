@@ -89,4 +89,5 @@ Source: [`docs/components.dot`](docs/components.dot) (regenerate with `dot -Tpng
 
 - Authentication or accounts. The trust model is "share the URL with a friend you trust." Boards are global, not per-user (yet).
 - Mobile/touch input. Targets laptops only.
-- Rebus support and a solve timer — both flagged for future work but require their own design conversations. Rebus puzzles uploaded today are rejected at upload time with a clear message rather than partially loaded; the same policy applies to other `.ipuz` features outside the standard-crossword subset (circles, shading, bars, irregular grids).
+- A solve timer — flagged for future work and needs its own design conversation.
+- Other `.ipuz` features outside the standard-crossword subset (circles, shading, bars, irregular grids) are rejected at upload time with a clear message rather than partially loaded. Basic rebus *is* now supported (cells with 1–8 uppercase letters); see CLAUDE.md "Basic rebus" for the wire + UX details.

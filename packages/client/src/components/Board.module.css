@@ -5,10 +5,53 @@
  */
 
 .board {
+  position: relative;
   display: grid;
   gap: 0;
   background: #000;
   border: 2px solid #000;
   width: max-content;
   align-self: start;
+}
+
+/*
+ * Rebus entry overlay. The wrapper is absolute-positioned in board
+ * em-units (so the overlay tracks the cursor cell exactly under any
+ * page zoom). The input inside fills the wrapper with its own
+ * smaller font-size — keeping the position math on the wrapper means
+ * the input's font-size doesn't scale top/left.
+ */
+.rebusWrap {
+  position: absolute;
+  z-index: 2;
+}
+
+.rebus {
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0 0.1em;
+  border: 2px solid var(--c-cursor, #ffd54f);
+  outline: none;
+  background: #fff;
+  text-align: center;
+  font: inherit;
+  font-size: 0.5em;
+  font-weight: 600;
+  color: #111;
+  text-transform: uppercase;
+  box-sizing: border-box;
+}
+
+/* Read-only peek (spacebar zoom): same box as the rebus input, but
+ * a div so arrows/tab/letter keys still hit PuzzleView's window
+ * handler. pointer-events:none so the box doesn't swallow clicks
+ * meant for the underlying cell. */
+.rebusReadonly {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  user-select: none;
 }

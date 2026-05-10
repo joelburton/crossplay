@@ -10,6 +10,12 @@
  * so it stays a pure type module that either side can pull in.
  */
 
+/** Cap on a single cell's fill / solution length, in characters.
+ *  Single letters are 1; rebus answers up to MAX_REBUS_LEN. Both
+ *  parsers and the server's `applyFill` enforce this; clients use it
+ *  to size the rebus input. */
+export const MAX_REBUS_LEN = 8;
+
 export type Direction = "across" | "down";
 
 export type Cell =

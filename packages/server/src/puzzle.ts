@@ -1,6 +1,6 @@
 import Puz from "puzjs";
 import type { Cell, Clue, GridSnapshot, PuzzleMeta, PuzzleState } from "@crossplay/shared";
-import { IpuzUnsupportedError } from "./ipuz.js";
+import { IpuzUnsupportedError, MAX_REBUS_LEN } from "./ipuz.js";
 
 type ParseResult = {
   state: PuzzleState;
@@ -34,14 +34,13 @@ export function parsePuzBuffer(id: string, buffer: Buffer): ParseResult {
   const height = rawGrid.length;
   const width = rawGrid[0]?.length ?? 0;
 
-  // Detect rebus: puzjs returns object cells `{0:"B", solution:"BLOCK"}`
-  // for rebus answers, with a multi-character `solution`. Without this
-  // check, the multi-char letter silently flows through writeIpuz and
-  // then fails when getBoardState re-parses the stored ipuz — surfacing
-  // as a 500 long after upload. Match parseIpuzBuffer's rejection so the
-  // upload route returns 400 with a clear message. Circles/shades from
-  // puzjs are ignored at this layer (they don't break the round-trip —
-  // writeIpuz never emits them — so silent drop matches today's UI).
+  // puzjs returns object cells `{0:"B", solution:"BLOCK"}` for rebus
+  // answers, with the full multi-character `solution`. We accept those
+  // up to MAX_REBUS_LEN; longer ones get rejected so the upload route
+  // can surface a clear 400 instead of failing later when getBoardState
+  // re-parses the stored ipuz. Circles/shades from puzjs are ignored at
+  // this layer (they don't break the round-trip — writeIpuz never emits
+  // them — so silent drop matches today's UI).
   const solution: (string | null)[][] = rawGrid.map((row, r) =>
     row.map((cell, c) => {
       if (cell === ".") return null;
@@ -51,8 +50,10 @@ export function parsePuzBuffer(id: string, buffer: Buffer): ParseResult {
           `solution[${r}][${c}]: empty or invalid solution letter`,
         );
       }
-      if (letter.length > 1) {
-        throw new IpuzUnsupportedError("rebus solutions are not supported");
+      if (letter.length > MAX_REBUS_LEN) {
+        throw new IpuzUnsupportedError(
+          `rebus solutions over ${MAX_REBUS_LEN} characters are not supported`,
+        );
       }
       return letter.toUpperCase();
     }),

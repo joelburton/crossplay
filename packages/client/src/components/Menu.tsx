@@ -82,6 +82,15 @@ export function Menu({ actions, triggerRef, onNewGame, onClose }: Props) {
         <button
           type="button"
           className={styles.item}
+          onClick={run(actions.toggleCollapseRebus)}
+        >
+          <span>{actions.collapseRebus ? "Show full rebuses" : "Collapse rebuses"}</span>
+        </button>
+      )}
+      {actions && (
+        <button
+          type="button"
+          className={styles.item}
           onClick={run(actions.showNotes)}
           disabled={!actions.meta.note}
         >

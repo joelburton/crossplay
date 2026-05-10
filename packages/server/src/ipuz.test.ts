@@ -189,10 +189,17 @@ describe("parseIpuzBuffer (rejections)", () => {
     expectReject(rest, /missing `dimensions`/);
   });
 
-  it("rejects rebus solutions", () => {
+  it("accepts rebus solutions up to the cap", () => {
     const obj = structuredClone(MINIMAL_IPUZ);
-    obj.solution[0]![0] = "AB";
-    expectReject(obj, /rebus solutions are not supported/);
+    obj.solution[0]![0] = "block";
+    const { solution } = parseIpuzBuffer("x", ipuzOf(obj));
+    expect(solution[0]![0]).toBe("BLOCK");
+  });
+
+  it("rejects rebus solutions over the cap", () => {
+    const obj = structuredClone(MINIMAL_IPUZ);
+    obj.solution[0]![0] = "ABCDEFGHI"; // 9 > 8
+    expectReject(obj, /rebus solutions over 8 characters/);
   });
 
   it("rejects circled cells (style.shapebg)", () => {
@@ -231,14 +238,27 @@ describe("parseIpuzBuffer (rejections)", () => {
     expectReject(obj, /pre-filled cell values/);
   });
 
-  it("rejects rebus saved values", () => {
+  it("accepts rebus saved values up to the cap", () => {
     const obj = structuredClone(MINIMAL_IPUZ) as unknown as Record<string, unknown>;
     obj.saved = [
-      ["AB", 0, 0],
+      ["heart", 0, 0],
       [0, 0, 0],
       [0, 0, 0],
     ];
-    expectReject(obj, /rebus saved values/);
+    const { state } = parseIpuzBuffer("x", ipuzOf(obj));
+    const cell = state.snapshot.cells[0]![0]!;
+    expect(cell.kind).toBe("cell");
+    if (cell.kind === "cell") expect(cell.fill).toBe("HEART");
+  });
+
+  it("rejects saved values over the cap", () => {
+    const obj = structuredClone(MINIMAL_IPUZ) as unknown as Record<string, unknown>;
+    obj.saved = [
+      ["ABCDEFGHI", 0, 0],
+      [0, 0, 0],
+      [0, 0, 0],
+    ];
+    expectReject(obj, /saved values over 8 characters/);
   });
 
   it("rejects mismatched saved-grid shape", () => {

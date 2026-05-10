@@ -98,10 +98,25 @@ describe("parsePuzBuffer — unsupported features", () => {
     vi.spyOn(Puz, "decode").mockReturnValue(decoded as ReturnType<typeof Puz.decode>);
   }
 
-  it("rejects rebus solutions (puzjs returns object cells with multi-char `solution`)", () => {
+  it("accepts rebus solutions up to the cap (puzjs returns object cells with multi-char `solution`)", () => {
     stubDecode({
       grid: [
         ["A", { 0: "B", solution: "BLOCK" }],
+        ["C", "D"],
+      ],
+      meta: { title: "", author: "", copyright: "", description: "" },
+      circles: [],
+      shades: [],
+      clues: { across: {}, down: {} },
+    });
+    const { solution } = parsePuzBuffer("x", Buffer.alloc(0));
+    expect(solution[0]![1]).toBe("BLOCK");
+  });
+
+  it("rejects rebus solutions over the cap", () => {
+    stubDecode({
+      grid: [
+        ["A", { 0: "B", solution: "ABCDEFGHI" }],
         ["C", "D"],
       ],
       meta: { title: "", author: "", copyright: "", description: "" },

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Cell, PuzzleState } from "@crossplay/shared";
 import { PuzzleView } from "./PuzzleView";
@@ -132,6 +132,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Without this, RTL leaves each render's container attached to
+  // document.body, so later screen.getByText queries match the prior
+  // test's DOM as well as the current one.
+  cleanup();
   vi.unstubAllGlobals();
 });
 
@@ -142,6 +146,8 @@ describe("PuzzleView happy path", () => {
         puzzle={makePuzzle()}
         mode="pen"
         onToggleMode={() => {}}
+        collapseRebus={false}
+        onToggleCollapseRebus={() => {}}
       />,
     );
 
@@ -180,6 +186,8 @@ describe("PuzzleView happy path", () => {
         puzzle={makePuzzle()}
         mode="pencil"
         onToggleMode={() => {}}
+        collapseRebus={false}
+        onToggleCollapseRebus={() => {}}
       />,
     );
     const ws = FakeWebSocket.instances[0]!;
@@ -196,12 +204,149 @@ describe("PuzzleView happy path", () => {
     expect(fills[0]!.pencil).toBe(true);
   });
 
+  it("Enter opens the rebus overlay; typing + Enter commits a multi-char fill", () => {
+    render(
+      <PuzzleView
+        puzzle={makePuzzle()}
+        mode="pen"
+        onToggleMode={() => {}}
+        collapseRebus={false}
+        onToggleCollapseRebus={() => {}}
+      />,
+    );
+    const ws = FakeWebSocket.instances[0]!;
+    act(() => ws.emitOpen());
+
+    // Open the overlay.
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    });
+    const input = screen.getByLabelText("Rebus entry") as HTMLInputElement;
+    expect(input).toBeTruthy();
+
+    // Type "BLOCK" into the overlay.
+    act(() => {
+      fireEvent.change(input, { target: { value: "BLOCK" } });
+    });
+    expect(input.value).toBe("BLOCK");
+
+    // Commit on Enter.
+    act(() => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+
+    // Overlay closed.
+    expect(screen.queryByLabelText("Rebus entry")).toBeNull();
+
+    // Multi-char fill went on the wire.
+    const fills = ws.sent.filter(
+      (m): m is { type: "fill"; row: number; col: number; letter: string } =>
+        (m as { type: string }).type === "fill",
+    );
+    expect(fills).toHaveLength(1);
+    expect(fills[0]).toMatchObject({ type: "fill", row: 0, col: 0, letter: "BLOCK" });
+
+    // And the cell renders the new fill.
+    expect(screen.getByText("BLOCK")).toBeTruthy();
+  });
+
+  it("Escape in the rebus overlay cancels without sending", () => {
+    render(
+      <PuzzleView
+        puzzle={makePuzzle()}
+        mode="pen"
+        onToggleMode={() => {}}
+        collapseRebus={false}
+        onToggleCollapseRebus={() => {}}
+      />,
+    );
+    const ws = FakeWebSocket.instances[0]!;
+    act(() => ws.emitOpen());
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    });
+    const input = screen.getByLabelText("Rebus entry") as HTMLInputElement;
+    act(() => {
+      fireEvent.change(input, { target: { value: "BLOCK" } });
+      fireEvent.keyDown(input, { key: "Escape" });
+    });
+
+    expect(screen.queryByLabelText("Rebus entry")).toBeNull();
+    const fills = ws.sent.filter((m) => (m as { type: string }).type === "fill");
+    expect(fills).toEqual([]);
+  });
+
+  it("SPACE on a multi-char cell opens a read-only zoom-peek; arrow dismisses it", () => {
+    const puzzle = makePuzzle();
+    // Pre-fill cell (0,0) with a rebus value so the peek has something
+    // to show.
+    puzzle.snapshot.cells[0]![0] = { kind: "cell", number: 1, fill: "BLOCK" };
+    render(
+      <PuzzleView
+        puzzle={puzzle}
+        mode="pen"
+        onToggleMode={() => {}}
+        collapseRebus={false}
+        onToggleCollapseRebus={() => {}}
+      />,
+    );
+    const ws = FakeWebSocket.instances[0]!;
+    act(() => ws.emitOpen());
+
+    // Press space; the peek box renders with the full fill.
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: " " }));
+    });
+    // Two nodes will read "BLOCK": the underlying cell + the peek
+    // overlay. We only care that at least one peek-style node exists.
+    const matches = screen.getAllByText("BLOCK");
+    expect(matches.length).toBeGreaterThanOrEqual(2);
+
+    // SPACE should not have sent a fill.
+    expect(ws.sent.filter((m) => (m as { type: string }).type === "fill")).toEqual([]);
+
+    // Arrow dismisses the peek (and moves the cursor).
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+    });
+    expect(screen.getAllByText("BLOCK")).toHaveLength(1);
+  });
+
+  it("collapseRebus renders only the first letter of multi-char fills", () => {
+    const puzzle = makePuzzle();
+    puzzle.snapshot.cells[0]![0] = { kind: "cell", number: 1, fill: "BLOCK" };
+    render(
+      <PuzzleView
+        puzzle={puzzle}
+        mode="pen"
+        onToggleMode={() => {}}
+        collapseRebus={true}
+        onToggleCollapseRebus={() => {}}
+      />,
+    );
+    const ws = FakeWebSocket.instances[0]!;
+    act(() => ws.emitOpen());
+
+    // The cell should display "B", not "BLOCK".
+    expect(screen.queryByText("BLOCK")).toBeNull();
+    expect(screen.getByText("B")).toBeTruthy();
+
+    // SPACE peek still shows the full string (collapse is display-only).
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: " " }));
+    });
+    expect(screen.getByText("BLOCK")).toBeTruthy();
+  });
+
   it("ignores letter keys when an input/textarea has focus", () => {
     render(
       <PuzzleView
         puzzle={makePuzzle()}
         mode="pen"
         onToggleMode={() => {}}
+        collapseRebus={false}
+        onToggleCollapseRebus={() => {}}
       />,
     );
     const ws = FakeWebSocket.instances[0]!;

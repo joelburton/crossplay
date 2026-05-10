@@ -6,10 +6,11 @@
  * (alongside .puz) and emit it for the future "download puzzle"
  * button.
  *
- * Scope today is the standard-crossword subset: square grid, integer
- * cell numbers, single-letter solutions, plain text clues. Any ipuz
- * feature outside that subset (rebus, circled or shaded cells, barred
- * grids, irregular/null cells, non-crossword `kind`) causes
+ * Scope today is the standard-crossword subset plus basic rebus:
+ * square grid, integer cell numbers, plain text clues, and
+ * solutions/saved values that are 1–MAX_REBUS_LEN uppercase letters.
+ * Any ipuz feature outside that subset (circled or shaded cells,
+ * barred grids, irregular/null cells, non-crossword `kind`) causes
  * `parseIpuzBuffer` to throw `IpuzUnsupportedError` so we can see what
  * real puzzles in the wild are using before deciding which to
  * support. Silent degradation would hide that signal.
@@ -20,7 +21,9 @@
  * source format.
  */
 
-import type { Cell, Clue, GridSnapshot, PuzzleMeta, PuzzleState } from "@crossplay/shared";
+import { MAX_REBUS_LEN, type Cell, type Clue, type GridSnapshot, type PuzzleMeta, type PuzzleState } from "@crossplay/shared";
+
+export { MAX_REBUS_LEN };
 
 type ParseResult = {
   state: PuzzleState;
@@ -107,9 +110,10 @@ function pickClues(clues: Record<string, unknown>, key: string): unknown {
   return clues[key] ?? clues[key.toLowerCase()];
 }
 
-/** Normalize one solution-grid cell to an uppercase letter or null
- *  (block). Rejects rebus (multi-character), object form with `value`
- *  longer than one char, and any cell shape we don't recognize. */
+/** Normalize one solution-grid cell to an uppercase letter (or short
+ *  rebus string) or null (block). Caps multi-char solutions at
+ *  MAX_REBUS_LEN; rejects object form with `value` over the cap and
+ *  any cell shape we don't recognize. */
 function parseSolutionCell(
   raw: unknown,
   blockChar: string,
@@ -131,8 +135,8 @@ function parseSolutionCell(
   if (value.length === 0) {
     fail(`${where}: solution cell is empty`);
   }
-  if (value.length > 1) {
-    fail(`${where}: rebus solutions are not supported`);
+  if (value.length > MAX_REBUS_LEN) {
+    fail(`${where}: rebus solutions over ${MAX_REBUS_LEN} characters are not supported`);
   }
   return value.toUpperCase();
 }
@@ -261,7 +265,9 @@ export function parseIpuzBuffer(id: string, buffer: Buffer): ParseResult {
         if (typeof value !== "string") {
           fail(`saved[${r}][${c}]: expected a letter (got ${JSON.stringify(value)})`);
         }
-        if (value.length > 1) fail(`saved[${r}][${c}]: rebus saved values are not supported`);
+        if (value.length > MAX_REBUS_LEN) {
+          fail(`saved[${r}][${c}]: saved values over ${MAX_REBUS_LEN} characters are not supported`);
+        }
         cells[r]![c] = { ...cell, fill: value.toUpperCase() };
       }
     }
