@@ -3,6 +3,7 @@ import { openDb } from "./db.js";
 import { importPuzzle } from "./importer.js";
 import {
   PuzzleNotFoundError,
+  deleteBoard,
   findOrCreateBoard,
   getBoardState,
   listBoards,
@@ -136,6 +137,47 @@ describe("listBoards", () => {
     expect(list.length).toBe(1);
     expect(list[0]!.id).toBe("adhoc-1");
     expect(list[0]!.puzzleId).toBeNull();
+    db.close();
+  });
+});
+
+describe("deleteBoard", () => {
+  it("removes the row and reports existed=true", () => {
+    const db = freshDb();
+    importPuzzle({ db, path: SUNDAY_PUZ, force: false });
+    const { boardId } = findOrCreateBoard(db, "sunday-sample");
+
+    const result = deleteBoard(db, boardId);
+    expect(result.existed).toBe(true);
+
+    const row = db.prepare("SELECT id FROM boards WHERE id = ?").get(boardId);
+    expect(row).toBeUndefined();
+
+    // Puzzle row is untouched — deleting a board doesn't touch its source.
+    const puzzle = db.prepare("SELECT id FROM puzzles WHERE id = ?").get("sunday-sample");
+    expect(puzzle).toBeDefined();
+
+    db.close();
+  });
+
+  it("returns existed=false for an unknown id (no throw)", () => {
+    const db = freshDb();
+    const result = deleteBoard(db, "no-such-board");
+    expect(result.existed).toBe(false);
+    db.close();
+  });
+
+  it("removes only the targeted row", () => {
+    const db = freshDb();
+    importPuzzle({ db, path: SUNDAY_PUZ, force: false });
+    importPuzzle({ db, path: MOTH_PUZ, force: false });
+    const a = findOrCreateBoard(db, "sunday-sample").boardId;
+    const b = findOrCreateBoard(db, "a-very-moth-puzzle").boardId;
+
+    deleteBoard(db, a);
+
+    expect(db.prepare("SELECT id FROM boards WHERE id = ?").get(a)).toBeUndefined();
+    expect(db.prepare("SELECT id FROM boards WHERE id = ?").get(b)).toBeDefined();
     db.close();
   });
 });

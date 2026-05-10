@@ -89,5 +89,4 @@ Source: [`docs/components.dot`](docs/components.dot) (regenerate with `dot -Tpng
 
 - Authentication or accounts. The trust model is "share the URL with a friend you trust." Boards are global, not per-user (yet).
 - Mobile/touch input. Targets laptops only.
-- Delete-a-board UI. Boards accumulate; cleanup affordance is a deferred feature.
 - Rebus support and a solve timer — both flagged for future work but require their own design conversations. Rebus puzzles uploaded today are rejected at upload time with a clear message rather than partially loaded; the same policy applies to other `.ipuz` features outside the standard-crossword subset (circles, shading, bars, irregular grids).

@@ -15,6 +15,7 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseIpuzBuffer } from "./ipuz.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_DB_PATH = resolve(here, "..", "data", "crossplay.db");
@@ -64,6 +65,37 @@ export const migrations: Migration[] = [
         CREATE INDEX boards_puzzle_id  ON boards (puzzle_id);
         CREATE INDEX boards_updated_at ON boards (updated_at DESC);
       `);
+    },
+  },
+  {
+    // Denormalize `copyright` onto both tables so the home page list
+    // queries can show it without parsing each ipuz blob. New rows
+    // populate it from meta.copyright at write time; this migration
+    // backfills existing rows best-effort. Rows whose stored ipuz
+    // can't be parsed (e.g. legacy boards stamped from a rebus puzzle
+    // before the upload-time rejection landed) are skipped — their
+    // copyright stays the column default ''.
+    version: 2,
+    up: (db) => {
+      db.exec(`
+        ALTER TABLE puzzles ADD COLUMN copyright TEXT NOT NULL DEFAULT '';
+        ALTER TABLE boards  ADD COLUMN copyright TEXT NOT NULL DEFAULT '';
+      `);
+      for (const table of ["puzzles", "boards"] as const) {
+        const rows = db
+          .prepare(`SELECT id, ipuz FROM ${table}`)
+          .all() as Array<{ id: string; ipuz: string }>;
+        const upd = db.prepare(`UPDATE ${table} SET copyright = ? WHERE id = ?`);
+        for (const row of rows) {
+          try {
+            const parsed = parseIpuzBuffer(row.id, Buffer.from(row.ipuz, "utf8"));
+            const cr = parsed.state.meta.copyright;
+            if (cr) upd.run(cr, row.id);
+          } catch {
+            // skip unparseable row
+          }
+        }
+      }
     },
   },
 ];

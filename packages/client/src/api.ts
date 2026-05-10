@@ -21,6 +21,7 @@ export type PuzzleSummary = {
   id: string;
   title: string;
   author: string;
+  copyright: string;
   width: number;
   height: number;
 };
@@ -81,6 +82,7 @@ export type BoardSummary = {
   puzzleId: string | null;
   title: string;
   author: string;
+  copyright: string;
   updatedAt: string;
 };
 
@@ -89,4 +91,11 @@ export async function fetchBoards(): Promise<BoardSummary[]> {
   const res = await fetch("/api/boards");
   if (!res.ok) throw new HttpError(res.status, `fetch boards failed: ${res.status}`);
   return res.json();
+}
+
+/** Hard-delete a board. The server force-closes any active ws sockets
+ *  on the board before removing the row. */
+export async function deleteBoard(id: string): Promise<void> {
+  const res = await fetch(`/api/boards/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new HttpError(res.status, `delete failed: ${res.status}`);
 }

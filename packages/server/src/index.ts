@@ -27,10 +27,11 @@ import websocket from "@fastify/websocket";
 import { parsePuzBuffer } from "./puzzle.js";
 import { IpuzUnsupportedError, parseIpuzBuffer, writeIpuz } from "./ipuz.js";
 import { closeDb, getDb } from "./db.js";
-import { flushAll, getOrLoadBoard } from "./store.js";
+import { evictBoard, flushAll, getCachedBoard, getOrLoadBoard } from "./store.js";
 import { slugify } from "./importer.js";
 import {
   PuzzleNotFoundError,
+  deleteBoard,
   findOrCreateBoard,
   getBoardState,
   listBoards,
@@ -82,12 +83,13 @@ await app.register(
       // imported puzzles surface at the top.
       return db
         .prepare(
-          "SELECT id, title, author, width, height FROM puzzles ORDER BY created_at DESC",
+          "SELECT id, title, author, copyright, width, height FROM puzzles ORDER BY created_at DESC",
         )
         .all() as Array<{
         id: string;
         title: string;
         author: string;
+        copyright: string;
         width: number;
         height: number;
       }>;
@@ -112,8 +114,8 @@ await app.register(
         const snapshot = JSON.stringify(parsed.state.snapshot);
         const now = new Date().toISOString();
         db.prepare(
-          "INSERT INTO boards (id, puzzle_id, ipuz, title, author, snapshot, chat, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, ?, '[]', ?, ?)",
-        ).run(id, ipuz, meta.title, meta.author, snapshot, now, now);
+          "INSERT INTO boards (id, puzzle_id, ipuz, title, author, copyright, snapshot, chat, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, ?, ?, '[]', ?, ?)",
+        ).run(id, ipuz, meta.title, meta.author, meta.copyright, snapshot, now, now);
         // No in-memory mirror: the first WS connect to this board will
         // lazy-load it via getOrLoadBoard.
         return { boardId: id };
@@ -150,6 +152,24 @@ await app.register(
       const state = getBoardState(db, req.params.id);
       if (!state) return reply.code(404).send({ error: "not found" });
       return state;
+    });
+
+    api.delete<{ Params: { id: string } }>("/boards/:id", async (req, reply) => {
+      // Hard delete. Any open ws sockets on this board are closed so
+      // they stop mutating an orphaned cache entry; then the cache
+      // entry is evicted (cancels its pending flush timer too); then
+      // the row is removed. 404 if no such row.
+      const id = req.params.id;
+      const cached = getCachedBoard(id);
+      if (cached) {
+        for (const s of cached.sockets) {
+          if (s.readyState === s.OPEN) s.close(1000, "board deleted");
+        }
+      }
+      evictBoard(id);
+      const { existed } = deleteBoard(db, id);
+      if (!existed) return reply.code(404).send({ error: "not found" });
+      return { ok: true };
     });
 
     api.get<{ Params: { id: string } }>("/boards/:id/ipuz", async (req, reply) => {

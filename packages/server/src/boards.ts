@@ -30,6 +30,7 @@ type PuzzleRow = {
   ipuz: string;
   title: string;
   author: string;
+  copyright: string;
 };
 
 /** Find-or-create the (single) board for a puzzle. With users, this
@@ -40,7 +41,7 @@ export function findOrCreateBoard(
   puzzleId: string,
 ): { boardId: string; newlyCreated: boolean } {
   const puzzle = db
-    .prepare("SELECT id, ipuz, title, author FROM puzzles WHERE id = ?")
+    .prepare("SELECT id, ipuz, title, author, copyright FROM puzzles WHERE id = ?")
     .get(puzzleId) as PuzzleRow | undefined;
   if (!puzzle) throw new PuzzleNotFoundError(puzzleId);
 
@@ -56,8 +57,8 @@ export function findOrCreateBoard(
   const snapshot = JSON.stringify(parsed.state.snapshot);
   const now = new Date().toISOString();
   db.prepare(
-    "INSERT INTO boards (id, puzzle_id, ipuz, title, author, snapshot, chat, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?)",
-  ).run(boardId, puzzle.id, puzzle.ipuz, puzzle.title, puzzle.author, snapshot, now, now);
+    "INSERT INTO boards (id, puzzle_id, ipuz, title, author, copyright, snapshot, chat, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, '[]', ?, ?)",
+  ).run(boardId, puzzle.id, puzzle.ipuz, puzzle.title, puzzle.author, puzzle.copyright, snapshot, now, now);
 
   return { boardId, newlyCreated: true };
 }
@@ -80,19 +81,29 @@ export type BoardSummary = {
   puzzleId: string | null;
   title: string;
   author: string;
+  copyright: string;
   updatedAt: string;
 };
+
+/** Hard-delete a board row. Returns whether a row was removed so the
+ *  caller can map "no such id" to 404. Cache eviction and socket
+ *  cleanup are the caller's job (this is a pure DB op). */
+export function deleteBoard(db: DatabaseSync, boardId: string): { existed: boolean } {
+  const result = db.prepare("DELETE FROM boards WHERE id = ?").run(boardId);
+  return { existed: result.changes > 0 };
+}
 
 export function listBoards(db: DatabaseSync): BoardSummary[] {
   const rows = db
     .prepare(
-      "SELECT id, puzzle_id, title, author, updated_at FROM boards ORDER BY updated_at DESC",
+      "SELECT id, puzzle_id, title, author, copyright, updated_at FROM boards ORDER BY updated_at DESC",
     )
     .all() as Array<{
     id: string;
     puzzle_id: string | null;
     title: string;
     author: string;
+    copyright: string;
     updated_at: string;
   }>;
   return rows.map((r) => ({
@@ -100,6 +111,7 @@ export function listBoards(db: DatabaseSync): BoardSummary[] {
     puzzleId: r.puzzle_id,
     title: r.title,
     author: r.author,
+    copyright: r.copyright,
     updatedAt: r.updated_at,
   }));
 }

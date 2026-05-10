@@ -85,16 +85,18 @@ describe("db", () => {
     const boardsCols = db.prepare("PRAGMA table_info(boards)").all() as ColInfo[];
 
     expect(puzzlesCols.map((c) => c.name).sort()).toEqual(
-      ["author", "created_at", "height", "id", "ipuz", "title", "updated_at", "width"],
+      ["author", "copyright", "created_at", "height", "id", "ipuz", "title", "updated_at", "width"],
     );
     expect(boardsCols.map((c) => c.name).sort()).toEqual(
-      ["author", "chat", "created_at", "id", "ipuz", "puzzle_id", "snapshot", "title", "updated_at"],
+      ["author", "chat", "copyright", "created_at", "id", "ipuz", "puzzle_id", "snapshot", "title", "updated_at"],
     );
 
     // Spot-check defaults & PK.
     expect(puzzlesCols.find((c) => c.name === "id")!.pk).toBe(1);
     expect(puzzlesCols.find((c) => c.name === "author")!.dflt_value).toBe("''");
+    expect(puzzlesCols.find((c) => c.name === "copyright")!.dflt_value).toBe("''");
     expect(boardsCols.find((c) => c.name === "chat")!.dflt_value).toBe("'[]'");
+    expect(boardsCols.find((c) => c.name === "copyright")!.dflt_value).toBe("''");
 
     const indexes = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'boards' ORDER BY name")

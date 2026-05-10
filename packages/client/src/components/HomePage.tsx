@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   type BoardSummary,
   type PuzzleSummary,
   createBoard,
+  deleteBoard,
   fetchBoards,
   fetchPuzzles,
 } from "../api";
@@ -28,25 +29,76 @@ type Props = {
 export function HomePage({ onUploaded }: Props) {
   const [puzzles, setPuzzles] = useState<PuzzleSummary[] | null>(null);
   const [boards, setBoards] = useState<BoardSummary[] | null>(null);
+  // Set when one or both list fetches fail (e.g. dev server isn't
+  // running). Surfaced as a single banner — better than silently
+  // rendering empty lists that look like "no games yet".
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // Two-step delete: null = trash icon only, <id> = that row is in
+  // "Delete?" confirm state. At most one row is in confirm state at a
+  // time; clicking outside the confirm button cancels it.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const confirmButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    const failed = () => {
+      if (cancelled) return;
+      setLoadError("Couldn't reach the server. Refresh to try again.");
+    };
     fetchPuzzles()
       .then((list) => !cancelled && setPuzzles(list))
-      .catch(() => !cancelled && setPuzzles([]));
+      .catch(() => {
+        if (cancelled) return;
+        setPuzzles([]);
+        failed();
+      });
     fetchBoards()
       .then((list) => !cancelled && setBoards(list))
-      .catch(() => !cancelled && setBoards([]));
+      .catch(() => {
+        if (cancelled) return;
+        setBoards([]);
+        failed();
+      });
     return () => {
       cancelled = true;
     };
   }, []);
 
+  // While a row is in confirm state, a click anywhere except the
+  // confirm button itself cancels it. mousedown (not click) so the
+  // dismissal happens before any other element's click handler can
+  // run, which keeps the UX predictable.
+  useEffect(() => {
+    if (confirmDeleteId === null) return;
+    function onDocumentMouseDown(e: MouseEvent) {
+      const btn = confirmButtonRef.current;
+      if (btn && e.target instanceof Node && btn.contains(e.target)) return;
+      setConfirmDeleteId(null);
+    }
+    document.addEventListener("mousedown", onDocumentMouseDown);
+    return () => document.removeEventListener("mousedown", onDocumentMouseDown);
+  }, [confirmDeleteId]);
+
+  async function onConfirmDelete(id: string) {
+    setConfirmDeleteId(null);
+    try {
+      await deleteBoard(id);
+      setBoards((cur) => (cur ? cur.filter((b) => b.id !== id) : cur));
+    } catch {
+      // No surfaced error UI here — re-fetch so the list reflects truth
+      // (e.g. the row may have been deleted elsewhere already).
+      fetchBoards()
+        .then(setBoards)
+        .catch(() => {});
+    }
+  }
+
   return (
     <div className={styles.outer}>
+      {loadError && <div className={styles.loadError}>{loadError}</div>}
       <div className={styles.wrap}>
         {puzzles && puzzles.length > 0 && (
-          <section className={styles.section}>
+          <section className={`${styles.section} ${styles.listSection}`}>
             <h2 className={styles.heading}>Community puzzles</h2>
             <ul className={styles.games}>
               {puzzles.map((p) => (
@@ -67,30 +119,60 @@ export function HomePage({ onUploaded }: Props) {
                         {p.width}×{p.height}
                       </span>
                     </span>
+                    {p.copyright && (
+                      <span className={styles.gameCopyright}>{p.copyright}</span>
+                    )}
                   </button>
                 </li>
               ))}
             </ul>
           </section>
         )}
-        <section className={styles.section}>
+        <section className={`${styles.section} ${styles.listSection}`}>
           <h2 className={styles.heading}>Your games</h2>
           {boards && boards.length > 0 ? (
             <ul className={styles.games}>
-              {boards.map((b) => (
-                <li key={b.id}>
-                  <button
-                    type="button"
-                    className={styles.game}
-                    onClick={() => navigate(boardPath(b.id))}
-                  >
-                    <span className={styles.gameTitle}>{b.title || "Untitled"}</span>
-                    <span className={styles.gameMeta}>
-                      {b.author && <span>by {b.author}</span>}
-                    </span>
-                  </button>
-                </li>
-              ))}
+              {boards.map((b) => {
+                const isConfirming = confirmDeleteId === b.id;
+                return (
+                  <li key={b.id} className={styles.boardRow}>
+                    <button
+                      type="button"
+                      className={styles.game}
+                      onClick={() => navigate(boardPath(b.id))}
+                    >
+                      <span className={styles.gameTitle}>{b.title || "Untitled"}</span>
+                      <span className={styles.gameMeta}>
+                        {b.author && <span>by {b.author}</span>}
+                      </span>
+                      {b.copyright && (
+                        <span className={styles.gameCopyright}>{b.copyright}</span>
+                      )}
+                    </button>
+                    {isConfirming ? (
+                      <button
+                        ref={confirmButtonRef}
+                        type="button"
+                        className={styles.deleteConfirm}
+                        onClick={() => void onConfirmDelete(b.id)}
+                        aria-label={`Confirm delete ${b.title || "board"}`}
+                      >
+                        Delete?
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className={styles.deleteIcon}
+                        onClick={() => setConfirmDeleteId(b.id)}
+                        aria-label={`Delete ${b.title || "board"}`}
+                        title="Delete this game"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <p className={styles.empty}>
@@ -98,7 +180,7 @@ export function HomePage({ onUploaded }: Props) {
             </p>
           )}
         </section>
-        <section className={styles.section}>
+        <section className={`${styles.section} ${styles.uploadSection}`}>
           <h2 className={styles.heading}>Upload your own</h2>
           <UploadForm onUploaded={onUploaded} />
         </section>

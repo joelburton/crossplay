@@ -42,12 +42,12 @@ export function insertPuzzleRow(args: {
   const now = new Date().toISOString();
   if (existing) {
     db.prepare(
-      "UPDATE puzzles SET ipuz=?, title=?, author=?, width=?, height=?, updated_at=? WHERE id=?",
-    ).run(ipuz, meta.title, meta.author, meta.width, meta.height, now, id);
+      "UPDATE puzzles SET ipuz=?, title=?, author=?, copyright=?, width=?, height=?, updated_at=? WHERE id=?",
+    ).run(ipuz, meta.title, meta.author, meta.copyright, meta.width, meta.height, now, id);
   } else {
     db.prepare(
-      "INSERT INTO puzzles (id, ipuz, title, author, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    ).run(id, ipuz, meta.title, meta.author, meta.width, meta.height, now, now);
+      "INSERT INTO puzzles (id, ipuz, title, author, copyright, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ).run(id, ipuz, meta.title, meta.author, meta.copyright, meta.width, meta.height, now, now);
   }
   return { replaced: !!existing };
 }

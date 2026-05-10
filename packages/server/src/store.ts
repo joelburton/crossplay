@@ -168,6 +168,13 @@ export function cachedBoards(): IterableIterator<StoredBoard> {
   return cache.values();
 }
 
+/** Peek at the cached entry for a board without lazy-loading from the
+ *  DB. Used by the delete route to find sockets to close — we don't
+ *  want to *load* a board just to delete it. */
+export function getCachedBoard(boardId: string): StoredBoard | undefined {
+  return cache.get(boardId);
+}
+
 /** Test-only: install a synthetic StoredBoard directly. Lets unit
  *  tests bypass the DB load path. Pair with `_clearCacheForTest`
  *  between tests. */
