@@ -13,7 +13,8 @@
   "dependencies": {
     "@crossplay/shared": "*",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-rnd": "^10.5.3"
   },
   "devDependencies": {
     "@types/react": "^18.3.0",
