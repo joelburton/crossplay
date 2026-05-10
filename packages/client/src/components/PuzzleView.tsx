@@ -367,6 +367,16 @@ export function PuzzleView({
         }),
       checkPuzzle: () => sendMsg({ type: "check", scope: "puzzle" }),
       showNotes: triggerShowNotes,
+      downloadIpuz: () => {
+        // Anchor + click is the simplest way to honor the server's
+        // Content-Disposition filename without an extra fetch.
+        const a = document.createElement("a");
+        a.href = `/api/puzzles/${meta.id}/ipuz`;
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      },
     };
     return () => {
       if (actionsRef.current?.meta.id === meta.id) {

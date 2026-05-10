@@ -23,8 +23,27 @@ import multipart from "@fastify/multipart";
 import staticPlugin from "@fastify/static";
 import websocket from "@fastify/websocket";
 import { parsePuzBuffer } from "./puzzle.js";
+import { IpuzUnsupportedError, parseIpuzBuffer, writeIpuz } from "./ipuz.js";
 import { getPuzzle, putPuzzle } from "./store.js";
 import { registerWsRoutes } from "./ws.js";
+
+type PuzzleFormat = "puz" | "ipuz";
+
+/** Pick a parser. Extension wins; otherwise sniff for a leading `{`
+ *  (BOM-tolerant) and treat as ipuz, else fall back to .puz. */
+function detectFormat(filename: string | undefined, buffer: Buffer): PuzzleFormat {
+  const ext = filename?.toLowerCase().match(/\.(puz|ipuz)$/)?.[1];
+  if (ext === "ipuz") return "ipuz";
+  if (ext === "puz") return "puz";
+  let i = 0;
+  if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) i = 3;
+  while (i < buffer.length && (buffer[i] === 0x20 || buffer[i] === 0x09 || buffer[i] === 0x0a || buffer[i] === 0x0d)) i++;
+  return buffer[i] === 0x7b ? "ipuz" : "puz"; // '{'
+}
+
+function parsePuzzleBuffer(id: string, buffer: Buffer, format: PuzzleFormat) {
+  return format === "ipuz" ? parseIpuzBuffer(id, buffer) : parsePuzBuffer(id, buffer);
+}
 
 const app = Fastify({ logger: true });
 
@@ -52,13 +71,13 @@ function slugify(name: string): string {
   );
 }
 
-/** Read a `.puz` file from disk, parse it, and put it into the store
+/** Read a puzzle file from disk, parse it, and put it into the store
  *  under `id`. Returns `false` and logs a warning on any failure (so a
  *  single malformed file doesn't abort library load). */
-function loadGame(id: string, path: string): boolean {
+function loadGame(id: string, path: string, format: PuzzleFormat): boolean {
   try {
     const buf = readFileSync(path);
-    const parsed = parsePuzBuffer(id, buf);
+    const parsed = parsePuzzleBuffer(id, buf, format);
     putPuzzle(id, parsed);
     return true;
   } catch (err) {
@@ -67,19 +86,24 @@ function loadGame(id: string, path: string): boolean {
   }
 }
 
+const LIBRARY_EXT = /\.(puz|ipuz)$/i;
+
 const libraryIds: string[] = [];
 try {
   const entries = readdirSync(GAME_DIR);
   const seen = new Set<string>();
   for (const entry of entries) {
-    if (!entry.toLowerCase().endsWith(".puz")) continue;
-    let id = slugify(entry.replace(/\.puz$/i, ""));
+    const m = entry.match(LIBRARY_EXT);
+    if (!m) continue;
+    const format = m[1]!.toLowerCase() === "ipuz" ? "ipuz" : "puz";
+    const base = entry.replace(LIBRARY_EXT, "");
+    let id = slugify(base);
     let n = 2;
     while (seen.has(id)) {
-      id = `${slugify(entry.replace(/\.puz$/i, ""))}-${n++}`;
+      id = `${slugify(base)}-${n++}`;
     }
     seen.add(id);
-    if (loadGame(id, resolve(GAME_DIR, entry))) libraryIds.push(id);
+    if (loadGame(id, resolve(GAME_DIR, entry), format)) libraryIds.push(id);
   }
   app.log.info({ path: GAME_DIR, count: libraryIds.length }, "loaded game library");
 } catch (err) {
@@ -122,13 +146,17 @@ await app.register(
       }
       const buffer = await file.toBuffer();
       const id = randomUUID();
+      const format = detectFormat(file.filename, buffer);
       try {
-        const parsed = parsePuzBuffer(id, buffer);
+        const parsed = parsePuzzleBuffer(id, buffer, format);
         putPuzzle(id, parsed);
         return { puzzleId: id };
       } catch (err) {
-        req.log.error({ err }, "failed to parse .puz");
-        return reply.code(400).send({ error: "invalid .puz file" });
+        req.log.error({ err, format }, "failed to parse puzzle upload");
+        if (err instanceof IpuzUnsupportedError) {
+          return reply.code(400).send({ error: err.message });
+        }
+        return reply.code(400).send({ error: `invalid .${format} file` });
       }
     });
 
@@ -136,6 +164,17 @@ await app.register(
       const entry = getPuzzle(req.params.id);
       if (!entry) return reply.code(404).send({ error: "not found" });
       return entry.state;
+    });
+
+    api.get<{ Params: { id: string } }>("/puzzles/:id/ipuz", async (req, reply) => {
+      const entry = getPuzzle(req.params.id);
+      if (!entry) return reply.code(404).send({ error: "not found" });
+      const json = writeIpuz(entry.state, entry.solution);
+      const stem = slugify(entry.state.meta.title) || entry.state.meta.id;
+      reply
+        .header("content-type", "application/json; charset=utf-8")
+        .header("content-disposition", `attachment; filename="${stem}.ipuz"`);
+      return json;
     });
   },
   { prefix: "/api" },

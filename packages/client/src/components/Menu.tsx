@@ -115,6 +115,10 @@ export function Menu({ actions, triggerRef, onNewGame, onClose }: Props) {
           <button type="button" className={styles.item} onClick={run(actions.checkPuzzle)}>
             <span>Check puzzle</span>
           </button>
+          <div className={styles.sep} role="separator" />
+          <button type="button" className={styles.item} onClick={run(actions.downloadIpuz)}>
+            <span>Download as .ipuz</span>
+          </button>
         </>
       )}
     </div>
