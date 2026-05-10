@@ -164,52 +164,37 @@ function step(dir: Direction): { dr: number; dc: number } {
   return dir === "across" ? { dr: 0, dc: 1 } : { dr: 1, dc: 0 };
 }
 
-function inBounds(cells: Cell[][], row: number, col: number): boolean {
-  if (row < 0 || col < 0) return false;
-  if (row >= cells.length) return false;
-  return col < (cells[0]?.length ?? 0);
-}
-
 /**
  * Advance the cursor by one cell after the user types a letter.
  *
- * Skips blocks (so typing across a black-square gap continues into the
- * next word) but does **not** skip filled cells — if the next cell
- * already has a letter, the cursor lands there anyway. This is a
- * deliberate decision: see CLAUDE.md "Cursor advances one cell after
- * typing" and memory `project_advance_after_fill.md`. Don't reintroduce
- * skip-filled behavior without a fresh discussion.
- *
- * Stays put if there is no further open cell in the current direction.
+ * Stops at the end of the current word: if the next cell in the
+ * cursor's direction is a block or off the grid, the cursor stays
+ * put rather than jumping into the next word. Does **not** skip
+ * filled cells either — if the next cell already has a letter, the
+ * cursor lands there anyway. See CLAUDE.md "Cursor advances one
+ * cell after typing" and memory `project_advance_after_fill.md`.
  */
 export function advanceAfterFill(cells: Cell[][], cursor: Cursor): Cursor {
   const { dr, dc } = step(cursor.dir);
-  let r = cursor.row + dr;
-  let c = cursor.col + dc;
-  while (inBounds(cells, r, c)) {
-    if (isOpen(cells, r, c)) {
-      return { row: r, col: c, dir: cursor.dir };
-    }
-    r += dr;
-    c += dc;
+  const r = cursor.row + dr;
+  const c = cursor.col + dc;
+  if (isOpen(cells, r, c)) {
+    return { row: r, col: c, dir: cursor.dir };
   }
   return cursor;
 }
 
 /** Mirror of `advanceAfterFill` for the Backspace handler in PuzzleView:
- *  one cell back in the cursor's direction, skipping blocks, staying
- *  put if we'd run off the start. PuzzleView uses this when the current
- *  cell is empty (so the user is "deleting" the previous letter). */
+ *  one cell back in the cursor's direction, stopping at the start of
+ *  the current word (a block or the grid edge keeps the cursor put).
+ *  PuzzleView uses this when the current cell is empty (so the user
+ *  is "deleting" the previous letter). */
 export function retreatForBackspace(cells: Cell[][], cursor: Cursor): Cursor {
   const { dr, dc } = step(cursor.dir);
-  let r = cursor.row - dr;
-  let c = cursor.col - dc;
-  while (inBounds(cells, r, c)) {
-    if (isOpen(cells, r, c)) {
-      return { row: r, col: c, dir: cursor.dir };
-    }
-    r -= dr;
-    c -= dc;
+  const r = cursor.row - dr;
+  const c = cursor.col - dc;
+  if (isOpen(cells, r, c)) {
+    return { row: r, col: c, dir: cursor.dir };
   }
   return cursor;
 }

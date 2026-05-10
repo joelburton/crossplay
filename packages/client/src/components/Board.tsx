@@ -13,8 +13,12 @@ type Props = {
   onCellClick: (row: number, col: number) => void;
 };
 
-// Reserved viewport height for header + paddings + gaps surrounding the board.
-const VERTICAL_OVERHEAD_PX = 50;
+// Reserved viewport height for header + paddings + gaps surrounding
+// the board. Measured at ~56px (header ~42px + .main top/bottom
+// padding ~14px); we round up a touch so there's a tiny visible
+// bottom margin instead of flush-to-the-edge (which used to scroll a
+// few pixels on heights where the cell calc was the binding term).
+const VERTICAL_OVERHEAD_PX = 64;
 // Sanity cap so cells don't get absurd on very large monitors.
 const MAX_CELL_PX = 60;
 // Re-export so PuzzleView and any future narrow-mode code use the same

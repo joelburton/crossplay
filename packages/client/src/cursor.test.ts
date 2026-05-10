@@ -148,11 +148,11 @@ describe("advanceAfterFill", () => {
       dir: "across",
     });
   });
-  it("jumps over blocks to next word", () => {
+  it("stays put at the end of a word (does not cross a block into the next word)", () => {
     const g = grid([".#."]);
     expect(advanceAfterFill(g, { row: 0, col: 0, dir: "across" })).toEqual({
       row: 0,
-      col: 2,
+      col: 0,
       dir: "across",
     });
   });
@@ -216,11 +216,11 @@ describe("retreatForBackspace", () => {
       dir: "across",
     });
   });
-  it("skips blocks going back", () => {
+  it("stays put at the start of a word (does not cross a block into the previous word)", () => {
     const g = grid([".#."]);
     expect(retreatForBackspace(g, { row: 0, col: 2, dir: "across" })).toEqual({
       row: 0,
-      col: 0,
+      col: 2,
       dir: "across",
     });
   });
