@@ -14,9 +14,15 @@
 import type { WebSocket } from "ws";
 import type { PuzzleState } from "@crossplay/shared";
 
+export type PuzzleFormat = "puz" | "ipuz";
+
 export type StoredPuzzle = {
   state: PuzzleState;
   solution: (string | null)[][];
+  // The on-disk format the puzzle came from. Surfaced on the home
+  // page so the user can tell library entries apart when both a .puz
+  // and the converted .ipuz are present.
+  format: PuzzleFormat;
   sockets: Set<WebSocket>;
   // name -> last hello timestamp; used to debounce "Alice joined" on
   // reconnect blips (a hello within the window is not re-announced).
@@ -28,8 +34,8 @@ export type StoredPuzzle = {
 const puzzles = new Map<string, StoredPuzzle>();
 
 /** Insert (or replace) a puzzle in the store. Initializes `sockets`,
- *  `recentHellos`, and `feedbackCounter`; callers only supply
- *  `state` + `solution`. */
+ *  `recentHellos`, and `feedbackCounter`; callers supply the
+ *  parser output (`state` + `solution`) plus the source `format`. */
 export function putPuzzle(
   id: string,
   entry: Omit<StoredPuzzle, "sockets" | "recentHellos" | "feedbackCounter">,

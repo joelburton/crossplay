@@ -23,6 +23,7 @@ export type GameSummary = {
   author: string;
   width: number;
   height: number;
+  format: "puz" | "ipuz";
 };
 
 /** Fetch the library of pre-loaded puzzles served from `GAME_DIR`. */

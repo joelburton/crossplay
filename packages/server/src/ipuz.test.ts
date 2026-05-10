@@ -107,16 +107,56 @@ describe("writeIpuz", () => {
     expect(reparsed.solution).toEqual(original.solution);
   });
 
-  it("does not emit player fills", () => {
+  it("omits the saved grid entirely when nothing is filled", () => {
     const puzBuf = readFileSync(SUNDAY_PUZ);
     const { state, solution } = parsePuzBuffer("sunday", puzBuf);
-    const originalSolution = solution[0]![0];
+    const obj = JSON.parse(writeIpuz(state, solution));
+    expect(obj.saved).toBeUndefined();
+  });
+
+  it("emits player fills as the ipuz `saved` grid", () => {
+    const puzBuf = readFileSync(SUNDAY_PUZ);
+    const { state, solution } = parsePuzBuffer("sunday", puzBuf);
     state.snapshot.cells[0]![0] = { kind: "cell", number: 1, fill: "Z" };
     const obj = JSON.parse(writeIpuz(state, solution));
-    // No `fill` key anywhere in the emitted ipuz puzzle grid.
-    expect(JSON.stringify(obj.puzzle)).not.toMatch(/"fill"/);
-    // The cell we mutated still serializes its solution letter, not the typed-in fill.
-    expect(obj.solution[0][0]).toBe(originalSolution);
+    expect(Array.isArray(obj.saved)).toBe(true);
+    expect(obj.saved[0][0]).toBe("Z");
+    // Cells without a fill serialize as the empty marker (0), not a letter.
+    expect(obj.saved[0][1]).toBe(0);
+    // Solution still carries the original letter, untouched by the typed-in fill.
+    expect(obj.solution[0][0]).toBe(solution[0]![0]);
+  });
+
+  it("round-trips player fills through write -> parse", () => {
+    const puzBuf = readFileSync(SUNDAY_PUZ);
+    const { state, solution } = parsePuzBuffer("sunday", puzBuf);
+    // Type a few letters at known open cells.
+    const edits: Array<[number, number, string]> = [];
+    outer: for (let r = 0; r < state.meta.height; r++) {
+      for (let c = 0; c < state.meta.width; c++) {
+        const cell = state.snapshot.cells[r]![c]!;
+        if (cell.kind === "cell") {
+          state.snapshot.cells[r]![c] = { ...cell, fill: "Q" };
+          edits.push([r, c, "Q"]);
+          if (edits.length >= 3) break outer;
+        }
+      }
+    }
+    const json = writeIpuz(state, solution);
+    const reparsed = parseIpuzBuffer("sunday", Buffer.from(json, "utf8"));
+    for (const [r, c, letter] of edits) {
+      const cell = reparsed.state.snapshot.cells[r]![c]!;
+      expect(cell.kind).toBe("cell");
+      if (cell.kind === "cell") expect(cell.fill).toBe(letter);
+    }
+  });
+
+  it("uppercases lowercase fills on emit", () => {
+    const puzBuf = readFileSync(SUNDAY_PUZ);
+    const { state, solution } = parsePuzBuffer("sunday", puzBuf);
+    state.snapshot.cells[0]![0] = { kind: "cell", number: 1, fill: "q" };
+    const obj = JSON.parse(writeIpuz(state, solution));
+    expect(obj.saved[0][0]).toBe("Q");
   });
 
   it("emits standard ipuz crossword headers", () => {
@@ -189,5 +229,21 @@ describe("parseIpuzBuffer (rejections)", () => {
     const obj = structuredClone(MINIMAL_IPUZ);
     (obj.puzzle[0] as unknown[])[0] = { cell: 1, value: "A" };
     expectReject(obj, /pre-filled cell values/);
+  });
+
+  it("rejects rebus saved values", () => {
+    const obj = structuredClone(MINIMAL_IPUZ) as unknown as Record<string, unknown>;
+    obj.saved = [
+      ["AB", 0, 0],
+      [0, 0, 0],
+      [0, 0, 0],
+    ];
+    expectReject(obj, /rebus saved values/);
+  });
+
+  it("rejects mismatched saved-grid shape", () => {
+    const obj = structuredClone(MINIMAL_IPUZ) as unknown as Record<string, unknown>;
+    obj.saved = [[0, 0, 0], [0, 0, 0]];
+    expectReject(obj, /saved grid must have 3 rows/);
   });
 });

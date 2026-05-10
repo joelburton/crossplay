@@ -233,6 +233,40 @@ export function parseIpuzBuffer(id: string, buffer: Buffer): ParseResult {
     solution.push(solOut);
   }
 
+  // Optional `saved` grid: in-progress player fills, parallel to
+  // `solution`. Absent on freshly-authored puzzles; present on files
+  // produced by our download endpoint mid-game. We apply letters into
+  // the snapshot but ignore the `revealed`/`wrong`/`pencil` flags
+  // (ipuz has no concept of them; we'd need a custom extension).
+  const savedGrid = data.saved;
+  if (savedGrid !== undefined) {
+    if (!Array.isArray(savedGrid) || savedGrid.length !== height) {
+      fail(`saved grid must have ${height} rows`);
+    }
+    for (let r = 0; r < height; r++) {
+      const row = savedGrid[r];
+      if (!Array.isArray(row) || row.length !== width) {
+        fail(`saved row ${r} must have ${width} cells`);
+      }
+      for (let c = 0; c < width; c++) {
+        const cell = cells[r]![c]!;
+        if (cell.kind === "block") continue;
+        const raw = row[c];
+        let value: unknown = raw;
+        if (isPlainObject(raw)) {
+          if (raw.style && isPlainObject(raw.style)) checkStyle(raw.style, `saved[${r}][${c}]`);
+          value = "value" in raw ? raw.value : raw.cell;
+        }
+        if (value === emptyMarker || value === 0 || value === null || value === "") continue;
+        if (typeof value !== "string") {
+          fail(`saved[${r}][${c}]: expected a letter (got ${JSON.stringify(value)})`);
+        }
+        if (value.length > 1) fail(`saved[${r}][${c}]: rebus saved values are not supported`);
+        cells[r]![c] = { ...cell, fill: value.toUpperCase() };
+      }
+    }
+  }
+
   const cluesRaw = data.clues;
   if (!isPlainObject(cluesRaw)) fail("missing `clues`");
   const acrossClues = parseClueList(pickClues(cluesRaw, "Across"), "clues.Across");
@@ -258,9 +292,13 @@ export function parseIpuzBuffer(id: string, buffer: Buffer): ParseResult {
  * subset: integer cell numbers, single-letter solutions, two clue
  * lists, no styling. Round-trips cleanly through `parseIpuzBuffer`.
  *
- * @param state  PuzzleState (meta + snapshot). The snapshot's `fill`
- *               values are intentionally NOT emitted — we ship the
- *               puzzle, not whatever a player has typed.
+ * If any cells in the snapshot have a `fill`, they are emitted as the
+ * ipuz `saved` grid so a downloaded mid-game file can be uploaded
+ * elsewhere and continued. The `revealed`/`wrong`/`pencil` flags do
+ * NOT round-trip — ipuz has no standard place for them and we don't
+ * yet squat on a custom extension field.
+ *
+ * @param state  PuzzleState (meta + snapshot).
  * @param solution  Server-side solution grid (letters or null).
  */
 export function writeIpuz(state: PuzzleState, solution: (string | null)[][]): string {
@@ -271,6 +309,18 @@ export function writeIpuz(state: PuzzleState, solution: (string | null)[][]): st
   );
 
   const sol = solution.map((row) => row.map((c) => (c === null ? "#" : c.toUpperCase())));
+
+  const hasFills = snapshot.cells.some((row) =>
+    row.some((cell) => cell.kind === "cell" && cell.fill != null && cell.fill !== ""),
+  );
+  const saved = hasFills
+    ? snapshot.cells.map((row) =>
+        row.map((cell): string | number => {
+          if (cell.kind === "block") return 0;
+          return cell.fill ? cell.fill.toUpperCase() : 0;
+        }),
+      )
+    : undefined;
 
   const out: Record<string, unknown> = {
     version: "http://ipuz.org/v2",
@@ -283,6 +333,7 @@ export function writeIpuz(state: PuzzleState, solution: (string | null)[][]): st
   out.dimensions = { width: meta.width, height: meta.height };
   out.puzzle = puzzle;
   out.solution = sol;
+  if (saved) out.saved = saved;
   out.clues = {
     Across: meta.clues.across.map((c) => [c.number, c.text]),
     Down: meta.clues.down.map((c) => [c.number, c.text]),

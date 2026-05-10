@@ -8,7 +8,7 @@ import { registerWsRoutes } from "./ws.js";
 
 // 3-row scratch puzzle: same shape as ws.test.ts uses, but installed into
 // the real store so the WS route can find it by id.
-function buildPuzzle(): { state: PuzzleState; solution: (string | null)[][] } {
+function buildPuzzle(): { state: PuzzleState; solution: (string | null)[][]; format: "puz" } {
   const cells: Cell[][] = [
     [
       { kind: "cell", number: 1, fill: null },
@@ -51,6 +51,7 @@ function buildPuzzle(): { state: PuzzleState; solution: (string | null)[][] } {
       ["E", "F", "G", "H", "I"],
       [null, null, "J", null, null],
     ],
+    format: "puz",
   };
 }
 

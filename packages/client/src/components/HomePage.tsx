@@ -53,7 +53,7 @@ export function HomePage({ onUploaded }: Props) {
                     <span className={styles.gameMeta}>
                       {g.author && <span>by {g.author}</span>}
                       <span className={styles.gameSize}>
-                        {g.width}×{g.height}
+                        {g.width}×{g.height} · .{g.format}
                       </span>
                     </span>
                   </button>

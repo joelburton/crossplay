@@ -24,10 +24,8 @@ import staticPlugin from "@fastify/static";
 import websocket from "@fastify/websocket";
 import { parsePuzBuffer } from "./puzzle.js";
 import { IpuzUnsupportedError, parseIpuzBuffer, writeIpuz } from "./ipuz.js";
-import { getPuzzle, putPuzzle } from "./store.js";
+import { type PuzzleFormat, getPuzzle, putPuzzle } from "./store.js";
 import { registerWsRoutes } from "./ws.js";
-
-type PuzzleFormat = "puz" | "ipuz";
 
 /** Pick a parser. Extension wins; otherwise sniff for a leading `{`
  *  (BOM-tolerant) and treat as ipuz, else fall back to .puz. */
@@ -78,7 +76,7 @@ function loadGame(id: string, path: string, format: PuzzleFormat): boolean {
   try {
     const buf = readFileSync(path);
     const parsed = parsePuzzleBuffer(id, buf, format);
-    putPuzzle(id, parsed);
+    putPuzzle(id, { ...parsed, format });
     return true;
   } catch (err) {
     app.log.warn({ err, path, id }, "skipping unreadable puzzle");
@@ -123,6 +121,7 @@ await app.register(
         author: string;
         width: number;
         height: number;
+        format: PuzzleFormat;
       }> = [];
       for (const id of libraryIds) {
         const entry = getPuzzle(id);
@@ -134,6 +133,7 @@ await app.register(
           author: m.author,
           width: m.width,
           height: m.height,
+          format: entry.format,
         });
       }
       return out;
@@ -149,7 +149,7 @@ await app.register(
       const format = detectFormat(file.filename, buffer);
       try {
         const parsed = parsePuzzleBuffer(id, buffer, format);
-        putPuzzle(id, parsed);
+        putPuzzle(id, { ...parsed, format });
         return { puzzleId: id };
       } catch (err) {
         req.log.error({ err, format }, "failed to parse puzzle upload");
