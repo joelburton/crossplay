@@ -33,6 +33,38 @@ type PuzzleRow = {
   copyright: string;
 };
 
+/** Shared INSERT for the `boards` table. Used by `findOrCreateBoard`
+ *  (stamps from a library puzzle) and the upload route (ad-hoc, with
+ *  `puzzleId: null`). One spelling of the column order so the two
+ *  call sites can't drift. Chat starts empty. */
+export function insertBoardRow(args: {
+  db: DatabaseSync;
+  boardId: string;
+  puzzleId: string | null;
+  ipuz: string;
+  title: string;
+  author: string;
+  copyright: string;
+  snapshot: string;
+}): void {
+  const now = new Date().toISOString();
+  args.db
+    .prepare(
+      "INSERT INTO boards (id, puzzle_id, ipuz, title, author, copyright, snapshot, chat, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, '[]', ?, ?)",
+    )
+    .run(
+      args.boardId,
+      args.puzzleId,
+      args.ipuz,
+      args.title,
+      args.author,
+      args.copyright,
+      args.snapshot,
+      now,
+      now,
+    );
+}
+
 /** Find-or-create the (single) global board for a library puzzle.
  *  With users, this will become per-(user, puzzle); for now it's
  *  global. Ad-hoc upload boards (puzzle_id IS NULL) are intentionally
@@ -58,10 +90,16 @@ export function findOrCreateBoard(
   // ipuz string verbatim into boards.ipuz — it's already canonical.
   const parsed = parseIpuzBuffer(boardId, Buffer.from(puzzle.ipuz, "utf8"));
   const snapshot = JSON.stringify(parsed.state.snapshot);
-  const now = new Date().toISOString();
-  db.prepare(
-    "INSERT INTO boards (id, puzzle_id, ipuz, title, author, copyright, snapshot, chat, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, '[]', ?, ?)",
-  ).run(boardId, puzzle.id, puzzle.ipuz, puzzle.title, puzzle.author, puzzle.copyright, snapshot, now, now);
+  insertBoardRow({
+    db,
+    boardId,
+    puzzleId: puzzle.id,
+    ipuz: puzzle.ipuz,
+    title: puzzle.title,
+    author: puzzle.author,
+    copyright: puzzle.copyright,
+    snapshot,
+  });
 
   return { boardId, newlyCreated: true };
 }

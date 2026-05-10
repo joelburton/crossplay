@@ -12,15 +12,16 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { FastifyInstance } from "fastify";
-import { parsePuzBuffer } from "./puzzle.js";
-import { IpuzUnsupportedError, parseIpuzBuffer, writeIpuz } from "./ipuz.js";
+import { IpuzUnsupportedError, writeIpuz } from "./ipuz.js";
 import { evictBoard, getCachedBoard, getOrLoadBoard } from "./store.js";
 import { slugify } from "./importer.js";
+import { detectFormat, parsePuzzleBuffer } from "./format.js";
 import {
   PuzzleNotFoundError,
   deleteBoard,
   findOrCreateBoard,
   getBoardState,
+  insertBoardRow,
   listBoards,
 } from "./boards.js";
 
@@ -28,24 +29,6 @@ export type HttpRouteOptions = {
   /** Shared sqlite handle. */
   db: DatabaseSync;
 };
-
-type PuzzleFormat = "puz" | "ipuz";
-
-/** Pick a parser. Extension wins; otherwise sniff for a leading `{`
- *  (BOM-tolerant) and treat as ipuz, else fall back to .puz. */
-export function detectFormat(filename: string | undefined, buffer: Buffer): PuzzleFormat {
-  const ext = filename?.toLowerCase().match(/\.(puz|ipuz)$/)?.[1];
-  if (ext === "ipuz") return "ipuz";
-  if (ext === "puz") return "puz";
-  let i = 0;
-  if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) i = 3;
-  while (i < buffer.length && (buffer[i] === 0x20 || buffer[i] === 0x09 || buffer[i] === 0x0a || buffer[i] === 0x0d)) i++;
-  return buffer[i] === 0x7b ? "ipuz" : "puz"; // '{'
-}
-
-function parsePuzzleBuffer(id: string, buffer: Buffer, format: PuzzleFormat) {
-  return format === "ipuz" ? parseIpuzBuffer(id, buffer) : parsePuzBuffer(id, buffer);
-}
 
 /** Mount every `/api/*` route on the given Fastify instance. */
 export async function registerHttpRoutes(app: FastifyInstance, opts: HttpRouteOptions): Promise<void> {
@@ -102,11 +85,16 @@ export async function registerHttpRoutes(app: FastifyInstance, opts: HttpRouteOp
           const parsed = parsePuzzleBuffer(id, buffer, format);
           const ipuz = writeIpuz(parsed.state, parsed.solution);
           const meta = parsed.state.meta;
-          const snapshot = JSON.stringify(parsed.state.snapshot);
-          const now = new Date().toISOString();
-          db.prepare(
-            "INSERT INTO boards (id, puzzle_id, ipuz, title, author, copyright, snapshot, chat, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, ?, ?, '[]', ?, ?)",
-          ).run(id, ipuz, meta.title, meta.author, meta.copyright, snapshot, now, now);
+          insertBoardRow({
+            db,
+            boardId: id,
+            puzzleId: null,
+            ipuz,
+            title: meta.title,
+            author: meta.author,
+            copyright: meta.copyright,
+            snapshot: JSON.stringify(parsed.state.snapshot),
+          });
           // No in-memory mirror: the first WS connect to this board will
           // lazy-load it via getOrLoadBoard.
           return { boardId: id };

@@ -13,8 +13,8 @@ import { readFileSync } from "node:fs";
 import { basename, extname } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import type { PuzzleState } from "@crossplay/shared";
-import { parsePuzBuffer } from "./puzzle.js";
-import { parseIpuzBuffer, writeIpuz } from "./ipuz.js";
+import { writeIpuz } from "./ipuz.js";
+import { detectFormat, parsePuzzleBuffer } from "./format.js";
 
 export type ImportResult = { id: string; replaced: boolean };
 
@@ -63,23 +63,6 @@ export function slugify(name: string): string {
   );
 }
 
-/** Extension wins; if it isn't `.puz` or `.ipuz`, sniff for a leading
- *  `{` (BOM-tolerant) and treat as ipuz, else .puz. Mirrors the upload
- *  route's detection in index.ts. */
-function detectFormat(filename: string, buffer: Buffer): "puz" | "ipuz" {
-  const ext = filename.toLowerCase().match(/\.(puz|ipuz)$/)?.[1];
-  if (ext === "ipuz") return "ipuz";
-  if (ext === "puz") return "puz";
-  let i = 0;
-  if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) i = 3;
-  while (
-    i < buffer.length &&
-    (buffer[i] === 0x20 || buffer[i] === 0x09 || buffer[i] === 0x0a || buffer[i] === 0x0d)
-  )
-    i++;
-  return buffer[i] === 0x7b ? "ipuz" : "puz";
-}
-
 export function importPuzzle(args: {
   db: DatabaseSync;
   path: string;
@@ -90,8 +73,7 @@ export function importPuzzle(args: {
   const stem = basename(path, extname(path));
   const id = slugify(stem);
   const format = detectFormat(path, buf);
-  const { state, solution } =
-    format === "ipuz" ? parseIpuzBuffer(id, buf) : parsePuzBuffer(id, buf);
+  const { state, solution } = parsePuzzleBuffer(id, buf, format);
   // Re-serialize to canonical ipuz so storage is format-uniform — a
   // .puz import lands as the same shape as a native .ipuz import.
   const { replaced } = insertPuzzleRow({

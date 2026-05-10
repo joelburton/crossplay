@@ -555,6 +555,110 @@ function broadcastChanges(entry: StoredBoard, changes: CellChange[]): void {
 
 const HEARTBEAT_INTERVAL_MS = 15_000;
 
+/** Per-message dispatch context. Every handler receives this plus the
+ *  parsed (and narrowed) message. Module-level handlers keep the route
+ *  body tiny and let unit tests drive each message type without
+ *  spinning up Fastify. */
+type DispatchContext = {
+  db: DatabaseSync;
+  entry: StoredBoard;
+  socket: WebSocket;
+};
+
+type HandlerFor<T extends ClientMessage["type"]> = (
+  ctx: DispatchContext,
+  msg: Extract<ClientMessage, { type: T }>,
+) => void;
+
+function handleFill({ db, entry }: DispatchContext, msg: Extract<ClientMessage, { type: "fill" }>): void {
+  const change = applyFill(entry, msg);
+  if (change) {
+    broadcastChanges(entry, [change]);
+    markDirty(db, entry.id);
+  }
+}
+
+function handleReveal({ db, entry }: DispatchContext, msg: Extract<ClientMessage, { type: "reveal" }>): void {
+  const changes = applyReveal(entry, msg);
+  broadcastChanges(entry, changes);
+  if (changes.length > 0) markDirty(db, entry.id);
+}
+
+function handleCheck({ db, entry }: DispatchContext, msg: Extract<ClientMessage, { type: "check" }>): void {
+  const hadPencil = checkScopeHasPencil(entry, msg);
+  const changes = applyCheck(entry, msg);
+  broadcastChanges(entry, changes);
+  if (changes.length > 0) markDirty(db, entry.id);
+  if (hadPencil) {
+    broadcast(entry, {
+      type: "feedback",
+      id: nextFeedbackId(entry),
+      text: "Check skips pencil cells",
+      level: "warning",
+      autoVanishMs: 5000,
+    });
+  }
+}
+
+function handleClear({ db, entry }: DispatchContext): void {
+  const changes = applyClear(entry);
+  broadcastChanges(entry, changes);
+  if (changes.length > 0) markDirty(db, entry.id);
+}
+
+function handleChat({ db, entry }: DispatchContext, msg: Extract<ClientMessage, { type: "chat" }>): void {
+  const ts = Date.now();
+  entry.chat.push({ name: msg.name, color: msg.color, text: msg.text, ts });
+  markDirty(db, entry.id);
+  broadcast(entry, { type: "chatMessage", name: msg.name, color: msg.color, text: msg.text, ts });
+}
+
+function handleShowNotes({ entry }: DispatchContext): void {
+  broadcast(entry, { type: "notesShown" });
+}
+
+function handleHello({ entry, socket }: DispatchContext, msg: Extract<ClientMessage, { type: "hello" }>): void {
+  const now = Date.now();
+  // Opportunistic GC: keeps the map bounded for long-lived rooms with
+  // high name churn (`Rando<NN>` defaults, etc.).
+  pruneRecentHellos(entry.recentHellos, now, HELLO_PRUNE_AFTER_MS);
+  const last = entry.recentHellos.get(msg.name);
+  entry.recentHellos.set(msg.name, now);
+  if (!shouldAnnounceHello(last, now, HELLO_DEBOUNCE_MS)) return;
+  // Broadcast to others only — sender doesn't see their own join.
+  const payload = JSON.stringify({
+    type: "feedback",
+    id: nextFeedbackId(entry),
+    text: `${msg.name} joined the game`,
+    level: "info",
+    autoVanishMs: 5000,
+  });
+  for (const s of entry.sockets) {
+    if (s !== socket && s.readyState === s.OPEN) s.send(payload);
+  }
+}
+
+/** Typed dispatch table: one entry per ClientMessage variant. Adding a
+ *  new message type is "add an entry here + a `handleX` function" —
+ *  the mapped type forces exhaustiveness at compile time. */
+const handlers: { [K in ClientMessage["type"]]: HandlerFor<K> } = {
+  fill: handleFill,
+  reveal: handleReveal,
+  check: handleCheck,
+  clear: handleClear,
+  chat: handleChat,
+  showNotes: handleShowNotes,
+  hello: handleHello,
+};
+
+function dispatchMessage(ctx: DispatchContext, msg: ClientMessage): void {
+  // The cast collapses the per-variant handler types — TS can't follow
+  // the indirection through `handlers[msg.type]`, but the mapped type
+  // above guarantees each handler accepts its own variant.
+  const handler = handlers[msg.type] as (ctx: DispatchContext, msg: ClientMessage) => void;
+  handler(ctx, msg);
+}
+
 export type WsRouteOptions = {
   /** Required: sqlite handle. Boards are loaded lazily from this on
    *  first connect to a given id. */
@@ -623,81 +727,7 @@ export function registerWsRoutes(
       socket.on("message", (raw) => {
         const msg = parseMessage(raw);
         if (!msg) return;
-        if (msg.type === "fill") {
-          const change = applyFill(entry, msg);
-          if (change) {
-            broadcastChanges(entry, [change]);
-            markDirty(db, entry.id);
-          }
-          return;
-        }
-        if (msg.type === "reveal") {
-          const changes = applyReveal(entry, msg);
-          broadcastChanges(entry, changes);
-          if (changes.length > 0) markDirty(db, entry.id);
-          return;
-        }
-        if (msg.type === "check") {
-          const hadPencil = checkScopeHasPencil(entry, msg);
-          const changes = applyCheck(entry, msg);
-          broadcastChanges(entry, changes);
-          if (changes.length > 0) markDirty(db, entry.id);
-          if (hadPencil) {
-            broadcast(entry, {
-              type: "feedback",
-              id: nextFeedbackId(entry),
-              text: "Check skips pencil cells",
-              level: "warning",
-              autoVanishMs: 5000,
-            });
-          }
-          return;
-        }
-        if (msg.type === "clear") {
-          const changes = applyClear(entry);
-          broadcastChanges(entry, changes);
-          if (changes.length > 0) markDirty(db, entry.id);
-          return;
-        }
-        if (msg.type === "chat") {
-          const ts = Date.now();
-          entry.chat.push({ name: msg.name, color: msg.color, text: msg.text, ts });
-          markDirty(db, entry.id);
-          broadcast(entry, {
-            type: "chatMessage",
-            name: msg.name,
-            color: msg.color,
-            text: msg.text,
-            ts,
-          });
-          return;
-        }
-        if (msg.type === "showNotes") {
-          broadcast(entry, { type: "notesShown" });
-          return;
-        }
-        if (msg.type === "hello") {
-          const now = Date.now();
-          // Opportunistic GC: keeps the map bounded for long-lived rooms
-          // with high name churn (`Rando<NN>` defaults, etc.).
-          pruneRecentHellos(entry.recentHellos, now, HELLO_PRUNE_AFTER_MS);
-          const last = entry.recentHellos.get(msg.name);
-          entry.recentHellos.set(msg.name, now);
-          if (shouldAnnounceHello(last, now, HELLO_DEBOUNCE_MS)) {
-            // Broadcast to others only — sender doesn't see their own join.
-            const payload = JSON.stringify({
-              type: "feedback",
-              id: nextFeedbackId(entry),
-              text: `${msg.name} joined the game`,
-              level: "info",
-              autoVanishMs: 5000,
-            });
-            for (const s of entry.sockets) {
-              if (s !== socket && s.readyState === s.OPEN) s.send(payload);
-            }
-          }
-          return;
-        }
+        dispatchMessage({ db, entry, socket }, msg);
       });
 
       socket.on("close", () => {
