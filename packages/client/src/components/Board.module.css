@@ -1,0 +1,9 @@
+.board {
+  --cell-size: 36px;
+  display: grid;
+  gap: 0;
+  background: #000;
+  border: 2px solid #000;
+  width: max-content;
+  align-self: start;
+}

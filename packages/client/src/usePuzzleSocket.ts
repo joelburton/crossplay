@@ -1,0 +1,78 @@
+import { useEffect, useRef, useState } from "react";
+import type { ClientMessage, GridSnapshot, ServerMessage } from "@crossplay/shared";
+
+export type ConnState = "connecting" | "open" | "closed";
+
+type Handlers = {
+  onSnapshot: (snapshot: GridSnapshot) => void;
+  onCellUpdate: (row: number, col: number, letter: string | null, version: number) => void;
+};
+
+const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000, 16000, 30000];
+
+export function usePuzzleSocket(puzzleId: string, handlers: Handlers) {
+  const [state, setState] = useState<ConnState>("connecting");
+  const socketRef = useRef<WebSocket | null>(null);
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
+
+  useEffect(() => {
+    let cancelled = false;
+    let attempt = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function connect() {
+      if (cancelled) return;
+      setState("connecting");
+      const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/puzzles/${puzzleId}/ws`;
+      const ws = new WebSocket(url);
+      socketRef.current = ws;
+
+      ws.addEventListener("open", () => {
+        if (cancelled) return;
+        attempt = 0;
+        setState("open");
+      });
+      ws.addEventListener("close", () => {
+        if (cancelled) return;
+        setState("closed");
+        const delay = RECONNECT_DELAYS_MS[Math.min(attempt, RECONNECT_DELAYS_MS.length - 1)]!;
+        attempt += 1;
+        retryTimer = setTimeout(connect, delay);
+      });
+      ws.addEventListener("error", () => {
+        // close handler will fire next; let it own the retry logic
+      });
+      ws.addEventListener("message", (e) => {
+        let msg: ServerMessage;
+        try {
+          msg = JSON.parse(typeof e.data === "string" ? e.data : "");
+        } catch {
+          return;
+        }
+        if (msg.type === "snapshot") handlersRef.current.onSnapshot(msg.snapshot);
+        else if (msg.type === "cellUpdate") {
+          handlersRef.current.onCellUpdate(msg.row, msg.col, msg.letter, msg.version);
+        }
+      });
+    }
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      socketRef.current?.close();
+      socketRef.current = null;
+    };
+  }, [puzzleId]);
+
+  function send(msg: ClientMessage): void {
+    const ws = socketRef.current;
+    if (ws && ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify(msg));
+    }
+  }
+
+  return { state, send };
+}

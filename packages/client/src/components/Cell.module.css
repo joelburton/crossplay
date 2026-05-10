@@ -1,0 +1,40 @@
+.cell {
+  position: relative;
+  width: var(--cell-size);
+  height: var(--cell-size);
+  background: #fff;
+  outline: 1px solid #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  cursor: pointer;
+}
+
+.block {
+  background: #000;
+  cursor: default;
+}
+
+.inWord {
+  background: #cfe5ff;
+}
+
+.cursor {
+  background: #ffd24d;
+}
+
+.number {
+  position: absolute;
+  top: 1px;
+  left: 2px;
+  font-size: 0.55rem;
+  line-height: 1;
+  color: #333;
+}
+
+.fill {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #111;
+}
