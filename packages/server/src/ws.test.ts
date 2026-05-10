@@ -201,6 +201,42 @@ describe("parseMessage clear", () => {
   });
 });
 
+describe("parseMessage showNotes", () => {
+  it("parses a showNotes message", () => {
+    expect(parseMessage(JSON.stringify({ type: "showNotes" }))).toEqual({
+      type: "showNotes",
+    });
+  });
+});
+
+describe("parseMessage senderColor", () => {
+  it("preserves valid senderColor on fill", () => {
+    const m = parseMessage(
+      JSON.stringify({ type: "fill", row: 0, col: 0, letter: "A", clientVersion: 0, senderColor: "#1f77b4" }),
+    );
+    expect(m).toMatchObject({ type: "fill", senderColor: "#1f77b4" });
+  });
+  it("drops bad senderColor on fill (without rejecting the message)", () => {
+    const m = parseMessage(
+      JSON.stringify({ type: "fill", row: 0, col: 0, letter: "A", clientVersion: 0, senderColor: "blue" }),
+    );
+    expect(m).toMatchObject({ type: "fill" });
+    expect(m).not.toHaveProperty("senderColor");
+  });
+  it("preserves senderColor on reveal", () => {
+    const m = parseMessage(
+      JSON.stringify({ type: "reveal", scope: "letter", row: 0, col: 0, senderColor: "#2ca02c" }),
+    );
+    expect(m).toMatchObject({ type: "reveal", senderColor: "#2ca02c" });
+  });
+  it("does not attach senderColor to check (irrelevant for that op)", () => {
+    const m = parseMessage(
+      JSON.stringify({ type: "check", scope: "letter", row: 0, col: 0, senderColor: "#2ca02c" }),
+    );
+    expect(m).not.toHaveProperty("senderColor");
+  });
+});
+
 describe("parseMessage chat", () => {
   const ok = { type: "chat", name: "Joel", color: "#1f77b4", text: "hi" };
   it("parses a valid chat", () => {

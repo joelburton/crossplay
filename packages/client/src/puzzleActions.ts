@@ -9,4 +9,5 @@ export type PuzzleActions = {
   checkLetter: () => void;
   checkWord: () => void;
   checkPuzzle: () => void;
+  showNotes: () => void;
 };

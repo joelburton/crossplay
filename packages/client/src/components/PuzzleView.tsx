@@ -22,6 +22,7 @@ import { ChatIndicator } from "./ChatIndicator";
 import { ChatPanel } from "./ChatPanel";
 import { ChatPreview } from "./ChatPreview";
 import { ClueList } from "./ClueList";
+import { NoteDialog } from "./NoteDialog";
 import styles from "./PuzzleView.module.css";
 
 export type ActiveClue = {
@@ -33,7 +34,6 @@ export type ActiveClue = {
 type Props = {
   puzzle: PuzzleState;
   actionsRef?: MutableRefObject<PuzzleActions | null>;
-  onShowNotes?: () => void;
   onActiveClueChange?: (clue: ActiveClue | null) => void;
 };
 
@@ -77,7 +77,7 @@ function replaceCell(
   return next;
 }
 
-export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange }: Props) {
+export function PuzzleView({ puzzle, actionsRef, onActiveClueChange }: Props) {
   const { meta } = puzzle;
   const [snapshot, setSnapshot] = useState<GridSnapshot>(puzzle.snapshot);
   const cells = snapshot.cells;
@@ -88,30 +88,67 @@ export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange
   });
 
   const [identity, setIdentity] = useState<ChatIdentity>(() => readChatIdentity());
+  const identityRef = useRef(identity);
+  identityRef.current = identity;
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatLine[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [unreadColor, setUnreadColor] = useState<string | null>(null);
   const [previewLine, setPreviewLine] = useState<ChatLine | null>(null);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [recentFills, setRecentFills] = useState<Map<string, string>>(new Map());
+  const recentTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const chatOpenRef = useRef(chatOpen);
   chatOpenRef.current = chatOpen;
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     return () => {
       if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+      for (const t of recentTimersRef.current.values()) clearTimeout(t);
+      recentTimersRef.current.clear();
     };
+  }, []);
+
+  const trackRecentFill = useCallback((row: number, col: number, color: string) => {
+    const key = `${row}:${col}`;
+    const existing = recentTimersRef.current.get(key);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      recentTimersRef.current.delete(key);
+      setRecentFills((prev) => {
+        const next = new Map(prev);
+        next.delete(key);
+        return next;
+      });
+    }, 3000);
+    recentTimersRef.current.set(key, timer);
+    setRecentFills((prev) => {
+      const next = new Map(prev);
+      next.set(key, color);
+      return next;
+    });
   }, []);
 
   const { state: connState, send } = usePuzzleSocket(meta.id, {
     onSnapshot: useCallback((snap: GridSnapshot) => {
       setSnapshot(snap);
     }, []),
-    onCellUpdate: useCallback((row, col, cell, version) => {
-      setSnapshot((prev) => {
-        if (version <= prev.version) return prev;
-        return { version, cells: replaceCell(prev.cells, row, col, cell) };
-      });
+    onCellUpdate: useCallback(
+      (row, col, cell, version, senderColor) => {
+        setSnapshot((prev) => {
+          if (version <= prev.version) return prev;
+          return { version, cells: replaceCell(prev.cells, row, col, cell) };
+        });
+        if (senderColor && senderColor !== identityRef.current.color) {
+          trackRecentFill(row, col, senderColor);
+        }
+      },
+      [trackRecentFill],
+    ),
+    onNotesShown: useCallback(() => {
+      setNotesOpen(true);
     }, []),
     onChatMessage: useCallback((line: ChatLine) => {
       setChatMessages((prev) => [...prev, line]);
@@ -185,14 +222,27 @@ export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange
     [cells],
   );
 
+  const triggerShowNotes = useCallback(() => {
+    if (!meta.note) return;
+    setNotesOpen(true);
+    send({ type: "showNotes" });
+  }, [meta.note, send]);
+
   useEffect(() => {
     if (!actionsRef) return;
+    const sc = identity.color;
     const sendMsg = (msg: ClientMessage) => send(msg);
     actionsRef.current = {
       meta,
       clearBoard: () => sendMsg({ type: "clear" }),
       revealLetter: () =>
-        sendMsg({ type: "reveal", scope: "letter", row: cursor.row, col: cursor.col }),
+        sendMsg({
+          type: "reveal",
+          scope: "letter",
+          row: cursor.row,
+          col: cursor.col,
+          senderColor: sc,
+        }),
       revealWord: () =>
         sendMsg({
           type: "reveal",
@@ -200,8 +250,9 @@ export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange
           row: cursor.row,
           col: cursor.col,
           dir: cursor.dir,
+          senderColor: sc,
         }),
-      revealPuzzle: () => sendMsg({ type: "reveal", scope: "puzzle" }),
+      revealPuzzle: () => sendMsg({ type: "reveal", scope: "puzzle", senderColor: sc }),
       checkLetter: () =>
         sendMsg({ type: "check", scope: "letter", row: cursor.row, col: cursor.col }),
       checkWord: () =>
@@ -213,6 +264,7 @@ export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange
           dir: cursor.dir,
         }),
       checkPuzzle: () => sendMsg({ type: "check", scope: "puzzle" }),
+      showNotes: triggerShowNotes,
     };
     return () => {
       if (actionsRef.current?.meta.id === meta.id) {
@@ -237,10 +289,23 @@ export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
 
-      // "/" opens the chat panel.
+      // Esc closes the chat from anywhere outside an input/textarea.
+      // (Inside the textarea, ChatPanel's own handler still does the same;
+      // inside the rename input, it just cancels the rename.)
+      if (chatOpenRef.current && e.key === "Escape") {
+        e.preventDefault();
+        closeChat();
+        return;
+      }
+
+      // "/" opens the chat (or focuses its input if already open).
       if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
-        openChat();
+        if (chatOpenRef.current) {
+          chatInputRef.current?.focus();
+        } else {
+          openChat();
+        }
         return;
       }
 
@@ -279,7 +344,7 @@ export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange
         }
         if (e.code === "KeyN") {
           e.preventDefault();
-          if (meta.note) onShowNotes?.();
+          triggerShowNotes();
           return;
         }
       }
@@ -302,7 +367,14 @@ export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange
           version: prev.version,
           cells: setCellFill(prev.cells, row, col, letter),
         }));
-        send({ type: "fill", row, col, letter, clientVersion: snapshot.version });
+        send({
+          type: "fill",
+          row,
+          col,
+          letter,
+          clientVersion: snapshot.version,
+          senderColor: identity.color,
+        });
         setCursor((cur) => advanceAfterFill(cells, cur));
         return;
       }
@@ -315,7 +387,14 @@ export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange
             version: prev.version,
             cells: setCellFill(prev.cells, row, col, null),
           }));
-          send({ type: "fill", row, col, letter: null, clientVersion: snapshot.version });
+          send({
+            type: "fill",
+            row,
+            col,
+            letter: null,
+            clientVersion: snapshot.version,
+            senderColor: identity.color,
+          });
         } else {
           const back = retreatForBackspace(cells, cursor);
           if (back.row !== cursor.row || back.col !== cursor.col) {
@@ -329,6 +408,7 @@ export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange
               col: back.col,
               letter: null,
               clientVersion: snapshot.version,
+              senderColor: identity.color,
             });
             setCursor(back);
           }
@@ -376,6 +456,7 @@ export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange
           cells={cells}
           cursor={cursor}
           highlighted={highlighted}
+          recentFills={recentFills}
           onCellClick={onCellClick}
         />
         <div className={styles.clues}>
@@ -411,6 +492,14 @@ export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange
           onSend={sendChat}
           onRename={renameMe}
           onClose={closeChat}
+          inputRef={chatInputRef}
+        />
+      )}
+      {notesOpen && meta.note && (
+        <NoteDialog
+          title={meta.title || "Notes"}
+          note={meta.note}
+          onClose={() => setNotesOpen(false)}
         />
       )}
     </div>

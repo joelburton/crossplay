@@ -111,16 +111,25 @@
   white-space: pre-wrap;
 }
 
+.text a {
+  color: #1a73e8;
+  text-decoration: underline;
+}
+
+.text a:hover {
+  color: #0b5cce;
+}
+
 .important {
   font-weight: 700;
 }
 
 .input {
   font: inherit;
-  font-size: 0.9rem;
+  font-size: 1.05rem;
   padding: 0.4rem 0.5rem;
   border: 0;
-  border-top: 1px solid #ddd;
+  border-top: 2px solid #555;
   resize: none;
   outline: none;
   border-bottom-left-radius: 8px;

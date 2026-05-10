@@ -1,13 +1,14 @@
-// Eight visually distinct colors that read clearly against a white background.
+// Eight high-saturation colors picked across the hue wheel so adjacent
+// players are easy to distinguish at a glance and stay legible on white.
 export const CHAT_PALETTE = [
-  "#d62728", // red
-  "#1f77b4", // blue
-  "#2ca02c", // green
-  "#ff7f0e", // orange
-  "#9467bd", // purple
-  "#8c564b", // brown
-  "#e377c2", // pink
-  "#17becf", // teal
+  "#ef4444", // red
+  "#f97316", // orange
+  "#ca8a04", // amber
+  "#22c55e", // green
+  "#06b6d4", // cyan
+  "#3b82f6", // blue
+  "#8b5cf6", // violet
+  "#ec4899", // pink
 ];
 
 export function colorForName(name: string): string {

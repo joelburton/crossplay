@@ -7,11 +7,10 @@ type Props = {
   actions: PuzzleActions | null;
   triggerRef?: RefObject<HTMLElement>;
   onUploadAnother: () => void;
-  onShowNotes: () => void;
   onClose: () => void;
 };
 
-export function Menu({ actions, triggerRef, onUploadAnother, onShowNotes, onClose }: Props) {
+export function Menu({ actions, triggerRef, onUploadAnother, onClose }: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -61,7 +60,7 @@ export function Menu({ actions, triggerRef, onUploadAnother, onShowNotes, onClos
         <button
           type="button"
           className={styles.item}
-          onClick={run(onShowNotes)}
+          onClick={run(actions.showNotes)}
           disabled={!actions.meta.note}
         >
           <span>Show notes</span>

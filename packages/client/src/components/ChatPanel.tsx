@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { MutableRefObject } from "react";
 import type { ChatIdentity } from "../chatIdentity";
 import { NAME_MAX } from "../chatIdentity";
 import type { ChatLine } from "../usePuzzleSocket";
@@ -10,19 +11,50 @@ type Props = {
   onSend: (text: string) => void;
   onRename: (newName: string) => void;
   onClose: () => void;
+  inputRef?: MutableRefObject<HTMLTextAreaElement | null>;
 };
 
-export function ChatPanel({ identity, messages, onSend, onRename, onClose }: Props) {
+const URL_RE = /https?:\/\/\S+/g;
+const TRAIL_RE = /[.,!?;:)\]}>]+$/;
+
+function linkify(text: string): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  let last = 0;
+  let key = 0;
+  for (const m of text.matchAll(URL_RE)) {
+    const start = m.index!;
+    if (start > last) parts.push(text.slice(last, start));
+    let url = m[0];
+    let trail = "";
+    const tm = url.match(TRAIL_RE);
+    if (tm) {
+      trail = tm[0];
+      url = url.slice(0, -trail.length);
+    }
+    parts.push(
+      <a key={key++} href={url} target="_blank" rel="noopener noreferrer">
+        {url}
+      </a>,
+    );
+    if (trail) parts.push(trail);
+    last = start + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts.length === 0 ? text : parts;
+}
+
+export function ChatPanel({ identity, messages, onSend, onRename, onClose, inputRef }: Props) {
   const [draft, setDraft] = useState("");
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(identity.name);
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const localInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const tref = inputRef ?? localInputRef;
   const nameInputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!editingName) inputRef.current?.focus();
-  }, [editingName]);
+    if (!editingName) tref.current?.focus();
+  }, [editingName, tref]);
 
   useEffect(() => {
     if (editingName) nameInputRef.current?.focus();
@@ -126,7 +158,7 @@ export function ChatPanel({ identity, messages, onSend, onRename, onClose }: Pro
                   {m.name}
                 </span>
                 <span className={`${styles.text} ${important ? styles.important : ""}`}>
-                  {body}
+                  {linkify(body)}
                 </span>
               </div>
             );
@@ -134,7 +166,7 @@ export function ChatPanel({ identity, messages, onSend, onRename, onClose }: Pro
         )}
       </div>
       <textarea
-        ref={inputRef}
+        ref={tref}
         className={styles.input}
         rows={2}
         value={draft}

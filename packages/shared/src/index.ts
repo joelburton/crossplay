@@ -47,6 +47,7 @@ export type ClientMessage =
       col: number;
       letter: string | null;
       clientVersion: number;
+      senderColor?: string;
     }
   | {
       type: "reveal";
@@ -54,6 +55,7 @@ export type ClientMessage =
       row?: number;
       col?: number;
       dir?: Direction;
+      senderColor?: string;
     }
   | {
       type: "check";
@@ -63,9 +65,18 @@ export type ClientMessage =
       dir?: Direction;
     }
   | { type: "clear" }
-  | { type: "chat"; name: string; color: string; text: string };
+  | { type: "chat"; name: string; color: string; text: string }
+  | { type: "showNotes" };
 
 export type ServerMessage =
   | { type: "snapshot"; snapshot: GridSnapshot }
-  | { type: "cellUpdate"; row: number; col: number; cell: Cell; version: number }
-  | { type: "chatMessage"; name: string; color: string; text: string; ts: number };
+  | {
+      type: "cellUpdate";
+      row: number;
+      col: number;
+      cell: Cell;
+      version: number;
+      senderColor?: string;
+    }
+  | { type: "chatMessage"; name: string; color: string; text: string; ts: number }
+  | { type: "notesShown" };

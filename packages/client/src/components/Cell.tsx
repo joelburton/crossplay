@@ -8,10 +8,11 @@ type Props = {
   col: number;
   isCursor: boolean;
   isInWord: boolean;
+  recentColor: string | null;
   onClick: (row: number, col: number) => void;
 };
 
-function CellImpl({ cell, row, col, isCursor, isInWord, onClick }: Props) {
+function CellImpl({ cell, row, col, isCursor, isInWord, recentColor, onClick }: Props) {
   if (cell.kind === "block") {
     return <div className={`${styles.cell} ${styles.block}`} />;
   }
@@ -26,7 +27,14 @@ function CellImpl({ cell, row, col, isCursor, isInWord, onClick }: Props) {
       ) : cell.revealed ? (
         <span className={`${styles.mark} ${styles.revealed}`} aria-label="revealed" />
       ) : null}
-      {cell.fill && <span className={styles.fill}>{cell.fill}</span>}
+      {cell.fill && (
+        <span
+          className={styles.fill}
+          style={recentColor ? { color: recentColor } : undefined}
+        >
+          {cell.fill}
+        </span>
+      )}
     </div>
   );
 }

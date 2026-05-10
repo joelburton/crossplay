@@ -48,16 +48,20 @@ export function parseMessage(raw: unknown): ClientMessage | null {
       typeof m.clientVersion !== "number"
     ) return null;
     if (m.letter !== null && typeof m.letter !== "string") return null;
+    const senderColor = isHexColor(m.senderColor) ? m.senderColor : undefined;
     return {
       type: "fill",
       row: m.row,
       col: m.col,
       letter: m.letter,
       clientVersion: m.clientVersion,
+      ...(senderColor ? { senderColor } : {}),
     };
   }
 
   if (m.type === "clear") return { type: "clear" };
+
+  if (m.type === "showNotes") return { type: "showNotes" };
 
   if (m.type === "chat") {
     if (
@@ -79,19 +83,27 @@ export function parseMessage(raw: unknown): ClientMessage | null {
       if (typeof m.row !== "number" || typeof m.col !== "number") return null;
       if (m.scope === "word" && !isDirection(m.dir)) return null;
     }
+    const senderColor = m.type === "reveal" && isHexColor(m.senderColor)
+      ? m.senderColor
+      : undefined;
     return {
       type: m.type,
       scope: m.scope,
       ...(typeof m.row === "number" ? { row: m.row } : {}),
       ...(typeof m.col === "number" ? { col: m.col } : {}),
       ...(isDirection(m.dir) ? { dir: m.dir } : {}),
+      ...(senderColor ? { senderColor } : {}),
     } as ClientMessage;
   }
 
   return null;
 }
 
-type CellChange = { row: number; col: number; cell: Cell };
+function isHexColor(v: unknown): v is string {
+  return typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v);
+}
+
+type CellChange = { row: number; col: number; cell: Cell; senderColor?: string };
 
 function isOpen(entry: StoredPuzzle, r: number, c: number): boolean {
   const { meta, snapshot } = entry.state;
@@ -152,7 +164,12 @@ export function applyFill(
   cell.fill = letter;
   delete cell.wrong;
   snapshot.version += 1;
-  return { row: msg.row, col: msg.col, cell };
+  return {
+    row: msg.row,
+    col: msg.col,
+    cell,
+    ...(msg.senderColor ? { senderColor: msg.senderColor } : {}),
+  };
 }
 
 function revealAt(entry: StoredPuzzle, row: number, col: number): CellChange | null {
@@ -214,6 +231,7 @@ export function applyReveal(
     const change = revealAt(entry, row, col);
     if (change) {
       entry.state.snapshot.version += 1;
+      if (msg.senderColor) change.senderColor = msg.senderColor;
       changes.push(change);
     }
   }
@@ -259,9 +277,16 @@ function broadcastChanges(entry: StoredPuzzle, changes: CellChange[]): void {
   // so the i-th change's version is (final - changes.length + 1 + i).
   const final = entry.state.snapshot.version;
   for (let i = 0; i < changes.length; i++) {
-    const { row, col, cell } = changes[i]!;
+    const { row, col, cell, senderColor } = changes[i]!;
     const version = final - changes.length + 1 + i;
-    broadcast(entry, { type: "cellUpdate", row, col, cell, version });
+    broadcast(entry, {
+      type: "cellUpdate",
+      row,
+      col,
+      cell,
+      version,
+      ...(senderColor ? { senderColor } : {}),
+    });
   }
 }
 
@@ -329,6 +354,10 @@ export function registerWsRoutes(app: FastifyInstance): void {
             text: msg.text,
             ts: Date.now(),
           });
+          return;
+        }
+        if (msg.type === "showNotes") {
+          broadcast(entry, { type: "notesShown" });
           return;
         }
       });

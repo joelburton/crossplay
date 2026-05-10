@@ -29,6 +29,15 @@
   min-height: 0;
 }
 
+@media (max-width: 1023px) {
+  .layout {
+    grid-template-columns: auto;
+  }
+  .clues {
+    display: none;
+  }
+}
+
 .clues > section:first-child {
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;

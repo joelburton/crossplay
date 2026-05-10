@@ -4,7 +4,6 @@ import { HttpError, fetchPuzzle } from "./api";
 import { navigate, puzzlePath, useRoute } from "./routing";
 import type { PuzzleActions } from "./puzzleActions";
 import { Menu } from "./components/Menu";
-import { NoteDialog } from "./components/NoteDialog";
 import { UploadForm } from "./components/UploadForm";
 import { PuzzleView, type ActiveClue } from "./components/PuzzleView";
 import styles from "./App.module.css";
@@ -19,10 +18,8 @@ export function App() {
   const route = useRoute();
   const [load, setLoad] = useState<LoadState>({ kind: "idle" });
   const [menuOpen, setMenuOpen] = useState(false);
-  const [notesOpen, setNotesOpen] = useState(false);
   const [activeClue, setActiveClue] = useState<ActiveClue | null>(null);
   const onActiveClueChange = useCallback((c: ActiveClue | null) => setActiveClue(c), []);
-  const onShowNotes = useCallback(() => setNotesOpen(true), []);
   const triedDev = useRef(false);
   const actionsRef = useRef<PuzzleActions | null>(null);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
@@ -73,10 +70,9 @@ export function App() {
     };
   }, [route]);
 
-  // close menu / notes / clear active clue when puzzle changes
+  // close menu / clear active clue when puzzle changes
   useEffect(() => {
     setMenuOpen(false);
-    setNotesOpen(false);
     setActiveClue(null);
   }, [load.kind === "loaded" ? load.puzzle.meta.id : null]);
 
@@ -108,7 +104,6 @@ export function App() {
               actions={actionsRef.current}
               triggerRef={titleRef}
               onUploadAnother={onUploadAnother}
-              onShowNotes={onShowNotes}
               onClose={() => setMenuOpen(false)}
             />
           )}
@@ -135,19 +130,11 @@ export function App() {
           <PuzzleView
             puzzle={load.puzzle}
             actionsRef={actionsRef}
-            onShowNotes={onShowNotes}
             onActiveClueChange={onActiveClueChange}
           />
         )}
         {load.kind === "idle" && <UploadForm onUploaded={onUploaded} />}
       </main>
-      {notesOpen && load.kind === "loaded" && load.puzzle.meta.note && (
-        <NoteDialog
-          title={load.puzzle.meta.title || "Notes"}
-          note={load.puzzle.meta.note}
-          onClose={() => setNotesOpen(false)}
-        />
-      )}
     </div>
   );
 }

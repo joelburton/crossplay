@@ -12,8 +12,15 @@ export type ChatLine = {
 
 type Handlers = {
   onSnapshot: (snapshot: GridSnapshot) => void;
-  onCellUpdate: (row: number, col: number, cell: Cell, version: number) => void;
+  onCellUpdate: (
+    row: number,
+    col: number,
+    cell: Cell,
+    version: number,
+    senderColor: string | undefined,
+  ) => void;
   onChatMessage?: (line: ChatLine) => void;
+  onNotesShown?: () => void;
 };
 
 const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000, 16000, 30000];
@@ -60,7 +67,13 @@ export function usePuzzleSocket(puzzleId: string, handlers: Handlers) {
         }
         if (msg.type === "snapshot") handlersRef.current.onSnapshot(msg.snapshot);
         else if (msg.type === "cellUpdate") {
-          handlersRef.current.onCellUpdate(msg.row, msg.col, msg.cell, msg.version);
+          handlersRef.current.onCellUpdate(
+            msg.row,
+            msg.col,
+            msg.cell,
+            msg.version,
+            msg.senderColor,
+          );
         } else if (msg.type === "chatMessage") {
           handlersRef.current.onChatMessage?.({
             name: msg.name,
@@ -68,6 +81,8 @@ export function usePuzzleSocket(puzzleId: string, handlers: Handlers) {
             text: msg.text,
             ts: msg.ts,
           });
+        } else if (msg.type === "notesShown") {
+          handlersRef.current.onNotesShown?.();
         }
       });
     }

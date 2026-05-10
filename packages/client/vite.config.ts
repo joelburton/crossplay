@@ -9,6 +9,9 @@ export default defineConfig({
   server: {
     port: clientPort,
     strictPort: true,
+    // Localhost is always allowed; this lets Cloudflare quick-tunnels
+    // (e.g. https://*.trycloudflare.com) reach the dev server too.
+    allowedHosts: [".trycloudflare.com"],
     headers: {
       "Cache-Control": "no-store",
     },
