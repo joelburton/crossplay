@@ -25,8 +25,11 @@ digraph CrossplayComponents {
   ];
   edge [color="#666", arrowsize=0.7];
 
-  // Top-level shell + always-visible chrome
+  // Top-level shell
   App           [fillcolor="#e3eefc"];
+
+  // Board-page chrome (only mounted when a puzzle is loaded — the home
+  // route uses a separate hero header inside HomePage instead)
   SiteIcon      [fillcolor="#f6f6f6"];
   Menu          [fillcolor="#f6f6f6"];
   ModeButton    [fillcolor="#f6f6f6"];
@@ -46,17 +49,21 @@ digraph CrossplayComponents {
   ChatPanel     [fillcolor="#fde0e0"];
   NoteDialog    [fillcolor="#ecdcfb"];
 
-  // App always renders these
-  App -> SiteIcon;
-  App -> Menu;
-  App -> ModeButton;
-  App -> FeedbackBar;
+  // App's header chrome is only rendered on the board route (the
+  // home route has its own hero inside HomePage)
+  App -> SiteIcon    [style=dashed, label="board route"];
+  App -> Menu        [style=dashed, label="board route"];
+  App -> ModeButton  [style=dashed, label="board route"];
+  App -> FeedbackBar [style=dashed, label="board route"];
 
   // Route / load-state branches
-  App -> HomePage   [style=dashed, label="idle"];
-  App -> UploadForm [style=dashed, label="upload state"];
+  App -> HomePage   [style=dashed, label="home route"];
+  App -> UploadForm [style=dashed, label="load error"];
   App -> PuzzleView [style=dashed, label="puzzle loaded"];
 
+  // HomePage owns its own header chrome (centered hero) plus the
+  // upload form section
+  HomePage -> SiteIcon   [label="hero"];
   HomePage -> UploadForm;
 
   // PuzzleView's render tree

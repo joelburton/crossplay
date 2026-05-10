@@ -9,6 +9,33 @@
   padding: 0.5rem 0;
 }
 
+/* Hero header for the home page. Centered, intentionally larger than
+ * the small top-left title used on the board route — the board page
+ * needs the header to stay out of the way; the home page is a landing
+ * page where the wordmark gets to breathe. */
+.hero {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 1rem 0 1.2rem;
+}
+
+.heroIcon {
+  width: 3rem;
+  height: 3rem;
+}
+
+.heroTitle {
+  margin: 0;
+  font-size: 2.6rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #111;
+  letter-spacing: -0.01em;
+}
+
 .wrap {
   display: flex;
   gap: 1.5rem;
@@ -74,6 +101,23 @@
   flex-shrink: 0;
 }
 
+.filter {
+  flex-shrink: 0;
+  padding: 0.35rem 0.6rem;
+  font: inherit;
+  font-size: 0.9rem;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  background: #fff;
+  color: #111;
+}
+
+.filter:focus {
+  outline: none;
+  border-color: #88a;
+  box-shadow: 0 0 0 2px #c9d4ff;
+}
+
 .games {
   list-style: none;
   margin: 0;
@@ -128,10 +172,27 @@
   color: #888;
 }
 
-.gameCopyright {
-  font-size: 0.78rem;
-  color: #888;
+/* Last meta line on a Your-games entry: "<friendly date> • <NEW | N%>".
+ * Italicized + a small gap above to separate it from the static
+ * title/author/copyright block. */
+.gameStatus {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+  font-size: 0.82rem;
   font-style: italic;
+  color: #777;
+  font-variant-numeric: tabular-nums;
+}
+
+.statusBullet {
+  color: #bbb;
+}
+
+.gameCopyright {
+  font-size: 0.85rem;
+  color: #666;
   /* Truncate so very long copyright strings don't force the row taller. */
   white-space: nowrap;
   overflow: hidden;

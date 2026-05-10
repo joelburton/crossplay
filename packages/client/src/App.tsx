@@ -123,18 +123,33 @@ export function App() {
     };
   }, [route]);
 
-  // close menu / clear active clue / reset mode when puzzle changes
-  // Also: show the welcome feedback every time a puzzle loads.
+  // close menu / clear active clue / reset mode when puzzle changes.
+  // Show the welcome feedback once per browser (localStorage flag);
+  // returning users have learned where the menu is. When real users
+  // exist, this should move from per-browser to per-user.
   useEffect(() => {
     setMenuOpen(false);
     setActiveClue(null);
     setMode("pen");
     if (load.kind === "loaded") {
-      showFeedback({
-        id: `welcome-${load.puzzle.meta.id}`,
-        text: "Welcome! Click the heart for a menu.",
-        level: "info",
-      });
+      let seen = false;
+      try {
+        seen = window.localStorage.getItem("seenWelcome") === "1";
+      } catch {
+        // ignore: privacy-mode storage just means we re-show
+      }
+      if (!seen) {
+        showFeedback({
+          id: `welcome-${load.puzzle.meta.id}`,
+          text: "Welcome! Click the heart for a menu.",
+          level: "info",
+        });
+        try {
+          window.localStorage.setItem("seenWelcome", "1");
+        } catch {
+          // ignore: read-only storage just means we'll show it again next load
+        }
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load.kind === "loaded" ? load.puzzle.meta.id : null]);
@@ -150,42 +165,49 @@ export function App() {
     navigate("/");
   }
 
+  // Home page (`load.kind === "idle"`) gets its own hero header inside
+  // HomePage — no shared top bar, no menu, no welcome feedback there.
+  // The board route keeps the small top-left title + menu + feedback slot.
+  const showHeader = load.kind !== "idle";
+
   return (
     <div className={styles.app}>
-      <header className={styles.header}>
-        <div className={styles.titleWrap}>
-          <h1
-            ref={titleRef}
-            className={styles.title}
-            onClick={() => setMenuOpen((o) => !o)}
-          >
-            <SiteIcon className={styles.icon} />
-            <span className={styles.titleText}>Crossplay</span>
-          </h1>
-          {menuOpen && (
-            <Menu
-              actions={actionsRef.current}
-              triggerRef={titleRef}
-              onNewGame={onNewGame}
-              onClose={() => setMenuOpen(false)}
-            />
-          )}
-        </div>
-        {load.kind === "loaded" && <ModeButton mode={mode} onToggle={onToggleMode} />}
-        <div className={styles.headerSlot}>
-          {feedback ? (
-            <FeedbackBar feedback={feedback} onDismiss={dismissFeedback} />
-          ) : activeClue ? (
-            <div className={styles.activeClue}>
-              <span className={styles.activeClueLabel}>
-                {activeClue.number}
-                {activeClue.direction === "across" ? "A" : "D"}
-              </span>
-              <span className={styles.activeClueText}>{activeClue.text}</span>
-            </div>
-          ) : null}
-        </div>
-      </header>
+      {showHeader && (
+        <header className={styles.header}>
+          <div className={styles.titleWrap}>
+            <h1
+              ref={titleRef}
+              className={styles.title}
+              onClick={() => setMenuOpen((o) => !o)}
+            >
+              <SiteIcon className={styles.icon} />
+              <span className={styles.titleText}>Crossplay</span>
+            </h1>
+            {menuOpen && (
+              <Menu
+                actions={actionsRef.current}
+                triggerRef={titleRef}
+                onNewGame={onNewGame}
+                onClose={() => setMenuOpen(false)}
+              />
+            )}
+          </div>
+          {load.kind === "loaded" && <ModeButton mode={mode} onToggle={onToggleMode} />}
+          <div className={styles.headerSlot}>
+            {feedback ? (
+              <FeedbackBar feedback={feedback} onDismiss={dismissFeedback} />
+            ) : activeClue ? (
+              <div className={styles.activeClue}>
+                <span className={styles.activeClueLabel}>
+                  {activeClue.number}
+                  {activeClue.direction === "across" ? "A" : "D"}
+                </span>
+                <span className={styles.activeClueText}>{activeClue.text}</span>
+              </div>
+            ) : null}
+          </div>
+        </header>
+      )}
       <main className={styles.main}>
         {load.kind === "loading" && <p>Loading…</p>}
         {load.kind === "error" && (

@@ -8,12 +8,36 @@ import {
   fetchPuzzles,
 } from "../api";
 import { boardPath, navigate } from "../routing";
+import { formatRelative } from "../relativeTime";
+import { SiteIcon } from "./SiteIcon";
 import { UploadForm } from "./UploadForm";
 import styles from "./HomePage.module.css";
 
 type Props = {
   onUploaded: (boardId: string) => void;
 };
+
+function formatFillPercent(pct: number | null): string {
+  if (pct === null) return "NEW";
+  return `${pct}%`;
+}
+
+/** Case-insensitive substring match against title + author + copyright.
+ *  Copyright is in the haystack so a player can type "times" to find
+ *  every NYT puzzle, etc. Both lists share the predicate so they feel
+ *  consistent. */
+function matchesQuery(
+  item: { title: string; author: string; copyright: string },
+  q: string,
+): boolean {
+  if (!q) return true;
+  const needle = q.toLowerCase();
+  return (
+    item.title.toLowerCase().includes(needle) ||
+    item.author.toLowerCase().includes(needle) ||
+    item.copyright.toLowerCase().includes(needle)
+  );
+}
 
 /**
  * Landing page when no board is open. Three sections:
@@ -41,6 +65,11 @@ export function HomePage({ onUploaded }: Props) {
   // can't click it and navigate to a board that's about to vanish.
   const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set());
   const confirmButtonRef = useRef<HTMLButtonElement | null>(null);
+  // Pure client-side filters — at the expected library size (~hundreds)
+  // a substring match per keystroke is free. Server-side filtering
+  // would cost a request round-trip + debouncing for no benefit.
+  const [puzzleFilter, setPuzzleFilter] = useState("");
+  const [boardFilter, setBoardFilter] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -117,94 +146,143 @@ export function HomePage({ onUploaded }: Props) {
 
   return (
     <div className={styles.outer}>
+      <div className={styles.hero}>
+        <SiteIcon className={styles.heroIcon} />
+        <h1 className={styles.heroTitle}>Crossplay</h1>
+      </div>
       {loadError && <div className={styles.loadError}>{loadError}</div>}
       <div className={styles.wrap}>
-        {puzzles && puzzles.length > 0 && (
-          <section className={`${styles.section} ${styles.listSection}`}>
-            <h2 className={styles.heading}>Community puzzles</h2>
-            <ul className={styles.games}>
-              {puzzles.map((p) => (
-                <li key={p.id}>
-                  <button
-                    type="button"
-                    className={styles.game}
-                    onClick={() => {
-                      // Find-or-create the board for this puzzle, then go play it.
-                      // Failures fall through silently — the user can click again.
-                      void createBoard(p.id).then(({ boardId }) => navigate(boardPath(boardId)));
-                    }}
-                  >
-                    <span className={styles.gameTitle}>{p.title || "Untitled"}</span>
-                    <span className={styles.gameMeta}>
-                      {p.author && <span>by {p.author}</span>}
-                      <span className={styles.gameSize}>
-                        {p.width}×{p.height}
-                      </span>
-                    </span>
-                    {p.copyright && (
-                      <span className={styles.gameCopyright}>{p.copyright}</span>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
+        {puzzles && puzzles.length > 0 && (() => {
+          const filtered = puzzles.filter((p) => matchesQuery(p, puzzleFilter));
+          return (
+            <section className={`${styles.section} ${styles.listSection}`}>
+              <h2 className={styles.heading}>Community puzzles</h2>
+              <input
+                type="search"
+                className={styles.filter}
+                placeholder="Filter puzzles…"
+                value={puzzleFilter}
+                onChange={(e) => setPuzzleFilter(e.target.value)}
+                aria-label="Filter community puzzles"
+              />
+              {filtered.length > 0 ? (
+                <ul className={styles.games}>
+                  {filtered.map((p) => (
+                    <li key={p.id}>
+                      <button
+                        type="button"
+                        className={styles.game}
+                        onClick={() => {
+                          // Find-or-create the board for this puzzle, then go play it.
+                          // Failures fall through silently — the user can click again.
+                          void createBoard(p.id).then(({ boardId }) => navigate(boardPath(boardId)));
+                        }}
+                      >
+                        <span className={styles.gameTitle}>{p.title || "Untitled"}</span>
+                        <span className={styles.gameMeta}>
+                          {p.author && <span>by {p.author}</span>}
+                          <span className={styles.gameSize}>
+                            {p.width}×{p.height}
+                          </span>
+                        </span>
+                        {p.copyright && (
+                          <span className={styles.gameCopyright}>{p.copyright}</span>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className={styles.empty}>No puzzles match that filter.</p>
+              )}
+            </section>
+          );
+        })()}
         <section className={`${styles.section} ${styles.listSection}`}>
           <h2 className={styles.heading}>Your games</h2>
           {(() => {
             // Hide rows whose DELETE is in flight so the user can't
             // click them mid-flight and navigate to a vanishing board.
             const visible = boards?.filter((b) => !deletingIds.has(b.id)) ?? null;
-            return visible && visible.length > 0 ? (
-            <ul className={styles.games}>
-              {visible.map((b) => {
-                const isConfirming = confirmDeleteId === b.id;
-                return (
-                  <li key={b.id} className={styles.boardRow}>
-                    <button
-                      type="button"
-                      className={styles.game}
-                      onClick={() => navigate(boardPath(b.id))}
-                    >
-                      <span className={styles.gameTitle}>{b.title || "Untitled"}</span>
-                      <span className={styles.gameMeta}>
-                        {b.author && <span>by {b.author}</span>}
-                      </span>
-                      {b.copyright && (
-                        <span className={styles.gameCopyright}>{b.copyright}</span>
-                      )}
-                    </button>
-                    {isConfirming ? (
-                      <button
-                        ref={confirmButtonRef}
-                        type="button"
-                        className={styles.deleteConfirm}
-                        onClick={() => void onConfirmDelete(b.id)}
-                        aria-label={`Confirm delete ${b.title || "board"}`}
-                      >
-                        Delete?
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className={styles.deleteIcon}
-                        onClick={() => setConfirmDeleteId(b.id)}
-                        aria-label={`Delete ${b.title || "board"}`}
-                        title="Delete this game"
-                      >
-                        ×
-                      </button>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <p className={styles.empty}>
-              No games yet. Click a puzzle to start one.
-            </p>
-          );
+            const hasAny = visible !== null && visible.length > 0;
+            const filtered = hasAny
+              ? visible!.filter((b) => matchesQuery(b, boardFilter))
+              : [];
+            return (
+              <>
+                {/* Filter input only when there's something to filter — an
+                    empty list with a filter input above its empty-state
+                    copy reads as broken. */}
+                {hasAny && (
+                  <input
+                    type="search"
+                    className={styles.filter}
+                    placeholder="Filter your games…"
+                    value={boardFilter}
+                    onChange={(e) => setBoardFilter(e.target.value)}
+                    aria-label="Filter your games"
+                  />
+                )}
+                {!hasAny ? (
+                  <p className={styles.empty}>
+                    No games yet. Click a puzzle to start one.
+                  </p>
+                ) : filtered.length === 0 ? (
+                  <p className={styles.empty}>No games match that filter.</p>
+                ) : (
+                  <ul className={styles.games}>
+                    {filtered.map((b) => {
+                      const isConfirming = confirmDeleteId === b.id;
+                      return (
+                        <li key={b.id} className={styles.boardRow}>
+                          <button
+                            type="button"
+                            className={styles.game}
+                            onClick={() => navigate(boardPath(b.id))}
+                          >
+                            <span className={styles.gameTitle}>{b.title || "Untitled"}</span>
+                            <span className={styles.gameMeta}>
+                              {b.author && <span>by {b.author}</span>}
+                            </span>
+                            {b.copyright && (
+                              <span className={styles.gameCopyright}>{b.copyright}</span>
+                            )}
+                            <span className={styles.gameStatus}>
+                              <span>{formatRelative(b.updatedAt)}</span>
+                              <span className={styles.statusBullet} aria-hidden="true">
+                                •
+                              </span>
+                              <span>{formatFillPercent(b.fillPercent)}</span>
+                            </span>
+                          </button>
+                          {isConfirming ? (
+                            <button
+                              ref={confirmButtonRef}
+                              type="button"
+                              className={styles.deleteConfirm}
+                              onClick={() => void onConfirmDelete(b.id)}
+                              aria-label={`Confirm delete ${b.title || "board"}`}
+                            >
+                              Delete?
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className={styles.deleteIcon}
+                              onClick={() => setConfirmDeleteId(b.id)}
+                              aria-label={`Delete ${b.title || "board"}`}
+                              title="Delete this game"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </>
+            );
           })()}
         </section>
         <section className={`${styles.section} ${styles.uploadSection}`}>

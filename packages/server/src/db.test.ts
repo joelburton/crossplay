@@ -88,8 +88,12 @@ describe("db", () => {
       ["author", "copyright", "created_at", "height", "id", "ipuz", "title", "updated_at", "width"],
     );
     expect(boardsCols.map((c) => c.name).sort()).toEqual(
-      ["author", "chat", "copyright", "created_at", "id", "ipuz", "puzzle_id", "snapshot", "title", "updated_at"],
+      ["author", "chat", "copyright", "created_at", "fill_percent", "id", "ipuz", "puzzle_id", "snapshot", "title", "updated_at"],
     );
+    // fill_percent is nullable: no NOT NULL constraint, no default — a
+    // freshly inserted board is "NEW" until the first flushBoard.
+    expect(boardsCols.find((c) => c.name === "fill_percent")!.notnull).toBe(0);
+    expect(boardsCols.find((c) => c.name === "fill_percent")!.dflt_value).toBeNull();
 
     // Spot-check defaults & PK.
     expect(puzzlesCols.find((c) => c.name === "id")!.pk).toBe(1);
@@ -106,6 +110,85 @@ describe("db", () => {
     expect(indexNames).toContain("boards_updated_at");
 
     db.close();
+  });
+
+  it("v3 backfill: populates fill_percent on existing boards by comparing initial vs live snapshot", async () => {
+    // Capture the real v3 before we swap the migration list.
+    const realV3 = migrations.find((m) => m.version === 3);
+    expect(realV3).toBeDefined();
+    const upToV2 = migrations.filter((m) => m.version <= 2);
+
+    // Lazy-import to avoid a cycle at module load (the test only needs
+    // these for the fixture import; the real code paths don't touch
+    // them directly in this test).
+    const { importPuzzle } = await import("./importer.js");
+    const { findOrCreateBoard } = await import("./boards.js");
+    const { parseIpuzBuffer } = await import("./ipuz.js");
+    const { dirname, resolve } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const FIXTURE = resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "fixtures",
+      "sunday-sample.puz",
+    );
+
+    withMigrations(upToV2, () => {
+      const db = openDb(":memory:");
+      expect(userVersion(db)).toBe(2);
+
+      // Stand up two boards in the v2 schema (no fill_percent column).
+      importPuzzle({ db, path: FIXTURE, force: false });
+      const { boardId: untouchedId } = findOrCreateBoard(db, "sunday-sample");
+
+      // Second board: clone the row with a different id and a mutated snapshot.
+      const row = db
+        .prepare("SELECT ipuz, snapshot FROM boards WHERE id = ?")
+        .get(untouchedId) as { ipuz: string; snapshot: string };
+      const parsed = parseIpuzBuffer("sunday-sample", Buffer.from(row.ipuz, "utf8"));
+      const live = JSON.parse(row.snapshot) as { version: number; cells: Array<Array<{ kind: string; fill?: string | null }>> };
+      // Mutate exactly one fillable cell so the snapshot differs from initial.
+      outer: for (const r of live.cells) {
+        for (const c of r) {
+          if (c.kind === "cell") {
+            c.fill = "Z";
+            break outer;
+          }
+        }
+      }
+      const touchedId = "touched-board";
+      const now = new Date().toISOString();
+      db.prepare(
+        "INSERT INTO boards (id, puzzle_id, ipuz, title, author, copyright, snapshot, chat, created_at, updated_at) VALUES (?, NULL, ?, 'T', '', '', ?, '[]', ?, ?)",
+      ).run(touchedId, row.ipuz, JSON.stringify(live), now, now);
+
+      // Sanity: column doesn't exist yet.
+      const v2Cols = db.prepare("PRAGMA table_info(boards)").all() as Array<{ name: string }>;
+      expect(v2Cols.find((c) => c.name === "fill_percent")).toBeUndefined();
+
+      // Run v3 by hand against the same db.
+      db.exec("BEGIN");
+      realV3!.up(db);
+      db.exec("PRAGMA user_version = 3");
+      db.exec("COMMIT");
+
+      // Untouched board: live == initial, so fill_percent stays NULL (NEW).
+      const untouched = db
+        .prepare("SELECT fill_percent FROM boards WHERE id = ?")
+        .get(untouchedId) as { fill_percent: number | null };
+      expect(untouched.fill_percent).toBeNull();
+
+      // Touched board: one cell filled out of all fillable cells.
+      const touched = db
+        .prepare("SELECT fill_percent FROM boards WHERE id = ?")
+        .get(touchedId) as { fill_percent: number | null };
+      const totalFillable = parsed.state.snapshot.cells
+        .flat()
+        .filter((c) => c.kind === "cell").length;
+      expect(touched.fill_percent).toBe(Math.floor((1 / totalFillable) * 100));
+
+      db.close();
+    });
   });
 
   it("rolls back a failing migration and leaves user_version untouched", () => {

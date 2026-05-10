@@ -122,6 +122,16 @@ describe("listBoards", () => {
     db.close();
   });
 
+  it("exposes fillPercent (NULL for freshly stamped boards → NEW on the home page)", () => {
+    const db = freshDb();
+    importPuzzle({ db, path: SUNDAY_PUZ, force: false });
+    findOrCreateBoard(db, "sunday-sample");
+    const list = listBoards(db);
+    expect(list).toHaveLength(1);
+    expect(list[0]!.fillPercent).toBeNull();
+    db.close();
+  });
+
   it("includes ad-hoc boards (puzzleId IS NULL) in the list", () => {
     const db = freshDb();
     // Simulate an upload-as-board insert: no puzzle row, NULL puzzle_id.

@@ -15,7 +15,9 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { GridSnapshot } from "@crossplay/shared";
 import { parseIpuzBuffer } from "./ipuz.js";
+import { computeFillPercent } from "./fillPercent.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_DB_PATH = resolve(here, "..", "data", "crossplay.db");
@@ -94,6 +96,34 @@ export const migrations: Migration[] = [
           } catch {
             // skip unparseable row
           }
+        }
+      }
+    },
+  },
+  {
+    // Denormalize a per-board "percent filled" so the home page list can
+    // render NEW / N% / 100% without parsing each board's ipuz +
+    // snapshot. NULL means "no player fills yet" (rendered as NEW); an
+    // integer 0–100 means the live snapshot differs from the initial
+    // one. The column is kept up to date by `flushBoard` — see store.ts.
+    // This backfill is best-effort: unparseable rows are skipped and
+    // stay at NULL (effectively "NEW"), which is fine since they're
+    // already broken in other ways.
+    version: 3,
+    up: (db) => {
+      db.exec(`ALTER TABLE boards ADD COLUMN fill_percent INTEGER`);
+      const rows = db
+        .prepare("SELECT id, ipuz, snapshot FROM boards")
+        .all() as Array<{ id: string; ipuz: string; snapshot: string }>;
+      const upd = db.prepare("UPDATE boards SET fill_percent = ? WHERE id = ?");
+      for (const row of rows) {
+        try {
+          const parsed = parseIpuzBuffer(row.id, Buffer.from(row.ipuz, "utf8"));
+          const live = JSON.parse(row.snapshot) as GridSnapshot;
+          const pct = computeFillPercent(parsed.state.snapshot, live);
+          if (pct !== null) upd.run(pct, row.id);
+        } catch {
+          // skip unparseable row
         }
       }
     },

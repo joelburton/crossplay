@@ -84,6 +84,9 @@ export type BoardSummary = {
   author: string;
   copyright: string;
   updatedAt: string;
+  /** Null when the board has no player fills (rendered as "NEW");
+   *  otherwise an integer 0–100. */
+  fillPercent: number | null;
 };
 
 /** Fetch the in-progress boards (any user can resume any board). */

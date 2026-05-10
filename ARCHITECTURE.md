@@ -54,8 +54,8 @@ There's no protocol versioning, no schema negotiation, no acks beyond the cell-u
 
 The server uses Node's built-in `node:sqlite` (synchronous, ships with Node 22.5+, stable in 24+). Two tables, no FK between them:
 
-- `puzzles` — id, ipuz blob, denormalized title/author/width/height, timestamps. Curated by the operator via CLI.
-- `boards` — id, nullable puzzle_id, ipuz blob (a copy at stamp time), denormalized title/author, JSON snapshot, JSON chat, timestamps.
+- `puzzles` — id, ipuz blob, denormalized title/author/copyright/width/height, timestamps. Curated by the operator via CLI.
+- `boards` — id, nullable puzzle_id, ipuz blob (a copy at stamp time), denormalized title/author/copyright, JSON snapshot, JSON chat, timestamps, plus a nullable `fill_percent` updated on flush so the home page can show NEW / N% / 100% without re-parsing the board.
 
 Migrations are tracked via SQLite's built-in `PRAGMA user_version` — `db.ts` walks an append-only `migrations[]` array, runs anything past the current version inside its own transaction, and bumps the version. No migrations table.
 
@@ -84,6 +84,9 @@ Source: [`docs/components.dot`](docs/components.dot) (regenerate with `dot -Tpng
 - **Layout is a `height: 100vh` flex chain with `min-height: 0` on every flex item that should be allowed to shrink.** Removing those `min-height: 0`s breaks the layout in subtle ways; they're load-bearing.
 - **The two big floating panels (chat and notes) use `react-rnd`** for drag and resize, with their position/size persisted to `localStorage` per panel. The Rect/load/save/clamp logic and the shared card/header/drag-handle CSS live in one place (`draggablePanel.ts` + `Panel.module.css`); each panel composes those bones and overrides the bits that differ.
 - **Modifier keys bypass the keyboard handler.** `Cmd-L` focuses the address bar like usual; we don't try to capture browser shortcuts. `Option`/`Alt` + a letter is the namespace we use for in-app shortcuts (`⌥R` reveal, `⌥C` check, `⌥N` notes, `⌥P` toggle pen/pencil).
+- **Home page and board page have separate headers.** The shared top bar (small icon, title-with-menu, feedback slot) only renders on `/b/:id`. The home page (`/`) draws its own centered hero (large icon + wordmark) and intentionally has no menu — landing pages and play views have different needs and they no longer share a component.
+- **Welcome feedback is once-per-browser.** The "Click the heart for a menu" hint fires on first board-load only, gated on a `seenWelcome` localStorage flag. When user accounts land, this should move from per-browser to per-user.
+- **Home-page list filters are pure client-side.** Both lists do a case-insensitive substring match across title + author + copyright (so e.g. "times" finds NYT puzzles via the copyright field). The library is expected to stay in the hundreds; server-side filtering would buy nothing.
 
 ## What's deliberately out of scope
 

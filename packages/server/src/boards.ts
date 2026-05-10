@@ -124,6 +124,9 @@ export type BoardSummary = {
   author: string;
   copyright: string;
   updatedAt: string;
+  /** Null when the board is untouched (rendered as "NEW" on the home
+   *  page); otherwise an integer 0–100. Kept up to date by `flushBoard`. */
+  fillPercent: number | null;
 };
 
 /** Hard-delete a board row. Returns whether a row was removed so the
@@ -137,7 +140,7 @@ export function deleteBoard(db: DatabaseSync, boardId: string): { existed: boole
 export function listBoards(db: DatabaseSync): BoardSummary[] {
   const rows = db
     .prepare(
-      "SELECT id, puzzle_id, title, author, copyright, updated_at FROM boards ORDER BY updated_at DESC",
+      "SELECT id, puzzle_id, title, author, copyright, updated_at, fill_percent FROM boards ORDER BY updated_at DESC",
     )
     .all() as Array<{
     id: string;
@@ -146,6 +149,7 @@ export function listBoards(db: DatabaseSync): BoardSummary[] {
     author: string;
     copyright: string;
     updated_at: string;
+    fill_percent: number | null;
   }>;
   return rows.map((r) => ({
     id: r.id,
@@ -154,5 +158,6 @@ export function listBoards(db: DatabaseSync): BoardSummary[] {
     author: r.author,
     copyright: r.copyright,
     updatedAt: r.updated_at,
+    fillPercent: r.fill_percent,
   }));
 }

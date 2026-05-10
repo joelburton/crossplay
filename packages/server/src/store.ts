@@ -24,6 +24,7 @@ import type { WebSocket } from "ws";
 import type { DatabaseSync } from "node:sqlite";
 import type { GridSnapshot, PuzzleState } from "@crossplay/shared";
 import { parseIpuzBuffer } from "./ipuz.js";
+import { computeFillPercent } from "./fillPercent.js";
 
 /** A single chat message, persisted in `boards.chat` as a JSON array.
  *  Same shape as the `chatMessage` ServerMessage and the client's
@@ -131,10 +132,14 @@ export function flushBoard(db: DatabaseSync, boardId: string): void {
   const entry = cache.get(boardId);
   if (!entry || !entry.dirty) return;
   const now = new Date().toISOString();
-  db.prepare("UPDATE boards SET snapshot = ?, chat = ?, updated_at = ? WHERE id = ?").run(
+  const fillPercent = computeFillPercent(entry.initialSnapshot, entry.state.snapshot);
+  db.prepare(
+    "UPDATE boards SET snapshot = ?, chat = ?, updated_at = ?, fill_percent = ? WHERE id = ?",
+  ).run(
     JSON.stringify(entry.state.snapshot),
     JSON.stringify(entry.chat),
     now,
+    fillPercent,
     boardId,
   );
   entry.dirty = false;

@@ -79,6 +79,43 @@ describe("markDirty + flush timer", () => {
     db.close();
   });
 
+  it("flushBoard updates fill_percent based on the live snapshot", () => {
+    const { db, boardId } = freshDbWithBoard();
+    const entry = getOrLoadBoard(db, boardId)!;
+
+    // A freshly-stamped board: column starts at NULL.
+    const before = db
+      .prepare("SELECT fill_percent FROM boards WHERE id = ?")
+      .get(boardId) as { fill_percent: number | null };
+    expect(before.fill_percent).toBeNull();
+
+    // Mutate one fillable cell so live differs from initial. Use the
+    // first cell-kind we find so this isn't fixture-position-dependent.
+    let mutated = false;
+    outer: for (const row of entry.state.snapshot.cells) {
+      for (const c of row) {
+        if (c.kind === "cell") {
+          c.fill = "Z";
+          mutated = true;
+          break outer;
+        }
+      }
+    }
+    expect(mutated).toBe(true);
+    markDirty(db, boardId);
+    flushBoard(db, boardId);
+
+    const after = db
+      .prepare("SELECT fill_percent FROM boards WHERE id = ?")
+      .get(boardId) as { fill_percent: number | null };
+    // We just typed one letter, so it's some integer 0–99 (depends on
+    // grid size). Just assert it left NULL behind.
+    expect(after.fill_percent).not.toBeNull();
+    expect(after.fill_percent).toBeGreaterThanOrEqual(0);
+    expect(after.fill_percent).toBeLessThan(100);
+    db.close();
+  });
+
   it("resets the timer on each new mutation (idle debounce)", () => {
     vi.useFakeTimers();
     const { db, boardId } = freshDbWithBoard();
