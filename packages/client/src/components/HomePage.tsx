@@ -58,6 +58,11 @@ export function HomePage({ onUploaded }: Props) {
         </section>
       </div>
       <footer className={styles.footer}>
+        Copyright © 2026 by{" "}
+        <a href="https://github.com/joelburton" target="_blank" rel="noopener noreferrer">
+          Joel Burton
+        </a>{" "}
+        ·{" "}
         <a
           href="https://github.com/joelburton/crossplay"
           target="_blank"

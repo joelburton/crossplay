@@ -42,7 +42,7 @@ export function usePuzzleSocket(puzzleId: string, handlers: Handlers) {
     function connect() {
       if (cancelled) return;
       setState("connecting");
-      const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/puzzles/${puzzleId}/ws`;
+      const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/puzzles/${puzzleId}`;
       const ws = new WebSocket(url);
       socketRef.current = ws;
 

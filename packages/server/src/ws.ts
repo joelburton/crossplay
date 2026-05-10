@@ -335,7 +335,7 @@ const HEARTBEAT_INTERVAL_MS = 15_000;
 
 export function registerWsRoutes(app: FastifyInstance): void {
   app.get<{ Params: { id: string } }>(
-    "/puzzles/:id/ws",
+    "/ws/puzzles/:id",
     { websocket: true },
     (socket, req) => {
       const id = req.params.id;

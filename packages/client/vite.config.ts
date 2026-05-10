@@ -19,12 +19,10 @@ export default defineConfig({
       "/api": {
         target: `http://127.0.0.1:${apiPort}`,
         changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/api/, ""),
       },
       "/ws": {
         target: `ws://127.0.0.1:${apiPort}`,
         ws: true,
-        rewrite: (p) => p.replace(/^\/ws/, ""),
       },
     },
   },

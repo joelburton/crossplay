@@ -2,14 +2,14 @@
 
 A collaborative crossword player. Upload a `.puz` file (or pick one from a curated set) and play it solo, or share the URL with a friend and play together. Includes a chat panel, reveal/check, pen vs. pencil, notes for cryptic puzzles, and a few of the small things that make solving with someone else nicer than solving alone.
 
-## Running it
+## Running it (development)
 
 Install once, then bring up the two dev servers in two terminals:
 
 ```sh
 npm install
 npm run dev:server    # API + WebSocket on :3001
-npm run dev:client    # Vite on :5173
+npm run dev:client    # Vite on :5173 (proxies /api and /ws to :3001)
 ```
 
 Open http://localhost:5173, pick a puzzle from the home page, or upload your own.
@@ -27,6 +27,29 @@ cloudflared tunnel --url http://localhost:5173
 ```
 
 WebSockets work through the tunnel; expect a small amount of extra latency that vanishes on a real deployment.
+
+## Building & running for real
+
+Build both packages, then start a single Node process that serves the API, the WebSocket, and the static client:
+
+```sh
+npm run build         # tsc for the server, vite for the client
+npm start             # NODE_ENV=production node packages/server/dist/index.js
+```
+
+Defaults to port 3001 on 127.0.0.1. Override with `PORT` and `HOST`:
+
+```sh
+PORT=8080 HOST=0.0.0.0 npm start
+```
+
+A typical deployment is `nginx` → Node on a unix socket or local port. Routes:
+- `/api/*` and `/ws/*` are the API and WebSocket; nginx should `proxy_pass` them with `proxy_http_version 1.1` and the standard `Upgrade` / `Connection` headers for WebSocket.
+- Everything else is served from the built client (`packages/client/dist/`), with a SPA fallback so deep links like `/p/<id>` return `index.html`.
+
+Optional env vars:
+- `GAME_DIR` — folder of `.puz` files to expose as the in-app library. Defaults to `packages/server/fixtures`.
+- `CLIENT_DIST` — path to the built client static files. Defaults to `packages/client/dist` relative to the server bundle.
 
 ## What it does
 
@@ -46,7 +69,7 @@ WebSockets work through the tunnel; expect a small amount of extra latency that 
 
 It's a personal project. State is in-memory only — restart the server and uploads disappear (the library puzzles re-load from disk). There's no auth; anyone with the URL can play and chat. Targets laptops; mobile and touch input aren't supported.
 
-For development notes, the architecture, the wire protocol, and the deferred-features list, see [`CLAUDE.md`](./CLAUDE.md).
+For a high-level walkthrough of how it's put together, see [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ## License
 
