@@ -17,22 +17,25 @@ await app.register(multipart, {
 await app.register(websocket);
 registerWsRoutes(app);
 
-const DEFAULT_DEV_PUZ = resolve(
+const fixtureDir = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "..",
   "fixtures",
-  "a-very-moth-puzzle.puz",
 );
+const DEFAULT_DEV_PUZ = resolve(fixtureDir, "a-very-moth-puzzle.puz");
 const DEV_PUZ_PATH = process.env.CROSSPLAY_DEV_PUZ ?? DEFAULT_DEV_PUZ;
-const DEV_PUZ_ID = "dev";
-try {
-  const buf = readFileSync(DEV_PUZ_PATH);
-  const parsed = parsePuzBuffer(DEV_PUZ_ID, buf);
-  putPuzzle(DEV_PUZ_ID, parsed);
-  app.log.info({ path: DEV_PUZ_PATH, id: DEV_PUZ_ID }, "loaded dev puzzle");
-} catch (err) {
-  app.log.warn({ err, path: DEV_PUZ_PATH }, "no dev puzzle loaded");
+function loadFixture(id: string, path: string): void {
+  try {
+    const buf = readFileSync(path);
+    const parsed = parsePuzBuffer(id, buf);
+    putPuzzle(id, parsed);
+    app.log.info({ path, id }, "loaded fixture puzzle");
+  } catch (err) {
+    app.log.warn({ err, path, id }, "no fixture puzzle loaded");
+  }
 }
+loadFixture("dev", DEV_PUZ_PATH);
+loadFixture("sunday", resolve(fixtureDir, "sunday-sample.puz"));
 
 app.get("/health", async () => ({ ok: true }));
 

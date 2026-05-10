@@ -34,6 +34,18 @@ export function firstOpenCell(cells: Cell[][]): CellPos | null {
   return null;
 }
 
+export function findCellByNumber(cells: Cell[][], number: number): CellPos | null {
+  for (let r = 0; r < cells.length; r++) {
+    for (let c = 0; c < (cells[r]?.length ?? 0); c++) {
+      const cell = cells[r]![c]!;
+      if (cell.kind === "cell" && cell.number === number) {
+        return { row: r, col: c };
+      }
+    }
+  }
+  return null;
+}
+
 export function findWordStart(
   cells: Cell[][],
   row: number,
@@ -127,10 +139,7 @@ export function advanceAfterFill(cells: Cell[][], cursor: Cursor): Cursor {
   let c = cursor.col + dc;
   while (inBounds(cells, r, c)) {
     if (isOpen(cells, r, c)) {
-      const cell = cells[r]![c]!;
-      if (cell.kind === "cell" && cell.fill == null) {
-        return { row: r, col: c, dir: cursor.dir };
-      }
+      return { row: r, col: c, dir: cursor.dir };
     }
     r += dr;
     c += dc;

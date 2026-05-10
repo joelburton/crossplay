@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { PuzzleState } from "@crossplay/shared";
 import { HttpError, fetchPuzzle } from "./api";
 import { navigate, puzzlePath, useRoute } from "./routing";
+import type { PuzzleActions } from "./puzzleActions";
+import { Menu } from "./components/Menu";
 import { UploadForm } from "./components/UploadForm";
 import { PuzzleView } from "./components/PuzzleView";
 import styles from "./App.module.css";
@@ -15,7 +17,10 @@ type LoadState =
 export function App() {
   const route = useRoute();
   const [load, setLoad] = useState<LoadState>({ kind: "idle" });
+  const [menuOpen, setMenuOpen] = useState(false);
   const triedDev = useRef(false);
+  const actionsRef = useRef<PuzzleActions | null>(null);
+  const titleRef = useRef<HTMLHeadingElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,7 +46,6 @@ export function App() {
     if (route.kind === "puzzle") {
       void loadById(route.id);
     } else {
-      // home
       if (triedDev.current) {
         setLoad({ kind: "idle" });
         return;
@@ -64,6 +68,11 @@ export function App() {
     };
   }, [route]);
 
+  // close menu when puzzle changes
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [load.kind === "loaded" ? load.puzzle.meta.id : null]);
+
   function onUploaded(id: string) {
     navigate(puzzlePath(id));
   }
@@ -71,18 +80,30 @@ export function App() {
   function onUploadAnother() {
     triedDev.current = true;
     setLoad({ kind: "idle" });
+    setMenuOpen(false);
     navigate("/");
   }
 
   return (
     <div className={styles.app}>
       <header className={styles.header}>
-        <h1>Crossplay</h1>
-        {load.kind === "loaded" && (
-          <button onClick={onUploadAnother} className={styles.reset}>
-            Upload another
-          </button>
-        )}
+        <div className={styles.titleWrap}>
+          <h1
+            ref={titleRef}
+            className={styles.title}
+            onClick={() => setMenuOpen((o) => !o)}
+          >
+            Crossplay
+          </h1>
+          {menuOpen && (
+            <Menu
+              actions={actionsRef.current}
+              triggerRef={titleRef}
+              onUploadAnother={onUploadAnother}
+              onClose={() => setMenuOpen(false)}
+            />
+          )}
+        </div>
       </header>
       <main className={styles.main}>
         {load.kind === "loading" && <p>Loading…</p>}
@@ -92,7 +113,9 @@ export function App() {
             <UploadForm onUploaded={onUploaded} />
           </div>
         )}
-        {load.kind === "loaded" && <PuzzleView puzzle={load.puzzle} />}
+        {load.kind === "loaded" && (
+          <PuzzleView puzzle={load.puzzle} actionsRef={actionsRef} />
+        )}
         {load.kind === "idle" && <UploadForm onUploaded={onUploaded} />}
       </main>
     </div>

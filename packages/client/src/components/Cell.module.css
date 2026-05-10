@@ -1,7 +1,7 @@
 .cell {
   position: relative;
-  width: var(--cell-size);
-  height: var(--cell-size);
+  width: 1em;
+  height: 1em;
   background: #fff;
   outline: 1px solid #000;
   display: flex;
@@ -26,15 +26,36 @@
 
 .number {
   position: absolute;
-  top: 1px;
-  left: 2px;
-  font-size: 0.55rem;
+  top: 0.03em;
+  left: 0.06em;
+  font-size: 0.3em;
+  font-weight: 700;
   line-height: 1;
-  color: #333;
+  color: #222;
 }
 
 .fill {
-  font-size: 1.1rem;
+  font-size: 0.62em;
   font-weight: 600;
   color: #111;
+  transform: translate(0.08em, 0.08em);
+}
+
+.mark {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 0.22em 0.22em 0;
+  pointer-events: none;
+}
+
+.revealed {
+  border-color: transparent #00b8ff transparent transparent;
+}
+
+.wrong {
+  border-color: transparent #d33 transparent transparent;
 }

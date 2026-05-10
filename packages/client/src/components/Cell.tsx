@@ -21,6 +21,11 @@ function CellImpl({ cell, row, col, isCursor, isInWord, onClick }: Props) {
   return (
     <div className={cls.join(" ")} onClick={() => onClick(row, col)}>
       {cell.number != null && <span className={styles.number}>{cell.number}</span>}
+      {cell.wrong ? (
+        <span className={`${styles.mark} ${styles.wrong}`} aria-label="wrong" />
+      ) : cell.revealed ? (
+        <span className={`${styles.mark} ${styles.revealed}`} aria-label="revealed" />
+      ) : null}
       {cell.fill && <span className={styles.fill}>{cell.fill}</span>}
     </div>
   );

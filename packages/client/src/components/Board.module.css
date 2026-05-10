@@ -1,5 +1,4 @@
 .board {
-  --cell-size: 36px;
   display: grid;
   gap: 0;
   background: #000;

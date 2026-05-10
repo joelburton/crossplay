@@ -140,19 +140,11 @@ describe("moveCursor", () => {
 });
 
 describe("advanceAfterFill", () => {
-  it("moves to the next unfilled cell in across direction", () => {
-    const g = grid(["A.."]);
-    expect(advanceAfterFill(g, { row: 0, col: 0, dir: "across" })).toEqual({
-      row: 0,
-      col: 1,
-      dir: "across",
-    });
-  });
-  it("skips already-filled cells", () => {
+  it("moves to the next cell across, regardless of fill", () => {
     const g = grid(["AB."]);
     expect(advanceAfterFill(g, { row: 0, col: 0, dir: "across" })).toEqual({
       row: 0,
-      col: 2,
+      col: 1,
       dir: "across",
     });
   });
@@ -164,11 +156,11 @@ describe("advanceAfterFill", () => {
       dir: "across",
     });
   });
-  it("stays put at right edge with no unfilled cells ahead", () => {
+  it("stays put at the grid edge", () => {
     const g = grid(["AB"]);
-    expect(advanceAfterFill(g, { row: 0, col: 0, dir: "across" })).toEqual({
+    expect(advanceAfterFill(g, { row: 0, col: 1, dir: "across" })).toEqual({
       row: 0,
-      col: 0,
+      col: 1,
       dir: "across",
     });
   });

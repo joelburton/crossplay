@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Cell, GridSnapshot, PuzzleState } from "@crossplay/shared";
+import type { MutableRefObject } from "react";
+import type { Cell, ClientMessage, GridSnapshot, PuzzleState } from "@crossplay/shared";
+import type { Direction } from "@crossplay/shared";
 import {
   type ArrowKey,
   type Cursor,
   activeClueNumber,
   advanceAfterFill,
+  findCellByNumber,
   firstOpenCell,
   jumpClue,
   moveCursor,
@@ -12,12 +15,14 @@ import {
   wordCells,
 } from "../cursor";
 import { usePuzzleSocket } from "../usePuzzleSocket";
+import type { PuzzleActions } from "../puzzleActions";
 import { Board } from "./Board";
 import { ClueList } from "./ClueList";
 import styles from "./PuzzleView.module.css";
 
 type Props = {
   puzzle: PuzzleState;
+  actionsRef?: MutableRefObject<PuzzleActions | null>;
 };
 
 const ARROWS: ReadonlySet<string> = new Set([
@@ -35,15 +40,32 @@ function setCellFill(
 ): Cell[][] {
   const cell = cells[row]?.[col];
   if (!cell || cell.kind !== "cell") return cells;
-  if (cell.fill === letter) return cells;
+  if (cell.fill === letter && !cell.wrong) return cells;
   const next = cells.slice();
   const nextRow = next[row]!.slice();
-  nextRow[col] = { ...cell, fill: letter };
+  const updated: Cell = { kind: "cell", number: cell.number, fill: letter };
+  if (cell.revealed) updated.revealed = true;
+  nextRow[col] = updated;
   next[row] = nextRow;
   return next;
 }
 
-export function PuzzleView({ puzzle }: Props) {
+function replaceCell(
+  cells: Cell[][],
+  row: number,
+  col: number,
+  cell: Cell,
+): Cell[][] {
+  const existing = cells[row]?.[col];
+  if (!existing) return cells;
+  const next = cells.slice();
+  const nextRow = next[row]!.slice();
+  nextRow[col] = cell;
+  next[row] = nextRow;
+  return next;
+}
+
+export function PuzzleView({ puzzle, actionsRef }: Props) {
   const { meta } = puzzle;
   const [snapshot, setSnapshot] = useState<GridSnapshot>(puzzle.snapshot);
   const cells = snapshot.cells;
@@ -57,10 +79,10 @@ export function PuzzleView({ puzzle }: Props) {
     onSnapshot: useCallback((snap: GridSnapshot) => {
       setSnapshot(snap);
     }, []),
-    onCellUpdate: useCallback((row, col, letter, version) => {
+    onCellUpdate: useCallback((row, col, cell, version) => {
       setSnapshot((prev) => {
         if (version <= prev.version) return prev;
-        return { version, cells: setCellFill(prev.cells, row, col, letter) };
+        return { version, cells: replaceCell(prev.cells, row, col, cell) };
       });
     }, []),
   });
@@ -76,6 +98,51 @@ export function PuzzleView({ puzzle }: Props) {
     },
     [],
   );
+
+  const onClueClick = useCallback(
+    (number: number, direction: Direction) => {
+      const pos = findCellByNumber(cells, number);
+      if (!pos) return;
+      setCursor({ row: pos.row, col: pos.col, dir: direction });
+    },
+    [cells],
+  );
+
+  useEffect(() => {
+    if (!actionsRef) return;
+    const sendMsg = (msg: ClientMessage) => send(msg);
+    actionsRef.current = {
+      meta,
+      clearBoard: () => sendMsg({ type: "clear" }),
+      revealLetter: () =>
+        sendMsg({ type: "reveal", scope: "letter", row: cursor.row, col: cursor.col }),
+      revealWord: () =>
+        sendMsg({
+          type: "reveal",
+          scope: "word",
+          row: cursor.row,
+          col: cursor.col,
+          dir: cursor.dir,
+        }),
+      revealPuzzle: () => sendMsg({ type: "reveal", scope: "puzzle" }),
+      checkLetter: () =>
+        sendMsg({ type: "check", scope: "letter", row: cursor.row, col: cursor.col }),
+      checkWord: () =>
+        sendMsg({
+          type: "check",
+          scope: "word",
+          row: cursor.row,
+          col: cursor.col,
+          dir: cursor.dir,
+        }),
+      checkPuzzle: () => sendMsg({ type: "check", scope: "puzzle" }),
+    };
+    return () => {
+      if (actionsRef.current?.meta.id === meta.id) {
+        actionsRef.current = null;
+      }
+    };
+  });
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -148,13 +215,11 @@ export function PuzzleView({ puzzle }: Props) {
 
   return (
     <div className={styles.wrap}>
-      <div className={styles.titleRow}>
-        <h2 className={styles.title}>{meta.title || "Untitled"}</h2>
-        {meta.author && <span className={styles.author}>by {meta.author}</span>}
-        {connState !== "open" && (
-          <span className={styles.conn}>{connState === "connecting" ? "connecting…" : "disconnected"}</span>
-        )}
-      </div>
+      {connState !== "open" && (
+        <div className={styles.conn}>
+          {connState === "connecting" ? "connecting…" : "disconnected"}
+        </div>
+      )}
       <div className={styles.layout}>
         <Board
           cells={cells}
@@ -165,15 +230,19 @@ export function PuzzleView({ puzzle }: Props) {
         <div className={styles.clues}>
           <ClueList
             title="Across"
+            direction="across"
             clues={meta.clues.across}
             activeNumber={cursor.dir === "across" ? acrossNumber : null}
             secondaryNumber={cursor.dir === "down" ? acrossNumber : null}
+            onClueClick={onClueClick}
           />
           <ClueList
             title="Down"
+            direction="down"
             clues={meta.clues.down}
             activeNumber={cursor.dir === "down" ? downNumber : null}
             secondaryNumber={cursor.dir === "across" ? downNumber : null}
+            onClueClick={onClueClick}
           />
         </div>
       </div>

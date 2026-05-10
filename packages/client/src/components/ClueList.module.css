@@ -14,9 +14,9 @@
   font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #555;
-  background: #f0f0f0;
-  border-bottom: 1px solid #ddd;
+  color: #eee;
+  background: #444;
+  border-bottom: 1px solid #2a2a2a;
   flex-shrink: 0;
 }
 
@@ -36,6 +36,19 @@
   grid-template-columns: 1.75rem 1fr;
   gap: 0.25rem;
   padding: 0.25rem 0.5rem;
+  cursor: pointer;
+}
+
+.item:hover {
+  background: #eef3fa;
+}
+
+.active:hover {
+  background: #e6b833;
+}
+
+.secondary:hover {
+  background: #ffe89a;
 }
 
 .active {

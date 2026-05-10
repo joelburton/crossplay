@@ -1,15 +1,24 @@
 import { useEffect, useRef } from "react";
-import type { Clue } from "@crossplay/shared";
+import type { Clue, Direction } from "@crossplay/shared";
 import styles from "./ClueList.module.css";
 
 type Props = {
   title: string;
+  direction: Direction;
   clues: Clue[];
   activeNumber: number | null;
   secondaryNumber: number | null;
+  onClueClick: (number: number, direction: Direction) => void;
 };
 
-export function ClueList({ title, clues, activeNumber, secondaryNumber }: Props) {
+export function ClueList({
+  title,
+  direction,
+  clues,
+  activeNumber,
+  secondaryNumber,
+  onClueClick,
+}: Props) {
   const activeRef = useRef<HTMLLIElement | null>(null);
 
   useEffect(() => {
@@ -31,6 +40,7 @@ export function ClueList({ title, clues, activeNumber, secondaryNumber }: Props)
               key={c.number}
               ref={active || secondary ? activeRef : null}
               className={cls.join(" ")}
+              onClick={() => onClueClick(c.number, direction)}
             >
               <span className={styles.num}>{c.number}</span>
               <span className={styles.text}>{c.text}</span>

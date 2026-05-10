@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import type { ClientMessage, GridSnapshot, ServerMessage } from "@crossplay/shared";
+import type { Cell, ClientMessage, GridSnapshot, ServerMessage } from "@crossplay/shared";
 
 export type ConnState = "connecting" | "open" | "closed";
 
 type Handlers = {
   onSnapshot: (snapshot: GridSnapshot) => void;
-  onCellUpdate: (row: number, col: number, letter: string | null, version: number) => void;
+  onCellUpdate: (row: number, col: number, cell: Cell, version: number) => void;
 };
 
 const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000, 16000, 30000];
@@ -52,7 +52,7 @@ export function usePuzzleSocket(puzzleId: string, handlers: Handlers) {
         }
         if (msg.type === "snapshot") handlersRef.current.onSnapshot(msg.snapshot);
         else if (msg.type === "cellUpdate") {
-          handlersRef.current.onCellUpdate(msg.row, msg.col, msg.letter, msg.version);
+          handlersRef.current.onCellUpdate(msg.row, msg.col, msg.cell, msg.version);
         }
       });
     }
