@@ -184,6 +184,24 @@ describe("rebus: applyCheck", () => {
     expect(cell.fill).toBe("I");
   });
 
+  it("rejects a partial prefix of a rebus answer", () => {
+    // "IN" is neither the full answer "INSECT" nor its first letter,
+    // so it should be flagged wrong (we accept full string OR sol[0]
+    // only — see fillMatchesSolution).
+    const e = makeEntry();
+    applyFill(e, {
+      type: "fill",
+      row: 1,
+      col: 1,
+      letter: "IN",
+      clientVersion: 0,
+    } as Extract<ClientMessage, { type: "fill" }>);
+    const changes = applyCheck(e, { type: "check", scope: "letter", row: 1, col: 1 });
+    expect(changes).toHaveLength(1);
+    const cell = e.state.snapshot.cells[1]![1]! as Cell & { kind: "cell" };
+    expect(cell.wrong).toBe(true);
+  });
+
   it("flags any other single letter as wrong against a rebus solution", () => {
     const e = makeEntry();
     applyFill(e, {

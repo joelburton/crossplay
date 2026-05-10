@@ -7,6 +7,7 @@ import {
   applyFill,
   applyReveal,
   checkScopeHasPencil,
+  fillMatchesSolution,
   parseMessage,
   pruneRecentHellos,
   sanitizeName,
@@ -698,5 +699,42 @@ describe("checkScopeHasPencil", () => {
     const e = entry();
     applyFill(e, { type: "fill", row: 2, col: 2, letter: "J", clientVersion: 0, pencil: true });
     expect(checkScopeHasPencil(e, { type: "check", scope: "puzzle" })).toBe(true);
+  });
+});
+
+describe("fillMatchesSolution", () => {
+  it("returns false when the solution is null/undefined", () => {
+    expect(fillMatchesSolution("A", null)).toBe(false);
+    expect(fillMatchesSolution("A", undefined)).toBe(false);
+  });
+
+  it("returns true on an exact match (single letter)", () => {
+    expect(fillMatchesSolution("A", "A")).toBe(true);
+  });
+
+  it("returns true on an exact match (rebus full string)", () => {
+    expect(fillMatchesSolution("BLOCK", "BLOCK")).toBe(true);
+  });
+
+  it("returns true when fill is the first letter of a rebus solution (NYT)", () => {
+    expect(fillMatchesSolution("B", "BLOCK")).toBe(true);
+  });
+
+  it("rejects an arbitrary prefix of a rebus solution", () => {
+    // Only the full answer OR the first letter are accepted — partial
+    // prefixes like "BL" must NOT be treated as correct.
+    expect(fillMatchesSolution("BL", "BLOCK")).toBe(false);
+    expect(fillMatchesSolution("BLO", "BLOCK")).toBe(false);
+    expect(fillMatchesSolution("BLOC", "BLOCK")).toBe(false);
+  });
+
+  it("rejects a wrong letter against a rebus solution", () => {
+    expect(fillMatchesSolution("X", "BLOCK")).toBe(false);
+    expect(fillMatchesSolution("Z", "BLOCK")).toBe(false);
+  });
+
+  it("first-letter rule does NOT apply when the solution is a single letter", () => {
+    // sol.length > 1 gate: a one-character solution requires exact match.
+    expect(fillMatchesSolution("A", "B")).toBe(false);
   });
 });

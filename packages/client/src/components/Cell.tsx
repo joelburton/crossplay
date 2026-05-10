@@ -7,15 +7,20 @@ import styles from "./Cell.module.css";
 // shrink so the whole answer fits within the cell width. The factor
 // (0.9em ÷ length) leaves a small margin so adjacent characters don't
 // graze the cell edge; min() means a 1-char fill never grows past
-// the default. Translate is dropped on multi-char so the text stays
-// centered.
+// the default; max() keeps long answers above a readable floor so
+// they don't disappear into a pixel. Long rebuses are still hard to
+// read at rest — use Space (peek) or the collapse-rebuses preference
+// to see them full size. Translate is dropped on multi-char so the
+// text stays centered.
+const REBUS_MIN_EM = 0.22;
 function fillStyle(fill: string, recentColor: string | null): CSSProperties | undefined {
   const multi = fill.length > 1;
   if (!multi && !recentColor) return undefined;
   const style: CSSProperties = {};
   if (recentColor) style.color = recentColor;
   if (multi) {
-    style.fontSize = `min(0.62em, ${(0.9 / fill.length).toFixed(3)}em)`;
+    const fit = Math.max(REBUS_MIN_EM, 0.9 / fill.length);
+    style.fontSize = `min(0.62em, ${fit.toFixed(3)}em)`;
     style.transform = "none";
   }
   return style;

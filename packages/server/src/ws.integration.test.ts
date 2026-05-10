@@ -1,10 +1,14 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
+import multipart from "@fastify/multipart";
 import websocket from "@fastify/websocket";
 import { WebSocket, type RawData, type ClientOptions } from "ws";
 import type { Cell, PuzzleState, ServerMessage } from "@crossplay/shared";
 import { openDb } from "./db.js";
 import { _clearCacheForTest, _putBoardForTest, type StoredBoard } from "./store.js";
+import { registerHttpRoutes } from "./http.js";
 import { registerWsRoutes } from "./ws.js";
 
 // 3-row scratch board: installed directly into the in-memory cache via
@@ -269,6 +273,32 @@ describe("ws integration", () => {
     await Promise.all([waitClose(a), waitClose(b)]);
   });
 
+  it("broadcasts a multi-character rebus fill end-to-end", async () => {
+    const a = open(port, puzzleId);
+    const b = open(port, puzzleId);
+    await Promise.all([waitOpen(a), waitOpen(b)]);
+    await Promise.all([next(a, "snapshot"), next(b, "snapshot")]);
+
+    send(a, {
+      type: "fill",
+      row: 0,
+      col: 0,
+      letter: "BLOCK",
+      clientVersion: 0,
+      senderColor: "#1f77b4",
+    });
+    const update = await next(b, "cellUpdate");
+    expect(update.cell.kind).toBe("cell");
+    if (update.cell.kind === "cell") {
+      expect(update.cell.fill).toBe("BLOCK");
+    }
+    expect(update.senderColor).toBe("#1f77b4");
+
+    a.ws.close();
+    b.ws.close();
+    await Promise.all([waitClose(a), waitClose(b)]);
+  });
+
   it("broadcasts notesShown to all clients", async () => {
     const a = open(port, puzzleId);
     const b = open(port, puzzleId);
@@ -316,6 +346,82 @@ describe("ws integration heartbeat", () => {
     await next(c, "snapshot");
     // Two heartbeat ticks (~100ms) plus margin. The server calls
     // socket.terminate(), which closes the client socket.
+    await waitClose(c, 2000);
+  });
+});
+
+// DELETE /api/boards/:id force-closes every open ws socket on the
+// board before removing the row. This block mounts the real HTTP
+// + WS routes on the same instance so we can drive both sides
+// against the same DB and cache.
+describe("ws integration: DELETE force-close", () => {
+  let app: FastifyInstance;
+  let port: number;
+  let uploadedBoardId: string;
+
+  beforeAll(async () => {
+    app = Fastify();
+    await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } });
+    await app.register(websocket);
+    const db = openDb(":memory:");
+    registerWsRoutes(app, { db });
+    await registerHttpRoutes(app, { db });
+    const address = await app.listen({ port: 0, host: "127.0.0.1" });
+    port = Number(new URL(address).port);
+  });
+
+  beforeEach(async () => {
+    _clearCacheForTest();
+    // Upload a real board so the DELETE route finds a row to remove.
+    const buf = readFileSync(resolve(import.meta.dirname, "..", "fixtures", "sunday-sample.puz"));
+    const boundary = `----b${Date.now()}`;
+    const body = Buffer.concat([
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="sunday-sample.puz"\r\nContent-Type: application/octet-stream\r\n\r\n`,
+      ),
+      buf,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/boards/upload",
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      payload: body,
+    });
+    uploadedBoardId = (res.json() as { boardId: string }).boardId;
+  });
+
+  afterEach(async () => {
+    await new Promise((r) => setTimeout(r, 50));
+    _clearCacheForTest();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it("closes both peers on DELETE and refuses fresh connects afterward", async () => {
+    const a = open(port, uploadedBoardId);
+    const b = open(port, uploadedBoardId);
+    await Promise.all([waitOpen(a), waitOpen(b)]);
+    await Promise.all([next(a, "snapshot"), next(b, "snapshot")]);
+
+    const del = await app.inject({
+      method: "DELETE",
+      url: `/api/boards/${uploadedBoardId}`,
+    });
+    expect(del.statusCode).toBe(200);
+
+    // Both peers receive the server-initiated close.
+    await Promise.all([waitClose(a), waitClose(b)]);
+
+    // Subsequent GET 404s.
+    const get = await app.inject({ method: "GET", url: `/api/boards/${uploadedBoardId}` });
+    expect(get.statusCode).toBe(404);
+
+    // A fresh WS connect to the deleted id closes immediately
+    // (lazy-load sees no row → 1008 policy close).
+    const c = open(port, uploadedBoardId);
     await waitClose(c, 2000);
   });
 });

@@ -33,8 +33,11 @@ type PuzzleRow = {
   copyright: string;
 };
 
-/** Find-or-create the (single) board for a puzzle. With users, this
- *  will become per-(user, puzzle); for now it's global.
+/** Find-or-create the (single) global board for a library puzzle.
+ *  With users, this will become per-(user, puzzle); for now it's
+ *  global. Ad-hoc upload boards (puzzle_id IS NULL) are intentionally
+ *  invisible to this lookup — they're separate playthroughs created
+ *  by `POST /api/boards/upload`, not surfaced under any puzzle id.
  *  Throws PuzzleNotFoundError if the puzzle row doesn't exist. */
 export function findOrCreateBoard(
   db: DatabaseSync,

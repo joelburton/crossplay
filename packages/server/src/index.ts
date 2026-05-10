@@ -2,12 +2,12 @@
  * Crossplay server entrypoint.
  *
  * Three concerns, in order:
- *   1. Boot Fastify with the multipart and websocket plugins, register
- *      the ws route at `/ws/boards/:id`.
- *   2. Open the SQLite handle, run any pending migrations, and hydrate
- *      the in-memory `store.ts` from the `puzzles` table so existing
- *      play/ws routes keep working. (The in-memory store is a temporary
- *      step on the way to fully DB-backed boards in later sprint steps.)
+ *   1. Open the SQLite handle and run any pending migrations (eager so
+ *      a migration error fails boot, not first request).
+ *   2. Boot Fastify with multipart + websocket, register the ws route
+ *      at `/ws/boards/:id`. The in-memory store in `store.ts` lazy-
+ *      loads board rows on first WS connect and writes them back on a
+ *      15s idle debounce.
  *   3. Mount REST routes under `/api` and — only in production — serve
  *      the built client static files with an SPA fallback so deep links
  *      like `/b/<id>` resolve to `index.html`.
@@ -19,42 +19,14 @@
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
 import multipart from "@fastify/multipart";
 import staticPlugin from "@fastify/static";
 import websocket from "@fastify/websocket";
-import { parsePuzBuffer } from "./puzzle.js";
-import { IpuzUnsupportedError, parseIpuzBuffer, writeIpuz } from "./ipuz.js";
 import { closeDb, getDb } from "./db.js";
-import { evictBoard, flushAll, getCachedBoard, getOrLoadBoard } from "./store.js";
-import { slugify } from "./importer.js";
-import {
-  PuzzleNotFoundError,
-  deleteBoard,
-  findOrCreateBoard,
-  getBoardState,
-  listBoards,
-} from "./boards.js";
+import { flushAll } from "./store.js";
+import { registerHttpRoutes } from "./http.js";
 import { registerWsRoutes } from "./ws.js";
-
-type PuzzleFormat = "puz" | "ipuz";
-
-/** Pick a parser. Extension wins; otherwise sniff for a leading `{`
- *  (BOM-tolerant) and treat as ipuz, else fall back to .puz. */
-function detectFormat(filename: string | undefined, buffer: Buffer): PuzzleFormat {
-  const ext = filename?.toLowerCase().match(/\.(puz|ipuz)$/)?.[1];
-  if (ext === "ipuz") return "ipuz";
-  if (ext === "puz") return "puz";
-  let i = 0;
-  if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) i = 3;
-  while (i < buffer.length && (buffer[i] === 0x20 || buffer[i] === 0x09 || buffer[i] === 0x0a || buffer[i] === 0x0d)) i++;
-  return buffer[i] === 0x7b ? "ipuz" : "puz"; // '{'
-}
-
-function parsePuzzleBuffer(id: string, buffer: Buffer, format: PuzzleFormat) {
-  return format === "ipuz" ? parseIpuzBuffer(id, buffer) : parsePuzBuffer(id, buffer);
-}
 
 const app = Fastify({ logger: true });
 
@@ -73,121 +45,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 // All HTTP API routes mounted under /api so they don't collide with
 // SPA routes when the server also serves the built client.
-await app.register(
-  async (api) => {
-    api.get("/health", async () => ({ ok: true }));
-
-    api.get("/puzzles", async () => {
-      // Read directly from the table — denormalized columns mean no
-      // ipuz parse needed for the list view. Newest first so freshly
-      // imported puzzles surface at the top.
-      return db
-        .prepare(
-          "SELECT id, title, author, copyright, width, height FROM puzzles ORDER BY created_at DESC",
-        )
-        .all() as Array<{
-        id: string;
-        title: string;
-        author: string;
-        copyright: string;
-        width: number;
-        height: number;
-      }>;
-    });
-
-    api.post("/boards/upload", async (req, reply) => {
-      // Ad-hoc upload: parse the file and create a board directly with
-      // no puzzle row (puzzle_id IS NULL). The puzzles table stays
-      // CLI-only — uploads are how *players* bring a one-off file to
-      // play, not how the curated library grows.
-      const file = await req.file();
-      if (!file) {
-        return reply.code(400).send({ error: "missing file" });
-      }
-      const buffer = await file.toBuffer();
-      const id = randomUUID();
-      const format = detectFormat(file.filename, buffer);
-      try {
-        const parsed = parsePuzzleBuffer(id, buffer, format);
-        const ipuz = writeIpuz(parsed.state, parsed.solution);
-        const meta = parsed.state.meta;
-        const snapshot = JSON.stringify(parsed.state.snapshot);
-        const now = new Date().toISOString();
-        db.prepare(
-          "INSERT INTO boards (id, puzzle_id, ipuz, title, author, copyright, snapshot, chat, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, ?, ?, '[]', ?, ?)",
-        ).run(id, ipuz, meta.title, meta.author, meta.copyright, snapshot, now, now);
-        // No in-memory mirror: the first WS connect to this board will
-        // lazy-load it via getOrLoadBoard.
-        return { boardId: id };
-      } catch (err) {
-        req.log.error({ err, format }, "failed to parse uploaded board");
-        if (err instanceof IpuzUnsupportedError) {
-          return reply.code(400).send({ error: err.message });
-        }
-        return reply.code(400).send({ error: `invalid .${format} file` });
-      }
-    });
-
-    api.post<{ Body: { puzzleId?: string } }>("/boards", async (req, reply) => {
-      const puzzleId = req.body?.puzzleId;
-      if (!puzzleId || typeof puzzleId !== "string") {
-        return reply.code(400).send({ error: "missing puzzleId" });
-      }
-      try {
-        const { boardId } = findOrCreateBoard(db, puzzleId);
-        // No in-memory mirror: the first WS connect to this board will
-        // lazy-load it via getOrLoadBoard.
-        return { boardId };
-      } catch (err) {
-        if (err instanceof PuzzleNotFoundError) {
-          return reply.code(404).send({ error: err.message });
-        }
-        throw err;
-      }
-    });
-
-    api.get("/boards", async () => listBoards(db));
-
-    api.get<{ Params: { id: string } }>("/boards/:id", async (req, reply) => {
-      const state = getBoardState(db, req.params.id);
-      if (!state) return reply.code(404).send({ error: "not found" });
-      return state;
-    });
-
-    api.delete<{ Params: { id: string } }>("/boards/:id", async (req, reply) => {
-      // Hard delete. Any open ws sockets on this board are closed so
-      // they stop mutating an orphaned cache entry; then the cache
-      // entry is evicted (cancels its pending flush timer too); then
-      // the row is removed. 404 if no such row.
-      const id = req.params.id;
-      const cached = getCachedBoard(id);
-      if (cached) {
-        for (const s of cached.sockets) {
-          if (s.readyState === s.OPEN) s.close(1000, "board deleted");
-        }
-      }
-      evictBoard(id);
-      const { existed } = deleteBoard(db, id);
-      if (!existed) return reply.code(404).send({ error: "not found" });
-      return { ok: true };
-    });
-
-    api.get<{ Params: { id: string } }>("/boards/:id/ipuz", async (req, reply) => {
-      // Download a board (the player's current state) as canonical ipuz.
-      // Lazy-load via the in-memory cache so an active board reflects
-      // any in-flight fills; an idle board falls through to the DB row.
-      const entry = getOrLoadBoard(db, req.params.id);
-      if (!entry) return reply.code(404).send({ error: "not found" });
-      const json = writeIpuz(entry.state, entry.solution);
-      const stem = slugify(entry.state.meta.title) || entry.state.meta.id;
-      reply
-        .header("content-type", "application/json; charset=utf-8")
-        .header("content-disposition", `attachment; filename="${stem}.ipuz"`);
-      return json;
-    });
-  },
-  { prefix: "/api" },
-);
+await registerHttpRoutes(app, { db });
 
 // Production-only: serve the built client and route SPA paths to index.html.
 // Dev mode (Vite) doesn't need this — Vite serves the client itself and

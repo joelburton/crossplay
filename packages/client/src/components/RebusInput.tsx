@@ -25,6 +25,11 @@ type Props = {
 export function RebusInput({ initial, maxLength, onCommit, onCancel }: Props) {
   const [value, setValue] = useState(initial);
   const ref = useRef<HTMLInputElement>(null);
+  // Enter -> onCommit unmounts this input via parent state, which
+  // fires blur during DOM removal. Without this guard, onBlur would
+  // also call onCancel — harmless today because onCancel is
+  // idempotent, but a trap if onCancel ever grows side effects.
+  const committedRef = useRef(false);
 
   useEffect(() => {
     const el = ref.current;
@@ -53,13 +58,17 @@ export function RebusInput({ initial, maxLength, onCommit, onCancel }: Props) {
         e.stopPropagation();
         if (e.key === "Enter") {
           e.preventDefault();
+          committedRef.current = true;
           onCommit(value);
         } else if (e.key === "Escape") {
           e.preventDefault();
           onCancel();
         }
       }}
-      onBlur={onCancel}
+      onBlur={() => {
+        if (committedRef.current) return;
+        onCancel();
+      }}
     />
   );
 }

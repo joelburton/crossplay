@@ -129,6 +129,11 @@ export function PuzzleView({
   const { meta } = puzzle;
   const [snapshot, setSnapshot] = useState<GridSnapshot>(puzzle.snapshot);
   const cells = snapshot.cells;
+  // Latest cells, for callbacks that may run with a stale closure
+  // (e.g. the rebus commit callback advances the cursor and needs
+  // the current grid to decide whether the next cell is open).
+  const cellsRef = useRef(cells);
+  cellsRef.current = cells;
 
   const [cursor, setCursor] = useState<Cursor>(() => {
     const start = firstOpenCell(puzzle.snapshot.cells) ?? { row: 0, col: 0 };
@@ -663,7 +668,7 @@ export function PuzzleView({
         senderColor: identity.color,
         ...(isPencil && letter ? { pencil: true } : {}),
       });
-      setCursor((cur) => advanceAfterFill(cells, cur));
+      setCursor((cur) => advanceAfterFill(cellsRef.current, cur));
     },
     [cells, cursor, mode, send, snapshot.version, identity.color],
   );

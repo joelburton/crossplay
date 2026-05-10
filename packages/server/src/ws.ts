@@ -314,7 +314,7 @@ function checkAt(entry: StoredBoard, row: number, col: number): CellChange | nul
  *  convention and saves players from having to type out the full
  *  rebus on small screens. The fill stays whatever the player typed;
  *  only the check decision is affected. */
-function fillMatchesSolution(fill: string, sol: string | null | undefined): boolean {
+export function fillMatchesSolution(fill: string, sol: string | null | undefined): boolean {
   if (sol == null) return false;
   if (fill === sol) return true;
   if (sol.length > 1 && fill === sol[0]) return true;
@@ -574,8 +574,8 @@ export type WsRouteOptions = {
  *   - On message: validate via `parseMessage`, dispatch to the matching
  *     `apply*` helper or chat/notes/hello side effect, broadcast,
  *     mark the board dirty if play state changed.
- *   - On close: clear the heartbeat, remove from the room set. (Step 8
- *     will flush + evict on last-socket-close.)
+ *   - On close: clear the heartbeat, remove from the room set, and
+ *     `flushAndEvict` if this was the last socket on the room.
  *
  * The heartbeat pings every `HEARTBEAT_INTERVAL_MS` and terminates the
  * socket if no `pong` came back since the previous tick — so silent
