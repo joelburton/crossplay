@@ -1,6 +1,6 @@
 /**
  * Tiny hand-rolled SPA router. Two routes only: `/` (home) and
- * `/p/:id` (puzzle). React Router would be overkill — we don't have
+ * `/b/:id` (board). React Router would be overkill — we don't have
  * nested routes, redirects, or loaders.
  *
  * `useRoute` re-renders subscribers when the path changes. Path changes
@@ -13,11 +13,11 @@
 import { useEffect, useState } from "react";
 
 /** Discriminated union of the routes the app understands. */
-export type Route = { kind: "home" } | { kind: "puzzle"; id: string };
+export type Route = { kind: "home" } | { kind: "board"; id: string };
 
 function parsePath(pathname: string): Route {
-  const m = pathname.match(/^\/p\/([^/]+)\/?$/);
-  if (m) return { kind: "puzzle", id: decodeURIComponent(m[1]!) };
+  const m = pathname.match(/^\/b\/([^/]+)\/?$/);
+  if (m) return { kind: "board", id: decodeURIComponent(m[1]!) };
   return { kind: "home" };
 }
 
@@ -48,8 +48,9 @@ export function navigate(to: string): void {
   window.dispatchEvent(new Event("crossplay:nav"));
 }
 
-/** Build the canonical URL for a puzzle id. `encodeURIComponent` covers
- *  any future ids that aren't already URL-safe slugs. */
-export function puzzlePath(id: string): string {
-  return `/p/${encodeURIComponent(id)}`;
+/** Build the canonical URL for a board id. `encodeURIComponent` covers
+ *  ids that aren't already URL-safe (board ids are UUIDs, so this is
+ *  belt-and-suspenders today). */
+export function boardPath(id: string): string {
+  return `/b/${encodeURIComponent(id)}`;
 }

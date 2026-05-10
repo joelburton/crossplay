@@ -3,7 +3,7 @@ import type { MutableRefObject } from "react";
 import { Rnd } from "react-rnd";
 import type { ChatIdentity } from "../chatIdentity";
 import { NAME_MAX } from "../chatIdentity";
-import type { ChatLine } from "../usePuzzleSocket";
+import type { ChatLine } from "../useBoardSocket";
 import { linkify } from "../linkify";
 import { useDraggablePanel, type Rect } from "../draggablePanel";
 import styles from "./ChatPanel.module.css";

@@ -1,8 +1,10 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import Puz from "puzjs";
 import { parsePuzBuffer } from "./puzzle.js";
+import { IpuzUnsupportedError } from "./ipuz.js";
 
 const FIXTURE = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -80,5 +82,34 @@ describe("parsePuzBuffer", () => {
         else expect(sol).toMatch(/^[A-Z]$/);
       }
     }
+  });
+});
+
+describe("parsePuzBuffer — unsupported features", () => {
+  // We stub puzjs's decoder so we can synthesize the shapes a real
+  // rebus/circles/shades file would expose, without needing a crafted
+  // binary fixture. The check we care about is purely on the decoded
+  // structure, so this is the right layer to assert.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function stubDecode(decoded: unknown) {
+    vi.spyOn(Puz, "decode").mockReturnValue(decoded as ReturnType<typeof Puz.decode>);
+  }
+
+  it("rejects rebus solutions (puzjs returns object cells with multi-char `solution`)", () => {
+    stubDecode({
+      grid: [
+        ["A", { 0: "B", solution: "BLOCK" }],
+        ["C", "D"],
+      ],
+      meta: { title: "", author: "", copyright: "", description: "" },
+      circles: [],
+      shades: [],
+      clues: { across: {}, down: {} },
+    });
+    expect(() => parsePuzBuffer("x", Buffer.alloc(0))).toThrow(IpuzUnsupportedError);
+    expect(() => parsePuzBuffer("x", Buffer.alloc(0))).toThrow(/rebus/);
   });
 });

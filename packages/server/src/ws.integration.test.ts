@@ -1,14 +1,16 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import Fastify, { type FastifyInstance } from "fastify";
 import websocket from "@fastify/websocket";
 import { WebSocket, type RawData, type ClientOptions } from "ws";
 import type { Cell, PuzzleState, ServerMessage } from "@crossplay/shared";
-import { putPuzzle } from "./store.js";
+import { openDb } from "./db.js";
+import { _clearCacheForTest, _putBoardForTest, type StoredBoard } from "./store.js";
 import { registerWsRoutes } from "./ws.js";
 
-// 3-row scratch puzzle: same shape as ws.test.ts uses, but installed into
-// the real store so the WS route can find it by id.
-function buildPuzzle(): { state: PuzzleState; solution: (string | null)[][]; format: "puz" } {
+// 3-row scratch board: installed directly into the in-memory cache via
+// the test helper so the WS route's lazy loader finds it without needing
+// a real DB row. Shape matches ws.test.ts.
+function buildBoard(id: string): StoredBoard {
   const cells: Cell[][] = [
     [
       { kind: "cell", number: 1, fill: null },
@@ -32,33 +34,45 @@ function buildPuzzle(): { state: PuzzleState; solution: (string | null)[][]; for
       { kind: "block" },
     ],
   ];
-  return {
-    state: {
-      meta: {
-        id: "int",
-        title: "",
-        author: "",
-        copyright: "",
-        note: "",
-        width: 5,
-        height: 3,
-        clues: { across: [], down: [] },
-      },
-      snapshot: { version: 0, cells },
+  const state: PuzzleState = {
+    meta: {
+      id,
+      title: "",
+      author: "",
+      copyright: "",
+      note: "",
+      width: 5,
+      height: 3,
+      clues: { across: [], down: [] },
     },
-    solution: [
-      ["A", "B", null, "C", "D"],
-      ["E", "F", "G", "H", "I"],
-      [null, null, "J", null, null],
-    ],
-    format: "puz",
+    snapshot: { version: 0, cells },
+  };
+  const solution = [
+    ["A", "B", null, "C", "D"],
+    ["E", "F", "G", "H", "I"],
+    [null, null, "J", null, null],
+  ];
+  return {
+    id,
+    state,
+    initialSnapshot: JSON.parse(JSON.stringify(state.snapshot)),
+    solution,
+    chat: [],
+    sockets: new Set(),
+    recentHellos: new Map(),
+    feedbackCounter: 0,
+    dirty: false,
   };
 }
 
 async function startServer(opts: { heartbeatIntervalMs?: number } = {}) {
   const app = Fastify();
   await app.register(websocket);
-  registerWsRoutes(app, opts);
+  // The WS route requires a db handle for lazy-load fallback, but our
+  // tests pre-populate the cache so the DB is never queried. An
+  // in-memory DB satisfies the type.
+  const db = openDb(":memory:");
+  registerWsRoutes(app, { db, ...opts });
   const address = await app.listen({ port: 0, host: "127.0.0.1" });
   // address looks like "http://127.0.0.1:<port>"
   const port = Number(new URL(address).port);
@@ -75,7 +89,7 @@ type Client = {
 };
 
 function open(port: number, id: string, options?: ClientOptions): Client {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/puzzles/${id}`, options);
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/boards/${id}`, options);
   const queue: ServerMessage[] = [];
   const waiters: Client["waiters"] = [];
   ws.on("message", (data: RawData) => {
@@ -143,14 +157,26 @@ describe("ws integration", () => {
   const puzzleId = "int-room";
 
   beforeAll(async () => {
-    putPuzzle(puzzleId, buildPuzzle());
     const started = await startServer();
     app = started.app;
     port = started.port;
   });
 
+  beforeEach(async () => {
+    // Drain any pending server-side socket close handlers from the
+    // previous test before re-installing the cache entry — otherwise
+    // a delayed flushAndEvict can race in and delete the fresh entry.
+    // Wait for any pending server-side WS close handlers from the
+    // previous test to land before installing — flushAndEvict on a
+    // late close would otherwise wipe our fresh entry.
+    await new Promise((r) => setTimeout(r, 50));
+    _clearCacheForTest();
+    _putBoardForTest(buildBoard(puzzleId));
+  });
+
   afterAll(async () => {
     await app.close();
+    _clearCacheForTest();
   });
 
   it("sends a snapshot immediately on connect", async () => {
@@ -201,7 +227,7 @@ describe("ws integration", () => {
   it("debounces a second hello from the same name within the window", async () => {
     // Fresh room so recentHellos starts empty.
     const id = "int-hello";
-    putPuzzle(id, buildPuzzle());
+    _putBoardForTest(buildBoard(id));
 
     const observer = open(port, id);
     await next(observer, "snapshot");
@@ -263,8 +289,16 @@ describe("ws integration heartbeat", () => {
   let port: number;
   const puzzleId = "int-hb";
 
+  beforeEach(async () => {
+    // Wait for any pending server-side WS close handlers from the
+    // previous test to land before installing — flushAndEvict on a
+    // late close would otherwise wipe our fresh entry.
+    await new Promise((r) => setTimeout(r, 50));
+    _clearCacheForTest();
+    _putBoardForTest(buildBoard(puzzleId));
+  });
+
   beforeAll(async () => {
-    putPuzzle(puzzleId, buildPuzzle());
     // 50ms heartbeat: first tick pings, second tick (100ms in) terminates
     // the connection if no pong arrived. The `ws` client is constructed
     // with autoPong:false below so it stays silent and triggers that path.

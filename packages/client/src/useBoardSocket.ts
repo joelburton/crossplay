@@ -29,7 +29,7 @@ type Handlers = {
 const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000, 16000, 30000];
 
 /**
- * Maintains a single WebSocket connection to a puzzle room, with
+ * Maintains a single WebSocket connection to a board's room, with
  * exponential-backoff auto-reconnect (500ms → 30s cap; resets on each
  * successful open).
  *
@@ -46,7 +46,7 @@ const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000, 16000, 30000];
  * state. Fills typed during a disconnect are not buffered or replayed —
  * see code-review-1.md §1.3.
  */
-export function usePuzzleSocket(puzzleId: string, handlers: Handlers) {
+export function useBoardSocket(boardId: string, handlers: Handlers) {
   const [state, setState] = useState<ConnState>("connecting");
   const socketRef = useRef<WebSocket | null>(null);
   const handlersRef = useRef(handlers);
@@ -60,7 +60,7 @@ export function usePuzzleSocket(puzzleId: string, handlers: Handlers) {
     function connect() {
       if (cancelled) return;
       setState("connecting");
-      const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/puzzles/${puzzleId}`;
+      const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/boards/${boardId}`;
       const ws = new WebSocket(url);
       socketRef.current = ws;
 
@@ -124,7 +124,7 @@ export function usePuzzleSocket(puzzleId: string, handlers: Handlers) {
       socketRef.current?.close();
       socketRef.current = null;
     };
-  }, [puzzleId]);
+  }, [boardId]);
 
   function send(msg: ClientMessage): void {
     const ws = socketRef.current;

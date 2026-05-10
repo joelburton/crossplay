@@ -1,5 +1,6 @@
 import Puz from "puzjs";
 import type { Cell, Clue, GridSnapshot, PuzzleMeta, PuzzleState } from "@crossplay/shared";
+import { IpuzUnsupportedError } from "./ipuz.js";
 
 type ParseResult = {
   state: PuzzleState;
@@ -33,10 +34,26 @@ export function parsePuzBuffer(id: string, buffer: Buffer): ParseResult {
   const height = rawGrid.length;
   const width = rawGrid[0]?.length ?? 0;
 
-  const solution: (string | null)[][] = rawGrid.map((row) =>
-    row.map((cell) => {
+  // Detect rebus: puzjs returns object cells `{0:"B", solution:"BLOCK"}`
+  // for rebus answers, with a multi-character `solution`. Without this
+  // check, the multi-char letter silently flows through writeIpuz and
+  // then fails when getBoardState re-parses the stored ipuz — surfacing
+  // as a 500 long after upload. Match parseIpuzBuffer's rejection so the
+  // upload route returns 400 with a clear message. Circles/shades from
+  // puzjs are ignored at this layer (they don't break the round-trip —
+  // writeIpuz never emits them — so silent drop matches today's UI).
+  const solution: (string | null)[][] = rawGrid.map((row, r) =>
+    row.map((cell, c) => {
       if (cell === ".") return null;
       const letter = typeof cell === "string" ? cell : cell.solution;
+      if (typeof letter !== "string" || letter.length === 0) {
+        throw new IpuzUnsupportedError(
+          `solution[${r}][${c}]: empty or invalid solution letter`,
+        );
+      }
+      if (letter.length > 1) {
+        throw new IpuzUnsupportedError("rebus solutions are not supported");
+      }
       return letter.toUpperCase();
     }),
   );

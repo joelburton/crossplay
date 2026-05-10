@@ -1,35 +1,42 @@
 import { useEffect, useState } from "react";
-import { type GameSummary, fetchGames } from "../api";
-import { navigate, puzzlePath } from "../routing";
+import {
+  type BoardSummary,
+  type PuzzleSummary,
+  createBoard,
+  fetchBoards,
+  fetchPuzzles,
+} from "../api";
+import { boardPath, navigate } from "../routing";
 import { UploadForm } from "./UploadForm";
 import styles from "./HomePage.module.css";
 
 type Props = {
-  onUploaded: (puzzleId: string) => void;
+  onUploaded: (boardId: string) => void;
 };
 
 /**
- * Landing page when no puzzle is loaded. Two columns:
- *   - Left: scrollable list of pre-loaded library puzzles fetched from
- *     `/api/games`. Click an entry to navigate to `/p/:id`.
- *   - Right: a `.puz` file upload form.
+ * Landing page when no board is open. Three sections:
+ *   - "Community puzzles": curated library, hidden if empty (only Joel
+ *     curates it via the CLI; an empty list isn't actionable for users).
+ *   - "Your games": in-progress boards, ALWAYS shown — empty state
+ *     points the user back at the puzzles section.
+ *   - "Upload your own": ad-hoc upload that creates a board directly.
  *
- * The library section hides itself when the fetch returns an empty
- * list (or fails — we fall through to `[]` rather than show an error,
- * since the upload form is still useful).
+ * Both fetches fall through to `[]` on failure rather than surfacing an
+ * error — the upload form keeps the page useful either way.
  */
 export function HomePage({ onUploaded }: Props) {
-  const [games, setGames] = useState<GameSummary[] | null>(null);
+  const [puzzles, setPuzzles] = useState<PuzzleSummary[] | null>(null);
+  const [boards, setBoards] = useState<BoardSummary[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetchGames()
-      .then((list) => {
-        if (!cancelled) setGames(list);
-      })
-      .catch(() => {
-        if (!cancelled) setGames([]);
-      });
+    fetchPuzzles()
+      .then((list) => !cancelled && setPuzzles(list))
+      .catch(() => !cancelled && setPuzzles([]));
+    fetchBoards()
+      .then((list) => !cancelled && setBoards(list))
+      .catch(() => !cancelled && setBoards([]));
     return () => {
       cancelled = true;
     };
@@ -38,22 +45,26 @@ export function HomePage({ onUploaded }: Props) {
   return (
     <div className={styles.outer}>
       <div className={styles.wrap}>
-        {games && games.length > 0 && (
+        {puzzles && puzzles.length > 0 && (
           <section className={styles.section}>
-            <h2 className={styles.heading}>Games</h2>
+            <h2 className={styles.heading}>Community puzzles</h2>
             <ul className={styles.games}>
-              {games.map((g) => (
-                <li key={g.id}>
+              {puzzles.map((p) => (
+                <li key={p.id}>
                   <button
                     type="button"
                     className={styles.game}
-                    onClick={() => navigate(puzzlePath(g.id))}
+                    onClick={() => {
+                      // Find-or-create the board for this puzzle, then go play it.
+                      // Failures fall through silently — the user can click again.
+                      void createBoard(p.id).then(({ boardId }) => navigate(boardPath(boardId)));
+                    }}
                   >
-                    <span className={styles.gameTitle}>{g.title || "Untitled"}</span>
+                    <span className={styles.gameTitle}>{p.title || "Untitled"}</span>
                     <span className={styles.gameMeta}>
-                      {g.author && <span>by {g.author}</span>}
+                      {p.author && <span>by {p.author}</span>}
                       <span className={styles.gameSize}>
-                        {g.width}×{g.height} · .{g.format}
+                        {p.width}×{p.height}
                       </span>
                     </span>
                   </button>
@@ -62,6 +73,31 @@ export function HomePage({ onUploaded }: Props) {
             </ul>
           </section>
         )}
+        <section className={styles.section}>
+          <h2 className={styles.heading}>Your games</h2>
+          {boards && boards.length > 0 ? (
+            <ul className={styles.games}>
+              {boards.map((b) => (
+                <li key={b.id}>
+                  <button
+                    type="button"
+                    className={styles.game}
+                    onClick={() => navigate(boardPath(b.id))}
+                  >
+                    <span className={styles.gameTitle}>{b.title || "Untitled"}</span>
+                    <span className={styles.gameMeta}>
+                      {b.author && <span>by {b.author}</span>}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className={styles.empty}>
+              No games yet. Click a puzzle to start one.
+            </p>
+          )}
+        </section>
         <section className={styles.section}>
           <h2 className={styles.heading}>Upload your own</h2>
           <UploadForm onUploaded={onUploaded} />

@@ -6,7 +6,7 @@
 // conditionally (route, idle/loaded state, or panel-open flag).
 //
 // Hooks and pure helpers (cursor.ts, chatIdentity.ts, draggablePanel.ts,
-// linkify.tsx, previewText.ts, usePuzzleSocket.ts) are intentionally
+// linkify.tsx, previewText.ts, useBoardSocket.ts) are intentionally
 // omitted — this is a render tree, not a module graph.
 
 digraph CrossplayComponents {

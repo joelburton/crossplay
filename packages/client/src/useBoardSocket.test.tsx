@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { usePuzzleSocket } from "./usePuzzleSocket";
+import { useBoardSocket } from "./useBoardSocket";
 
 type Listener = (e: any) => void;
 
@@ -13,7 +13,7 @@ class FakeWebSocket {
   static instances: FakeWebSocket[] = [];
   url: string;
   readyState = FakeWebSocket.CONNECTING;
-  // Instance copy — usePuzzleSocket compares `ws.readyState === ws.OPEN`.
+  // Instance copy — useBoardSocket compares `ws.readyState === ws.OPEN`.
   OPEN = FakeWebSocket.OPEN;
   listeners: Record<string, Listener[]> = {};
   sent: string[] = [];
@@ -82,16 +82,16 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("usePuzzleSocket", () => {
-  it("opens a WebSocket to /ws/puzzles/<id> on mount", () => {
-    renderHook(() => usePuzzleSocket("abc", makeHandlers()));
+describe("useBoardSocket", () => {
+  it("opens a WebSocket to /ws/boards/<id> on mount", () => {
+    renderHook(() => useBoardSocket("abc", makeHandlers()));
     expect(FakeWebSocket.instances).toHaveLength(1);
-    expect(FakeWebSocket.instances[0]!.url).toMatch(/\/ws\/puzzles\/abc$/);
+    expect(FakeWebSocket.instances[0]!.url).toMatch(/\/ws\/boards\/abc$/);
   });
 
   it("reports state transitions and fires onOpen", () => {
     const handlers = makeHandlers();
-    const { result } = renderHook(() => usePuzzleSocket("p1", handlers));
+    const { result } = renderHook(() => useBoardSocket("p1", handlers));
     expect(result.current.state).toBe("connecting");
     act(() => FakeWebSocket.instances[0]!.emitOpen());
     expect(result.current.state).toBe("open");
@@ -100,7 +100,7 @@ describe("usePuzzleSocket", () => {
 
   it("dispatches snapshot, cellUpdate, chatMessage, notesShown, and feedback", () => {
     const handlers = makeHandlers();
-    renderHook(() => usePuzzleSocket("p1", handlers));
+    renderHook(() => useBoardSocket("p1", handlers));
     const ws = FakeWebSocket.instances[0]!;
     act(() => ws.emitOpen());
 
@@ -159,7 +159,7 @@ describe("usePuzzleSocket", () => {
 
   it("ignores malformed JSON messages instead of throwing", () => {
     const handlers = makeHandlers();
-    renderHook(() => usePuzzleSocket("p1", handlers));
+    renderHook(() => useBoardSocket("p1", handlers));
     const ws = FakeWebSocket.instances[0]!;
     act(() => ws.emitOpen());
     expect(() => act(() => ws.emitMessage("not json{"))).not.toThrow();
@@ -169,7 +169,7 @@ describe("usePuzzleSocket", () => {
   it("reads handlers from a ref — stale closures get the latest callback", () => {
     const first = makeHandlers();
     const second = makeHandlers();
-    const { rerender } = renderHook(({ h }) => usePuzzleSocket("p1", h), {
+    const { rerender } = renderHook(({ h }) => useBoardSocket("p1", h), {
       initialProps: { h: first },
     });
     rerender({ h: second });
@@ -182,7 +182,7 @@ describe("usePuzzleSocket", () => {
 
   it("reconnects with exponential backoff after close, resetting on success", () => {
     const handlers = makeHandlers();
-    const { result } = renderHook(() => usePuzzleSocket("p1", handlers));
+    const { result } = renderHook(() => useBoardSocket("p1", handlers));
     const first = FakeWebSocket.instances[0]!;
     act(() => first.emitOpen());
 
@@ -216,7 +216,7 @@ describe("usePuzzleSocket", () => {
   });
 
   it("send() writes when OPEN and silently drops otherwise", () => {
-    const { result } = renderHook(() => usePuzzleSocket("p1", makeHandlers()));
+    const { result } = renderHook(() => useBoardSocket("p1", makeHandlers()));
     const ws = FakeWebSocket.instances[0]!;
 
     // Not yet open: drop.
@@ -229,7 +229,7 @@ describe("usePuzzleSocket", () => {
   });
 
   it("closes the socket on unmount and stops reconnect attempts", () => {
-    const { unmount } = renderHook(() => usePuzzleSocket("p1", makeHandlers()));
+    const { unmount } = renderHook(() => useBoardSocket("p1", makeHandlers()));
     const ws = FakeWebSocket.instances[0]!;
     act(() => ws.emitOpen());
     unmount();

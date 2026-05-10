@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Cell, PuzzleState } from "@crossplay/shared";
-import type { StoredPuzzle } from "./store.js";
+import type { StoredBoard } from "./store.js";
 import {
   applyCheck,
   applyClear,
@@ -17,7 +17,7 @@ import {
 //   A B # C D    block at (0,2)
 //   E F G H I
 //   # # J # #    only J open in row 2
-function entry(): StoredPuzzle {
+function entry(): StoredBoard {
   const cells: Cell[][] = [
     [
       { kind: "cell", number: 1, fill: null },
@@ -60,11 +60,17 @@ function entry(): StoredPuzzle {
     [null, null, "J", null, null],
   ];
   return {
+    id: "test",
     state,
+    // Deep-clone initial so mutations to `state.snapshot` don't bleed
+    // into `initialSnapshot` (applyClear restores from this).
+    initialSnapshot: JSON.parse(JSON.stringify(state.snapshot)) as typeof state.snapshot,
     solution,
+    chat: [],
     sockets: new Set(),
     recentHellos: new Map(),
     feedbackCounter: 0,
+    dirty: false,
   };
 }
 
@@ -257,6 +263,26 @@ describe("applyClear", () => {
     const e = entry();
     expect(applyClear(e)).toHaveLength(0);
     expect(e.state.snapshot.version).toBe(0);
+  });
+  it("preserves author-prefilled cells from the initial snapshot", () => {
+    // Construct an entry where (0,0) is author-prefilled with "A" and
+    // the live snapshot has additional player fills at (0,1) and (1,1).
+    const e = entry();
+    const init00 = e.initialSnapshot.cells[0]![0] as Cell & { kind: "cell" };
+    init00.fill = "A";
+    const live00 = e.state.snapshot.cells[0]![0] as Cell & { kind: "cell" };
+    live00.fill = "A"; // matches the initial — no clear-time change here
+    const live01 = e.state.snapshot.cells[0]![1] as Cell & { kind: "cell" };
+    live01.fill = "Z"; // player-typed
+    const live11 = e.state.snapshot.cells[1]![1] as Cell & { kind: "cell" };
+    live11.fill = "Y"; // player-typed
+    const changes = applyClear(e);
+    // Only the two player-typed cells changed; the prefilled one was
+    // already aligned with initial and is skipped.
+    expect(changes.map((c) => `${c.row},${c.col}`).sort()).toEqual(["0,1", "1,1"]);
+    expect(live00.fill).toBe("A"); // prefilled survived
+    expect(live01.fill).toBeNull();
+    expect(live11.fill).toBeNull();
   });
 });
 

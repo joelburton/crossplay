@@ -14,7 +14,7 @@ import {
   retreatForBackspace,
   wordCells,
 } from "../cursor";
-import { type ChatLine, usePuzzleSocket } from "../usePuzzleSocket";
+import { type ChatLine, useBoardSocket } from "../useBoardSocket";
 import { type ChatIdentity, makeIdentity, persistName, readChatIdentity } from "../chatIdentity";
 import type { Feedback } from "../feedback";
 import type { PuzzleActions } from "../puzzleActions";
@@ -101,7 +101,7 @@ function replaceCell(
  *  - the cursor (row/col + direction);
  *  - the live grid snapshot (mutated by both local typing and server
  *    `cellUpdate` broadcasts; "newer version wins");
- *  - the WebSocket connection (via usePuzzleSocket);
+ *  - the WebSocket connection (via useBoardSocket);
  *  - chat state (panel open, unread count, recent preview);
  *  - notes dialog state (locally dismissed, globally opened).
  *
@@ -208,7 +208,7 @@ export function PuzzleView({
     });
   }, []);
 
-  const { state: connState, send } = usePuzzleSocket(meta.id, {
+  const { state: connState, send } = useBoardSocket(meta.id, {
     onSnapshot: useCallback((snap: GridSnapshot) => {
       setSnapshot(snap);
     }, []),
@@ -371,7 +371,7 @@ export function PuzzleView({
         // Anchor + click is the simplest way to honor the server's
         // Content-Disposition filename without an extra fetch.
         const a = document.createElement("a");
-        a.href = `/api/puzzles/${meta.id}/ipuz`;
+        a.href = `/api/boards/${meta.id}/ipuz`;
         a.rel = "noopener";
         document.body.appendChild(a);
         a.click();

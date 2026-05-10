@@ -3,18 +3,20 @@
  *
  * Three concerns, in order:
  *   1. Boot Fastify with the multipart and websocket plugins, register
- *      the ws route at `/ws/puzzles/:id`.
- *   2. Scan `GAME_DIR` for `.puz` files and load them into the in‑memory
- *      store (slugified filenames are the puzzle ids).
+ *      the ws route at `/ws/boards/:id`.
+ *   2. Open the SQLite handle, run any pending migrations, and hydrate
+ *      the in-memory `store.ts` from the `puzzles` table so existing
+ *      play/ws routes keep working. (The in-memory store is a temporary
+ *      step on the way to fully DB-backed boards in later sprint steps.)
  *   3. Mount REST routes under `/api` and — only in production — serve
  *      the built client static files with an SPA fallback so deep links
- *      like `/p/<id>` resolve to `index.html`.
+ *      like `/b/<id>` resolve to `index.html`.
  *
  * In dev, Vite serves the client and proxies `/api` and `/ws` here
  * unchanged, so the same paths work in both modes.
  */
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
@@ -24,8 +26,18 @@ import staticPlugin from "@fastify/static";
 import websocket from "@fastify/websocket";
 import { parsePuzBuffer } from "./puzzle.js";
 import { IpuzUnsupportedError, parseIpuzBuffer, writeIpuz } from "./ipuz.js";
-import { type PuzzleFormat, getPuzzle, putPuzzle } from "./store.js";
+import { closeDb, getDb } from "./db.js";
+import { flushAll, getOrLoadBoard } from "./store.js";
+import { slugify } from "./importer.js";
+import {
+  PuzzleNotFoundError,
+  findOrCreateBoard,
+  getBoardState,
+  listBoards,
+} from "./boards.js";
 import { registerWsRoutes } from "./ws.js";
+
+type PuzzleFormat = "puz" | "ipuz";
 
 /** Pick a parser. Extension wins; otherwise sniff for a leading `{`
  *  (BOM-tolerant) and treat as ipuz, else fall back to .puz. */
@@ -45,68 +57,18 @@ function parsePuzzleBuffer(id: string, buffer: Buffer, format: PuzzleFormat) {
 
 const app = Fastify({ logger: true });
 
+// Open the SQLite handle + run any pending migrations. Eager so a
+// migration error fails boot instead of surfacing on first DB use.
+const db = getDb();
+app.log.info({ schemaVersion: (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version }, "sqlite ready");
+
 await app.register(multipart, {
   limits: { fileSize: 5 * 1024 * 1024 },
 });
 await app.register(websocket);
-registerWsRoutes(app);
+registerWsRoutes(app, { db });
 
-// Load a library of pre-existing .puz files from GAME_DIR (if set).
-// Defaults to the fixture dir so a fresh checkout has playable games.
 const here = dirname(fileURLToPath(import.meta.url));
-const fixtureDir = resolve(here, "..", "fixtures");
-const GAME_DIR = process.env.GAME_DIR ?? fixtureDir;
-
-/** Lowercase, replace non-alphanumeric runs with `-`, trim. Empty input
- *  becomes the literal string "game". Used to turn `.puz` filenames into
- *  URL-safe puzzle ids. */
-function slugify(name: string): string {
-  return (
-    name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "game"
-  );
-}
-
-/** Read a puzzle file from disk, parse it, and put it into the store
- *  under `id`. Returns `false` and logs a warning on any failure (so a
- *  single malformed file doesn't abort library load). */
-function loadGame(id: string, path: string, format: PuzzleFormat): boolean {
-  try {
-    const buf = readFileSync(path);
-    const parsed = parsePuzzleBuffer(id, buf, format);
-    putPuzzle(id, { ...parsed, format });
-    return true;
-  } catch (err) {
-    app.log.warn({ err, path, id }, "skipping unreadable puzzle");
-    return false;
-  }
-}
-
-const LIBRARY_EXT = /\.(puz|ipuz)$/i;
-
-const libraryIds: string[] = [];
-try {
-  const entries = readdirSync(GAME_DIR);
-  const seen = new Set<string>();
-  for (const entry of entries) {
-    const m = entry.match(LIBRARY_EXT);
-    if (!m) continue;
-    const format = m[1]!.toLowerCase() === "ipuz" ? "ipuz" : "puz";
-    const base = entry.replace(LIBRARY_EXT, "");
-    let id = slugify(base);
-    let n = 2;
-    while (seen.has(id)) {
-      id = `${slugify(base)}-${n++}`;
-    }
-    seen.add(id);
-    if (loadGame(id, resolve(GAME_DIR, entry), format)) libraryIds.push(id);
-  }
-  app.log.info({ path: GAME_DIR, count: libraryIds.length }, "loaded game library");
-} catch (err) {
-  app.log.warn({ err, path: GAME_DIR }, "could not read GAME_DIR");
-}
 
 // All HTTP API routes mounted under /api so they don't collide with
 // SPA routes when the server also serves the built client.
@@ -114,32 +76,28 @@ await app.register(
   async (api) => {
     api.get("/health", async () => ({ ok: true }));
 
-    api.get("/games", async () => {
-      const out: Array<{
+    api.get("/puzzles", async () => {
+      // Read directly from the table — denormalized columns mean no
+      // ipuz parse needed for the list view. Newest first so freshly
+      // imported puzzles surface at the top.
+      return db
+        .prepare(
+          "SELECT id, title, author, width, height FROM puzzles ORDER BY created_at DESC",
+        )
+        .all() as Array<{
         id: string;
         title: string;
         author: string;
         width: number;
         height: number;
-        format: PuzzleFormat;
-      }> = [];
-      for (const id of libraryIds) {
-        const entry = getPuzzle(id);
-        if (!entry) continue;
-        const m = entry.state.meta;
-        out.push({
-          id,
-          title: m.title,
-          author: m.author,
-          width: m.width,
-          height: m.height,
-          format: entry.format,
-        });
-      }
-      return out;
+      }>;
     });
 
-    api.post("/puzzles", async (req, reply) => {
+    api.post("/boards/upload", async (req, reply) => {
+      // Ad-hoc upload: parse the file and create a board directly with
+      // no puzzle row (puzzle_id IS NULL). The puzzles table stays
+      // CLI-only — uploads are how *players* bring a one-off file to
+      // play, not how the curated library grows.
       const file = await req.file();
       if (!file) {
         return reply.code(400).send({ error: "missing file" });
@@ -149,10 +107,18 @@ await app.register(
       const format = detectFormat(file.filename, buffer);
       try {
         const parsed = parsePuzzleBuffer(id, buffer, format);
-        putPuzzle(id, { ...parsed, format });
-        return { puzzleId: id };
+        const ipuz = writeIpuz(parsed.state, parsed.solution);
+        const meta = parsed.state.meta;
+        const snapshot = JSON.stringify(parsed.state.snapshot);
+        const now = new Date().toISOString();
+        db.prepare(
+          "INSERT INTO boards (id, puzzle_id, ipuz, title, author, snapshot, chat, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, ?, '[]', ?, ?)",
+        ).run(id, ipuz, meta.title, meta.author, snapshot, now, now);
+        // No in-memory mirror: the first WS connect to this board will
+        // lazy-load it via getOrLoadBoard.
+        return { boardId: id };
       } catch (err) {
-        req.log.error({ err, format }, "failed to parse puzzle upload");
+        req.log.error({ err, format }, "failed to parse uploaded board");
         if (err instanceof IpuzUnsupportedError) {
           return reply.code(400).send({ error: err.message });
         }
@@ -160,14 +126,37 @@ await app.register(
       }
     });
 
-    api.get<{ Params: { id: string } }>("/puzzles/:id", async (req, reply) => {
-      const entry = getPuzzle(req.params.id);
-      if (!entry) return reply.code(404).send({ error: "not found" });
-      return entry.state;
+    api.post<{ Body: { puzzleId?: string } }>("/boards", async (req, reply) => {
+      const puzzleId = req.body?.puzzleId;
+      if (!puzzleId || typeof puzzleId !== "string") {
+        return reply.code(400).send({ error: "missing puzzleId" });
+      }
+      try {
+        const { boardId } = findOrCreateBoard(db, puzzleId);
+        // No in-memory mirror: the first WS connect to this board will
+        // lazy-load it via getOrLoadBoard.
+        return { boardId };
+      } catch (err) {
+        if (err instanceof PuzzleNotFoundError) {
+          return reply.code(404).send({ error: err.message });
+        }
+        throw err;
+      }
     });
 
-    api.get<{ Params: { id: string } }>("/puzzles/:id/ipuz", async (req, reply) => {
-      const entry = getPuzzle(req.params.id);
+    api.get("/boards", async () => listBoards(db));
+
+    api.get<{ Params: { id: string } }>("/boards/:id", async (req, reply) => {
+      const state = getBoardState(db, req.params.id);
+      if (!state) return reply.code(404).send({ error: "not found" });
+      return state;
+    });
+
+    api.get<{ Params: { id: string } }>("/boards/:id/ipuz", async (req, reply) => {
+      // Download a board (the player's current state) as canonical ipuz.
+      // Lazy-load via the in-memory cache so an active board reflects
+      // any in-flight fills; an idle board falls through to the DB row.
+      const entry = getOrLoadBoard(db, req.params.id);
       if (!entry) return reply.code(404).send({ error: "not found" });
       const json = writeIpuz(entry.state, entry.solution);
       const stem = slugify(entry.state.meta.title) || entry.state.meta.id;
@@ -206,6 +195,36 @@ if (isProd) {
   });
   app.log.info({ clientDist }, "serving client static files");
 }
+
+// Drain dirty cached boards on graceful shutdown so a clean SIGTERM
+// (e.g. nginx reload, manual ctrl-c in dev) doesn't lose play progress.
+// We register the listener once; if both signals fire, the second is
+// ignored. Errors during shutdown are logged but don't block exit —
+// any unflushed work is already lost at that point.
+let shuttingDown = false;
+async function shutdown(signal: NodeJS.Signals) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  app.log.info({ signal }, "shutdown: flushing dirty boards");
+  try {
+    flushAll(db);
+  } catch (err) {
+    app.log.error({ err }, "shutdown: flushAll failed");
+  }
+  try {
+    await app.close();
+  } catch (err) {
+    app.log.error({ err }, "shutdown: app.close failed");
+  }
+  try {
+    closeDb();
+  } catch (err) {
+    app.log.error({ err }, "shutdown: closeDb failed");
+  }
+  process.exit(0);
+}
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
 
 const port = Number(process.env.PORT ?? 3001);
 const host = process.env.HOST ?? "127.0.0.1";

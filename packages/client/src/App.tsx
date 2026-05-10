@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PuzzleState } from "@crossplay/shared";
-import { HttpError, fetchPuzzle } from "./api";
-import { navigate, puzzlePath, useRoute } from "./routing";
+import { HttpError, fetchBoard } from "./api";
+import { boardPath, navigate, useRoute } from "./routing";
 import type { PuzzleActions } from "./puzzleActions";
 import { FeedbackBar } from "./components/FeedbackBar";
 import { HomePage } from "./components/HomePage";
@@ -76,7 +76,7 @@ export function App() {
     async function loadById(id: string) {
       setLoad({ kind: "loading" });
       try {
-        const p = await fetchPuzzle(id);
+        const p = await fetchBoard(id);
         if (!cancelled) setLoad({ kind: "loaded", puzzle: p });
       } catch (err) {
         if (cancelled) return;
@@ -91,7 +91,7 @@ export function App() {
       }
     }
 
-    if (route.kind === "puzzle") {
+    if (route.kind === "board") {
       void loadById(route.id);
     } else {
       setLoad({ kind: "idle" });
@@ -118,8 +118,8 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load.kind === "loaded" ? load.puzzle.meta.id : null]);
 
-  function onUploaded(id: string) {
-    navigate(puzzlePath(id));
+  function onUploaded(boardId: string) {
+    navigate(boardPath(boardId));
   }
 
   function onNewGame() {

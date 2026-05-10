@@ -6,7 +6,7 @@
  * mutates the stored snapshot, and the result is broadcast as
  * `cellUpdate` (and possibly `feedback`) to the room.
  *
- * The `apply*` helpers are pure(‑ish): they take a `StoredPuzzle` and a
+ * The `apply*` helpers are pure(‑ish): they take a `StoredBoard` and a
  * message, mutate the snapshot, and return the change list. They're
  * exported so unit tests can drive them without spinning up Fastify.
  *
@@ -16,6 +16,7 @@
  */
 
 import type { FastifyInstance } from "fastify";
+import type { DatabaseSync } from "node:sqlite";
 import type { WebSocket } from "ws";
 import type {
   Cell,
@@ -24,7 +25,7 @@ import type {
   Scope,
   ServerMessage,
 } from "@crossplay/shared";
-import { getPuzzle, type StoredPuzzle } from "./store.js";
+import { flushAndEvict, getOrLoadBoard, markDirty, type StoredBoard } from "./store.js";
 
 /** Send a message on a single socket if it's still OPEN; no‑op otherwise. */
 function send(socket: WebSocket, msg: ServerMessage): void {
@@ -34,7 +35,7 @@ function send(socket: WebSocket, msg: ServerMessage): void {
 }
 
 /** Broadcast a message to every OPEN socket in the room. Serializes once. */
-function broadcast(entry: StoredPuzzle, msg: ServerMessage): void {
+function broadcast(entry: StoredBoard, msg: ServerMessage): void {
   const payload = JSON.stringify(msg);
   for (const s of entry.sockets) {
     if (s.readyState === s.OPEN) s.send(payload);
@@ -167,7 +168,7 @@ export function sanitizeName(name: string): string {
 type CellChange = { row: number; col: number; cell: Cell; senderColor?: string };
 
 /** True iff `(r, c)` is inside the grid and is a fillable (non‑block) cell. */
-function isOpen(entry: StoredPuzzle, r: number, c: number): boolean {
+function isOpen(entry: StoredBoard, r: number, c: number): boolean {
   const { meta, snapshot } = entry.state;
   if (r < 0 || c < 0 || r >= meta.height || c >= meta.width) return false;
   return snapshot.cells[r]![c]!.kind === "cell";
@@ -177,7 +178,7 @@ function isOpen(entry: StoredPuzzle, r: number, c: number): boolean {
  *  given direction. Returns the input cell unchanged if it is itself a
  *  block (callers should guard with `isOpen` first). */
 function findWordStart(
-  entry: StoredPuzzle,
+  entry: StoredBoard,
   row: number,
   col: number,
   dir: Direction,
@@ -196,7 +197,7 @@ function findWordStart(
 /** Every cell in the word containing `(row, col)` in `dir`, in word order
  *  from start to end. Empty array if `(row, col)` is a block. */
 function wordCells(
-  entry: StoredPuzzle,
+  entry: StoredBoard,
   row: number,
   col: number,
   dir: Direction,
@@ -229,7 +230,7 @@ function wordCells(
  * `null` if the message is invalid (no broadcast happens in that case).
  */
 export function applyFill(
-  entry: StoredPuzzle,
+  entry: StoredBoard,
   msg: Extract<ClientMessage, { type: "fill" }>,
 ): CellChange | null {
   const { meta, snapshot } = entry.state;
@@ -260,7 +261,7 @@ export function applyFill(
  *  `wrong` and `pencil`. Returns `null` if the cell is a block, has no
  *  solution, or is already in the post-reveal state (consistent with
  *  `applyCheck` / `applyClear`: don't re-broadcast no-ops). */
-function revealAt(entry: StoredPuzzle, row: number, col: number): CellChange | null {
+function revealAt(entry: StoredBoard, row: number, col: number): CellChange | null {
   const cell = entry.state.snapshot.cells[row]?.[col];
   if (!cell || cell.kind !== "cell") return null;
   const sol = entry.solution[row]?.[col];
@@ -283,7 +284,7 @@ function revealAt(entry: StoredPuzzle, row: number, col: number): CellChange | n
  * Already‑wrong cells that are still wrong return `null` (no spurious
  * re‑broadcast).
  */
-function checkAt(entry: StoredPuzzle, row: number, col: number): CellChange | null {
+function checkAt(entry: StoredBoard, row: number, col: number): CellChange | null {
   const cell = entry.state.snapshot.cells[row]?.[col];
   if (!cell || cell.kind !== "cell") return null;
   if (cell.fill == null) return null; // skip empty cells
@@ -306,7 +307,7 @@ function checkAt(entry: StoredPuzzle, row: number, col: number): CellChange | nu
  *  letter → just `(row, col)`; word → the across/down word containing it;
  *  puzzle → every open cell in the grid. */
 function targetCells(
-  entry: StoredPuzzle,
+  entry: StoredBoard,
   msg: Extract<ClientMessage, { type: "reveal" | "check" }>,
 ): { row: number; col: number }[] {
   const { meta } = entry.state;
@@ -335,7 +336,7 @@ function targetCells(
  * can briefly flash the revealing player's color on the cell.
  */
 export function applyReveal(
-  entry: StoredPuzzle,
+  entry: StoredBoard,
   msg: Extract<ClientMessage, { type: "reveal" }>,
 ): CellChange[] {
   const changes: CellChange[] = [];
@@ -351,27 +352,66 @@ export function applyReveal(
 }
 
 /**
- * Wipe every fill, `wrong` flag, `revealed` flag, and `pencil` flag from
- * the grid. Cells that were already empty are skipped (no spurious
- * broadcast). Bumps `snapshot.version` once per affected cell.
+ * Restore the grid to its initial (creation-time) state. Cells whose
+ * current state matches the initial are skipped (no spurious broadcast);
+ * the rest have their fields mutated in place to match the initial,
+ * bumping `snapshot.version` once apiece.
+ *
+ * Restoring (rather than wiping) means author-prefilled cells survive
+ * a clear — clearing your own typing doesn't erase the puzzle's givens.
+ *
+ * In-place mutation preserves cell object identity, matching how
+ * `applyFill` mutates cells; this is what callers and tests expect.
  */
-export function applyClear(entry: StoredPuzzle): CellChange[] {
+export function applyClear(entry: StoredBoard): CellChange[] {
   const changes: CellChange[] = [];
   const { meta, snapshot } = entry.state;
+  const initial = entry.initialSnapshot;
   for (let r = 0; r < meta.height; r++) {
     for (let c = 0; c < meta.width; c++) {
-      const cell = snapshot.cells[r]![c]!;
-      if (cell.kind !== "cell") continue;
-      if (cell.fill == null && !cell.wrong && !cell.revealed && !cell.pencil) continue;
-      cell.fill = null;
-      delete cell.wrong;
-      delete cell.revealed;
-      delete cell.pencil;
-      snapshot.version += 1;
-      changes.push({ row: r, col: c, cell });
+      const live = snapshot.cells[r]![c]!;
+      const init = initial.cells[r]![c]!;
+      if (cellsEqual(live, init)) continue;
+      // Both kinds match in practice (puzzle structure is fixed), so
+      // we can mutate in place. If they ever diverge, fall back to a
+      // deep-clone replace to keep the slot consistent.
+      if (live.kind === "cell" && init.kind === "cell") {
+        live.number = init.number;
+        live.fill = init.fill;
+        if (init.revealed) live.revealed = true;
+        else delete live.revealed;
+        if (init.wrong) live.wrong = true;
+        else delete live.wrong;
+        if (init.pencil) live.pencil = true;
+        else delete live.pencil;
+        snapshot.version += 1;
+        changes.push({ row: r, col: c, cell: live });
+      } else {
+        const restored = JSON.parse(JSON.stringify(init)) as Cell;
+        snapshot.cells[r]![c] = restored;
+        snapshot.version += 1;
+        changes.push({ row: r, col: c, cell: restored });
+      }
     }
   }
   return changes;
+}
+
+/** Structural equality for two Cells. Compares kind + every visible
+ *  field; treats missing optional flags as equal to absent (so `{}` and
+ *  `{ pencil: undefined }` look the same). */
+function cellsEqual(a: Cell, b: Cell): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "block") return true;
+  // both are cells
+  const bb = b as Extract<Cell, { kind: "cell" }>;
+  return (
+    a.number === bb.number &&
+    a.fill === bb.fill &&
+    !!a.revealed === !!bb.revealed &&
+    !!a.wrong === !!bb.wrong &&
+    !!a.pencil === !!bb.pencil
+  );
 }
 
 /**
@@ -384,7 +424,7 @@ export function applyClear(entry: StoredPuzzle): CellChange[] {
  * `registerWsRoutes`).
  */
 export function applyCheck(
-  entry: StoredPuzzle,
+  entry: StoredBoard,
   msg: Extract<ClientMessage, { type: "check" }>,
 ): CellChange[] {
   const changes: CellChange[] = [];
@@ -405,7 +445,7 @@ export function applyCheck(
 // `>>> 0` keeps the counter in 32‑bit unsigned territory so the base‑36
 // string stays short. Per‑puzzle so two rooms' feedback streams stay
 // independent and log lines are easier to attribute.
-function nextFeedbackId(entry: StoredPuzzle): string {
+function nextFeedbackId(entry: StoredBoard): string {
   entry.feedbackCounter = (entry.feedbackCounter + 1) >>> 0;
   return `f${Date.now().toString(36)}_${entry.feedbackCounter.toString(36)}`;
 }
@@ -414,7 +454,7 @@ function nextFeedbackId(entry: StoredPuzzle): string {
  *  fill. Used to decide whether to broadcast the "check skips pencil
  *  cells" warning feedback. Exported for direct unit testing. */
 export function checkScopeHasPencil(
-  entry: StoredPuzzle,
+  entry: StoredBoard,
   msg: Extract<ClientMessage, { type: "check" }>,
 ): boolean {
   for (const { row, col } of targetCells(entry, msg)) {
@@ -478,7 +518,7 @@ export function pruneRecentHellos(
  * wins" check (`if (version <= prev.version) return prev`) then applies
  * every update from a batch, in order.
  */
-function broadcastChanges(entry: StoredPuzzle, changes: CellChange[]): void {
+function broadcastChanges(entry: StoredBoard, changes: CellChange[]): void {
   if (changes.length === 0) return;
   const final = entry.state.snapshot.version;
   for (let i = 0; i < changes.length; i++) {
@@ -498,6 +538,9 @@ function broadcastChanges(entry: StoredPuzzle, changes: CellChange[]): void {
 const HEARTBEAT_INTERVAL_MS = 15_000;
 
 export type WsRouteOptions = {
+  /** Required: sqlite handle. Boards are loaded lazily from this on
+   *  first connect to a given id. */
+  db: DatabaseSync;
   // Override the per-connection ping cadence. The integration test lowers
   // this to drive the silent-disconnect path in milliseconds rather than
   // the production 15s.
@@ -505,13 +548,16 @@ export type WsRouteOptions = {
 };
 
 /**
- * Register the `/ws/puzzles/:id` WebSocket route.
+ * Register the `/ws/boards/:id` WebSocket route.
  *
  * Per connection:
- *   - On open: add to the room, send a `snapshot`, start a heartbeat.
+ *   - On open: lazy-load the board into the in-memory cache, add to the
+ *     room, send a `snapshot`, start a heartbeat.
  *   - On message: validate via `parseMessage`, dispatch to the matching
- *     `apply*` helper or chat/notes/hello side effect, broadcast.
- *   - On close: clear the heartbeat, remove from the room set.
+ *     `apply*` helper or chat/notes/hello side effect, broadcast,
+ *     mark the board dirty if play state changed.
+ *   - On close: clear the heartbeat, remove from the room set. (Step 8
+ *     will flush + evict on last-socket-close.)
  *
  * The heartbeat pings every `HEARTBEAT_INTERVAL_MS` and terminates the
  * socket if no `pong` came back since the previous tick — so silent
@@ -519,17 +565,18 @@ export type WsRouteOptions = {
  */
 export function registerWsRoutes(
   app: FastifyInstance,
-  opts: WsRouteOptions = {},
+  opts: WsRouteOptions,
 ): void {
+  const { db } = opts;
   const heartbeatIntervalMs = opts.heartbeatIntervalMs ?? HEARTBEAT_INTERVAL_MS;
   app.get<{ Params: { id: string } }>(
-    "/ws/puzzles/:id",
+    "/ws/boards/:id",
     { websocket: true },
     (socket, req) => {
       const id = req.params.id;
-      const entry = getPuzzle(id);
+      const entry = getOrLoadBoard(db, id);
       if (!entry) {
-        socket.close(1008, "puzzle not found");
+        socket.close(1008, "board not found");
         return;
       }
 
@@ -560,16 +607,23 @@ export function registerWsRoutes(
         if (!msg) return;
         if (msg.type === "fill") {
           const change = applyFill(entry, msg);
-          if (change) broadcastChanges(entry, [change]);
+          if (change) {
+            broadcastChanges(entry, [change]);
+            markDirty(db, entry.id);
+          }
           return;
         }
         if (msg.type === "reveal") {
-          broadcastChanges(entry, applyReveal(entry, msg));
+          const changes = applyReveal(entry, msg);
+          broadcastChanges(entry, changes);
+          if (changes.length > 0) markDirty(db, entry.id);
           return;
         }
         if (msg.type === "check") {
           const hadPencil = checkScopeHasPencil(entry, msg);
-          broadcastChanges(entry, applyCheck(entry, msg));
+          const changes = applyCheck(entry, msg);
+          broadcastChanges(entry, changes);
+          if (changes.length > 0) markDirty(db, entry.id);
           if (hadPencil) {
             broadcast(entry, {
               type: "feedback",
@@ -582,16 +636,21 @@ export function registerWsRoutes(
           return;
         }
         if (msg.type === "clear") {
-          broadcastChanges(entry, applyClear(entry));
+          const changes = applyClear(entry);
+          broadcastChanges(entry, changes);
+          if (changes.length > 0) markDirty(db, entry.id);
           return;
         }
         if (msg.type === "chat") {
+          const ts = Date.now();
+          entry.chat.push({ name: msg.name, color: msg.color, text: msg.text, ts });
+          markDirty(db, entry.id);
           broadcast(entry, {
             type: "chatMessage",
             name: msg.name,
             color: msg.color,
             text: msg.text,
-            ts: Date.now(),
+            ts,
           });
           return;
         }
@@ -626,6 +685,11 @@ export function registerWsRoutes(
       socket.on("close", () => {
         clearInterval(heartbeat);
         entry.sockets.delete(socket);
+        // Last connection out: persist + drop the cache entry. A
+        // future reconnect will lazy-load it again.
+        if (entry.sockets.size === 0) {
+          flushAndEvict(db, entry.id);
+        }
       });
     },
   );

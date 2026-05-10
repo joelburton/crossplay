@@ -1,4 +1,4 @@
-import type { ChatLine } from "../usePuzzleSocket";
+import type { ChatLine } from "../useBoardSocket";
 import { previewText } from "../previewText";
 import styles from "./ChatPreview.module.css";
 
