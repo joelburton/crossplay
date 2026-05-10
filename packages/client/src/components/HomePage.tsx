@@ -35,8 +35,11 @@ export function HomePage({ onUploaded }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
   // Two-step delete: null = trash icon only, <id> = that row is in
   // "Delete?" confirm state. At most one row is in confirm state at a
-  // time; clicking outside the confirm button cancels it.
+  // time; clicking outside the confirm button OR pressing Esc cancels.
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  // While a DELETE is in flight we hide the row entirely so the user
+  // can't click it and navigate to a board that's about to vanish.
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set());
   const confirmButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
@@ -67,7 +70,8 @@ export function HomePage({ onUploaded }: Props) {
   // While a row is in confirm state, a click anywhere except the
   // confirm button itself cancels it. mousedown (not click) so the
   // dismissal happens before any other element's click handler can
-  // run, which keeps the UX predictable.
+  // run, which keeps the UX predictable. Esc dismisses too — the same
+  // dismissal channel for keyboard users.
   useEffect(() => {
     if (confirmDeleteId === null) return;
     function onDocumentMouseDown(e: MouseEvent) {
@@ -75,12 +79,24 @@ export function HomePage({ onUploaded }: Props) {
       if (btn && e.target instanceof Node && btn.contains(e.target)) return;
       setConfirmDeleteId(null);
     }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setConfirmDeleteId(null);
+    }
     document.addEventListener("mousedown", onDocumentMouseDown);
-    return () => document.removeEventListener("mousedown", onDocumentMouseDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onDocumentMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [confirmDeleteId]);
 
   async function onConfirmDelete(id: string) {
     setConfirmDeleteId(null);
+    setDeletingIds((cur) => {
+      const next = new Set(cur);
+      next.add(id);
+      return next;
+    });
     try {
       await deleteBoard(id);
       setBoards((cur) => (cur ? cur.filter((b) => b.id !== id) : cur));
@@ -90,6 +106,12 @@ export function HomePage({ onUploaded }: Props) {
       fetchBoards()
         .then(setBoards)
         .catch(() => {});
+    } finally {
+      setDeletingIds((cur) => {
+        const next = new Set(cur);
+        next.delete(id);
+        return next;
+      });
     }
   }
 
@@ -130,9 +152,13 @@ export function HomePage({ onUploaded }: Props) {
         )}
         <section className={`${styles.section} ${styles.listSection}`}>
           <h2 className={styles.heading}>Your games</h2>
-          {boards && boards.length > 0 ? (
+          {(() => {
+            // Hide rows whose DELETE is in flight so the user can't
+            // click them mid-flight and navigate to a vanishing board.
+            const visible = boards?.filter((b) => !deletingIds.has(b.id)) ?? null;
+            return visible && visible.length > 0 ? (
             <ul className={styles.games}>
-              {boards.map((b) => {
+              {visible.map((b) => {
                 const isConfirming = confirmDeleteId === b.id;
                 return (
                   <li key={b.id} className={styles.boardRow}>
@@ -178,7 +204,8 @@ export function HomePage({ onUploaded }: Props) {
             <p className={styles.empty}>
               No games yet. Click a puzzle to start one.
             </p>
-          )}
+          );
+          })()}
         </section>
         <section className={`${styles.section} ${styles.uploadSection}`}>
           <h2 className={styles.heading}>Upload your own</h2>

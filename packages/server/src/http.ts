@@ -77,11 +77,25 @@ export async function registerHttpRoutes(app: FastifyInstance, opts: HttpRouteOp
         // no puzzle row (puzzle_id IS NULL). The puzzles table stays
         // CLI-only — uploads are how *players* bring a one-off file to
         // play, not how the curated library grows.
-        const file = await req.file();
-        if (!file) {
-          return reply.code(400).send({ error: "missing file" });
+        //
+        // The multipart plugin throws on (a) non-multipart bodies and
+        // (b) files over the configured fileSize cap. Both should be
+        // reported as 400, not bubbled to a 500. The parser is in a
+        // second try-block so a clean buffer-read failure can't be
+        // mistaken for a malformed puzzle.
+        let file: Awaited<ReturnType<typeof req.file>>;
+        let buffer: Buffer;
+        try {
+          file = await req.file();
+          if (!file) {
+            return reply.code(400).send({ error: "missing file" });
+          }
+          buffer = await file.toBuffer();
+        } catch (err) {
+          req.log.warn({ err }, "upload: failed to read multipart body");
+          const msg = err instanceof Error ? err.message : "invalid upload";
+          return reply.code(400).send({ error: msg });
         }
-        const buffer = await file.toBuffer();
         const id = randomUUID();
         const format = detectFormat(file.filename, buffer);
         try {

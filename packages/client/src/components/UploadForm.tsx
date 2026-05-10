@@ -28,6 +28,10 @@ export function UploadForm({ onUploaded }: Props) {
       onUploaded(boardId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "upload failed");
+    } finally {
+      // Reset even on success — today the parent navigates away and
+      // unmounts the form, but if it ever stays mounted (toast, modal)
+      // the button shouldn't stay stuck on "Loading…".
       setBusy(false);
     }
   }

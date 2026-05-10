@@ -67,7 +67,10 @@ function setCellFill(
   // Early-exit when nothing visible would change. The server echoes back
   // every fill (including ones we just optimistically wrote locally), so
   // without this guard we'd allocate a new row + grid on every echo —
-  // and re-render the whole board for no visible change.
+  // and re-render the whole board for no visible change. Backspace on
+  // an already-empty cell falls through here too: that's safe because
+  // the server never sets `wrong` on an unfilled cell, so there's no
+  // marker we'd be failing to clear.
   if (
     cell.fill === letter &&
     !cell.wrong &&

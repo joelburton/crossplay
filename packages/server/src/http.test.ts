@@ -23,9 +23,11 @@ import { _clearCacheForTest } from "./store.js";
 
 const FIXTURE_DIR = resolve(import.meta.dirname, "..", "fixtures");
 
-async function buildApp(): Promise<{ app: FastifyInstance; db: DatabaseSync }> {
+async function buildApp(
+  opts: { fileSize?: number } = {},
+): Promise<{ app: FastifyInstance; db: DatabaseSync }> {
   const app = Fastify();
-  await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } });
+  await app.register(multipart, { limits: { fileSize: opts.fileSize ?? 5 * 1024 * 1024 } });
   const db = openDb(":memory:");
   await registerHttpRoutes(app, { db });
   await app.ready();
@@ -390,6 +392,29 @@ describe("http: POST /api/boards/upload", () => {
     });
     expect(res.statusCode).toBe(400);
     expect((res.json() as { error: string }).error).toMatch(/invalid \.puz/i);
+  });
+
+  it("returns 400 (not 500) when the file exceeds the size cap", async () => {
+    // Fresh app with a tiny cap so we don't have to push megabytes
+    // through inject(). 64 bytes is well below the size of any real
+    // puzzle but large enough to fit a few header bytes before the
+    // multipart plugin's limit fires.
+    await app.close();
+    _clearCacheForTest();
+    ({ app } = await buildApp({ fileSize: 64 }));
+    const { payload, contentType } = multipartFile({
+      fieldName: "file",
+      filename: "big.puz",
+      contentType: "application/octet-stream",
+      body: Buffer.alloc(2048, 0x41), // 2KB of 'A'
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/boards/upload",
+      headers: { "content-type": contentType },
+      payload,
+    });
+    expect(res.statusCode).toBe(400);
   });
 
   it("returns 400 with the underlying message on unsupported ipuz features", async () => {
