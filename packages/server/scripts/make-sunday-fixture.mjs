@@ -11,6 +11,21 @@ const H = 21;
 const TITLE = "Sunday Sampler (synthetic)";
 const AUTHOR = "Crossplay generator";
 const COPYRIGHT = "test fixture; not a real puzzle";
+// Note: .puz files are ISO-8859-1; stick to ASCII or Latin-1 characters here.
+// puzjs decodes each byte as a separate codepoint (no UTF-8 reassembly), so
+// any multi-byte UTF-8 sequence (em-dash, curly quotes, etc.) will appear
+// as garbled characters in the rendered note.
+const NOTE = [
+  "Welcome to the Sunday Sampler -- a synthetic 21x21 grid generated for layout testing.",
+  "",
+  "Theme: There is no theme. The grid was placed by a deterministic random number generator with rotational symmetry, and the letters are nonsense.",
+  "",
+  "About the clues: Every clue is a placeholder of the form \"Across clue N\" or \"Down clue N\". They have no relationship to the letters in the grid. If you came here expecting wordplay, please complain loudly to the seeded RNG (look up rng(42) -- that's the responsible party).",
+  "",
+  "Cryptic note: In a real cryptic crossword, this section would explain conventions like \"all answers contain a hidden moth\" or \"every down answer is an anagram of a chemical element\". Here, the only convention is that everything has 17% block density and no pretensions to solvability.",
+  "",
+  "Use the menu to test reveal/check actions against this grid; the \"solution\" is the random letter we wrote into each cell, so reveal-letter will fill in the same nonsense your fingers were about to type.",
+].join("\n");
 
 // Seeded RNG so the fixture is reproducible
 function rng(seed) {
@@ -105,7 +120,7 @@ for (let r = 0; r < H; r++) {
     }
   }
 }
-pushStr(""); // description (empty)
+pushStr(NOTE); // description / note
 
 const stringsLen = stringsParts.reduce((a, b) => a + b.length, 0);
 const totalSize = headerSize + gridSize * 2 + stringsLen;

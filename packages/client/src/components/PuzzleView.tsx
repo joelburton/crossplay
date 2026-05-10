@@ -146,6 +146,41 @@ export function PuzzleView({ puzzle, actionsRef }: Props) {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // Option/Alt + letter shortcuts. Use e.code so Mac dead-key
+      // remapping (Opt+R = ®) doesn't break us.
+      if (e.altKey && !e.metaKey && !e.ctrlKey) {
+        if (e.code === "KeyR") {
+          e.preventDefault();
+          if (e.shiftKey) {
+            send({
+              type: "reveal",
+              scope: "word",
+              row: cursor.row,
+              col: cursor.col,
+              dir: cursor.dir,
+            });
+          } else {
+            send({ type: "reveal", scope: "letter", row: cursor.row, col: cursor.col });
+          }
+          return;
+        }
+        if (e.code === "KeyC") {
+          e.preventDefault();
+          if (e.shiftKey) {
+            send({
+              type: "check",
+              scope: "word",
+              row: cursor.row,
+              col: cursor.col,
+              dir: cursor.dir,
+            });
+          } else {
+            send({ type: "check", scope: "letter", row: cursor.row, col: cursor.col });
+          }
+          return;
+        }
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (ARROWS.has(e.key)) {
         e.preventDefault();
         setCursor((cur) => moveCursor(cells, cur, e.key as ArrowKey));

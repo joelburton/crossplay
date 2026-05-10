@@ -34,7 +34,10 @@
 }
 
 .item {
-  display: block;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1.5rem;
   width: 100%;
   text-align: left;
   background: none;
@@ -45,8 +48,23 @@
   cursor: pointer;
 }
 
+.shortcut {
+  color: #888;
+  font-size: 0.85em;
+  letter-spacing: 0.04em;
+}
+
 .item:hover {
   background: #f0f0f0;
+}
+
+.item:disabled {
+  color: #aaa;
+  cursor: not-allowed;
+}
+
+.item:disabled:hover {
+  background: none;
 }
 
 .empty {

@@ -7,10 +7,11 @@ type Props = {
   actions: PuzzleActions | null;
   triggerRef?: RefObject<HTMLElement>;
   onUploadAnother: () => void;
+  onShowNotes: () => void;
   onClose: () => void;
 };
 
-export function Menu({ actions, triggerRef, onUploadAnother, onClose }: Props) {
+export function Menu({ actions, triggerRef, onUploadAnother, onShowNotes, onClose }: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -57,26 +58,40 @@ export function Menu({ actions, triggerRef, onUploadAnother, onClose }: Props) {
         </button>
       )}
       {actions && (
+        <button
+          type="button"
+          className={styles.item}
+          onClick={run(onShowNotes)}
+          disabled={!actions.meta.note}
+        >
+          Show notes
+        </button>
+      )}
+      {actions && (
         <>
           <div className={styles.sep} role="separator" />
           <button type="button" className={styles.item} onClick={run(actions.revealLetter)}>
-            Reveal letter
+            <span>Reveal letter</span>
+            <span className={styles.shortcut}>⌥R</span>
           </button>
           <button type="button" className={styles.item} onClick={run(actions.revealWord)}>
-            Reveal word
+            <span>Reveal word</span>
+            <span className={styles.shortcut}>⌥⇧R</span>
           </button>
           <button type="button" className={styles.item} onClick={run(actions.revealPuzzle)}>
-            Reveal puzzle
+            <span>Reveal puzzle</span>
           </button>
           <div className={styles.sep} role="separator" />
           <button type="button" className={styles.item} onClick={run(actions.checkLetter)}>
-            Check letter
+            <span>Check letter</span>
+            <span className={styles.shortcut}>⌥C</span>
           </button>
           <button type="button" className={styles.item} onClick={run(actions.checkWord)}>
-            Check word
+            <span>Check word</span>
+            <span className={styles.shortcut}>⌥⇧C</span>
           </button>
           <button type="button" className={styles.item} onClick={run(actions.checkPuzzle)}>
-            Check puzzle
+            <span>Check puzzle</span>
           </button>
         </>
       )}

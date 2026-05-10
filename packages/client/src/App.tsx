@@ -4,6 +4,7 @@ import { HttpError, fetchPuzzle } from "./api";
 import { navigate, puzzlePath, useRoute } from "./routing";
 import type { PuzzleActions } from "./puzzleActions";
 import { Menu } from "./components/Menu";
+import { NoteDialog } from "./components/NoteDialog";
 import { UploadForm } from "./components/UploadForm";
 import { PuzzleView } from "./components/PuzzleView";
 import styles from "./App.module.css";
@@ -18,6 +19,7 @@ export function App() {
   const route = useRoute();
   const [load, setLoad] = useState<LoadState>({ kind: "idle" });
   const [menuOpen, setMenuOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
   const triedDev = useRef(false);
   const actionsRef = useRef<PuzzleActions | null>(null);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
@@ -68,9 +70,10 @@ export function App() {
     };
   }, [route]);
 
-  // close menu when puzzle changes
+  // close menu / notes when puzzle changes
   useEffect(() => {
     setMenuOpen(false);
+    setNotesOpen(false);
   }, [load.kind === "loaded" ? load.puzzle.meta.id : null]);
 
   function onUploaded(id: string) {
@@ -100,6 +103,7 @@ export function App() {
               actions={actionsRef.current}
               triggerRef={titleRef}
               onUploadAnother={onUploadAnother}
+              onShowNotes={() => setNotesOpen(true)}
               onClose={() => setMenuOpen(false)}
             />
           )}
@@ -118,6 +122,13 @@ export function App() {
         )}
         {load.kind === "idle" && <UploadForm onUploaded={onUploaded} />}
       </main>
+      {notesOpen && load.kind === "loaded" && load.puzzle.meta.note && (
+        <NoteDialog
+          title={load.puzzle.meta.title || "Notes"}
+          note={load.puzzle.meta.note}
+          onClose={() => setNotesOpen(false)}
+        />
+      )}
     </div>
   );
 }
