@@ -62,8 +62,10 @@ export type ClientMessage =
       col?: number;
       dir?: Direction;
     }
-  | { type: "clear" };
+  | { type: "clear" }
+  | { type: "chat"; name: string; color: string; text: string };
 
 export type ServerMessage =
   | { type: "snapshot"; snapshot: GridSnapshot }
-  | { type: "cellUpdate"; row: number; col: number; cell: Cell; version: number };
+  | { type: "cellUpdate"; row: number; col: number; cell: Cell; version: number }
+  | { type: "chatMessage"; name: string; color: string; text: string; ts: number };

@@ -201,6 +201,31 @@ describe("parseMessage clear", () => {
   });
 });
 
+describe("parseMessage chat", () => {
+  const ok = { type: "chat", name: "Joel", color: "#1f77b4", text: "hi" };
+  it("parses a valid chat", () => {
+    expect(parseMessage(JSON.stringify(ok))).toEqual(ok);
+  });
+  it("trims text", () => {
+    expect(parseMessage(JSON.stringify({ ...ok, text: "  hello  " }))).toEqual({
+      ...ok,
+      text: "hello",
+    });
+  });
+  it("rejects empty text", () => {
+    expect(parseMessage(JSON.stringify({ ...ok, text: "   " }))).toBeNull();
+  });
+  it("rejects too-long text", () => {
+    expect(parseMessage(JSON.stringify({ ...ok, text: "x".repeat(501) }))).toBeNull();
+  });
+  it("rejects bad color", () => {
+    expect(parseMessage(JSON.stringify({ ...ok, color: "red" }))).toBeNull();
+  });
+  it("rejects empty name", () => {
+    expect(parseMessage(JSON.stringify({ ...ok, name: "" }))).toBeNull();
+  });
+});
+
 describe("applyCheck", () => {
   it("marks wrong cells with the wrong flag", () => {
     const e = entry();

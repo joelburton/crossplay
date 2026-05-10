@@ -3,9 +3,17 @@ import type { Cell, ClientMessage, GridSnapshot, ServerMessage } from "@crosspla
 
 export type ConnState = "connecting" | "open" | "closed";
 
+export type ChatLine = {
+  name: string;
+  color: string;
+  text: string;
+  ts: number;
+};
+
 type Handlers = {
   onSnapshot: (snapshot: GridSnapshot) => void;
   onCellUpdate: (row: number, col: number, cell: Cell, version: number) => void;
+  onChatMessage?: (line: ChatLine) => void;
 };
 
 const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000, 16000, 30000];
@@ -53,6 +61,13 @@ export function usePuzzleSocket(puzzleId: string, handlers: Handlers) {
         if (msg.type === "snapshot") handlersRef.current.onSnapshot(msg.snapshot);
         else if (msg.type === "cellUpdate") {
           handlersRef.current.onCellUpdate(msg.row, msg.col, msg.cell, msg.version);
+        } else if (msg.type === "chatMessage") {
+          handlersRef.current.onChatMessage?.({
+            name: msg.name,
+            color: msg.color,
+            text: msg.text,
+            ts: msg.ts,
+          });
         }
       });
     }

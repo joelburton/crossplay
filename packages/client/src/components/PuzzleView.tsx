@@ -14,9 +14,11 @@ import {
   retreatForBackspace,
   wordCells,
 } from "../cursor";
-import { usePuzzleSocket } from "../usePuzzleSocket";
+import { type ChatLine, usePuzzleSocket } from "../usePuzzleSocket";
+import { type ChatIdentity, readChatIdentity } from "../chatIdentity";
 import type { PuzzleActions } from "../puzzleActions";
 import { Board } from "./Board";
+import { ChatPanel } from "./ChatPanel";
 import { ClueList } from "./ClueList";
 import styles from "./PuzzleView.module.css";
 
@@ -83,6 +85,10 @@ export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange
     return { ...start, dir: "across" };
   });
 
+  const [identity] = useState<ChatIdentity>(() => readChatIdentity());
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatLine[]>([]);
+
   const { state: connState, send } = usePuzzleSocket(meta.id, {
     onSnapshot: useCallback((snap: GridSnapshot) => {
       setSnapshot(snap);
@@ -93,7 +99,17 @@ export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange
         return { version, cells: replaceCell(prev.cells, row, col, cell) };
       });
     }, []),
+    onChatMessage: useCallback((line: ChatLine) => {
+      setChatMessages((prev) => [...prev, line]);
+    }, []),
   });
+
+  const sendChat = useCallback(
+    (text: string) => {
+      send({ type: "chat", name: identity.name, color: identity.color, text });
+    },
+    [send, identity.name, identity.color],
+  );
 
   const onCellClick = useCallback(
     (row: number, col: number) => {
@@ -154,6 +170,18 @@ export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // Don't intercept anything when an input/textarea has focus
+      // (chat input, future search boxes, etc.).
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+
+      // "/" opens the chat panel.
+      if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        setChatOpen(true);
+        return;
+      }
+
       // Option/Alt + letter shortcuts. Use e.code so Mac dead-key
       // remapping (Opt+R = ®) doesn't break us.
       if (e.altKey && !e.metaKey && !e.ctrlKey) {
@@ -307,6 +335,14 @@ export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange
           />
         </div>
       </div>
+      {chatOpen && (
+        <ChatPanel
+          identity={identity}
+          messages={chatMessages}
+          onSend={sendChat}
+          onClose={() => setChatOpen(false)}
+        />
+      )}
     </div>
   );
 }

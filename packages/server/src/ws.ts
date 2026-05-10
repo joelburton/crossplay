@@ -59,6 +59,20 @@ export function parseMessage(raw: unknown): ClientMessage | null {
 
   if (m.type === "clear") return { type: "clear" };
 
+  if (m.type === "chat") {
+    if (
+      typeof m.name !== "string" ||
+      typeof m.color !== "string" ||
+      typeof m.text !== "string"
+    ) return null;
+    const text = m.text.trim();
+    if (!text) return null;
+    if (text.length > 500) return null;
+    if (m.name.length === 0 || m.name.length > 32) return null;
+    if (!/^#[0-9a-f]{6}$/i.test(m.color)) return null;
+    return { type: "chat", name: m.name, color: m.color, text };
+  }
+
   if (m.type === "reveal" || m.type === "check") {
     if (!isScope(m.scope)) return null;
     if (m.scope !== "puzzle") {
@@ -305,6 +319,16 @@ export function registerWsRoutes(app: FastifyInstance): void {
         }
         if (msg.type === "clear") {
           broadcastChanges(entry, applyClear(entry));
+          return;
+        }
+        if (msg.type === "chat") {
+          broadcast(entry, {
+            type: "chatMessage",
+            name: msg.name,
+            color: msg.color,
+            text: msg.text,
+            ts: Date.now(),
+          });
           return;
         }
       });
