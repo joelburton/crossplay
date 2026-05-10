@@ -452,3 +452,79 @@ describe("http: POST /api/boards/upload", () => {
     expect((res.json() as { error: string }).error).toMatch(/circled|shapebg/i);
   });
 });
+
+describe("boards survive their source puzzle being deleted", () => {
+  // CLAUDE.md: "boards are stamped, not referenced... deleting the
+  // puzzle leaves boards playable." The schema enforces this (no FK,
+  // nullable puzzle_id), but we want a regression test that walks the
+  // full lifecycle: stamp → delete puzzle row → load board.
+  let app: FastifyInstance;
+  let db: DatabaseSync;
+
+  beforeEach(async () => {
+    _clearCacheForTest();
+    ({ app, db } = await buildApp());
+  });
+  afterEach(async () => {
+    await app.close();
+    _clearCacheForTest();
+  });
+
+  it("GET /api/boards/:id still works after the puzzle row is gone", async () => {
+    seedPuzzle(db, "to-delete");
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { puzzleId: "to-delete" },
+    });
+    const { boardId } = create.json() as { boardId: string };
+
+    // Manually delete the puzzle row (there's no HTTP route for this).
+    db.prepare("DELETE FROM puzzles WHERE id = ?").run("to-delete");
+    expect(
+      db.prepare("SELECT id FROM puzzles WHERE id = ?").get("to-delete"),
+    ).toBeUndefined();
+
+    const get = await app.inject({ method: "GET", url: `/api/boards/${boardId}` });
+    expect(get.statusCode).toBe(200);
+    const body = get.json() as { meta: { width: number } };
+    // The board's ipuz blob is self-contained (stamped) — meta survives.
+    expect(body.meta.width).toBe(21);
+  });
+
+  it("boards.puzzleId reflects the original id even after the puzzle is deleted", async () => {
+    // puzzle_id is informational only — there's no FK, so deletion
+    // doesn't cascade. The board row keeps the stale pointer; the list
+    // surface still returns it as the puzzleId.
+    seedPuzzle(db, "lingering");
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { puzzleId: "lingering" },
+    });
+    const { boardId } = create.json() as { boardId: string };
+    db.prepare("DELETE FROM puzzles WHERE id = ?").run("lingering");
+
+    const list = await app.inject({ method: "GET", url: "/api/boards" });
+    const row = (list.json() as Array<{ id: string; puzzleId: string | null }>).find(
+      (b) => b.id === boardId,
+    );
+    expect(row?.puzzleId).toBe("lingering");
+  });
+
+  it("ipuz download still works after the puzzle row is gone", async () => {
+    seedPuzzle(db, "downloadable");
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { puzzleId: "downloadable" },
+    });
+    const { boardId } = create.json() as { boardId: string };
+    db.prepare("DELETE FROM puzzles WHERE id = ?").run("downloadable");
+
+    const ipuz = await app.inject({ method: "GET", url: `/api/boards/${boardId}/ipuz` });
+    expect(ipuz.statusCode).toBe(200);
+    const parsed = JSON.parse(ipuz.body) as { kind?: unknown };
+    expect(Array.isArray(parsed.kind)).toBe(true);
+  });
+});

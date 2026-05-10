@@ -23,9 +23,9 @@ import Fastify from "fastify";
 import multipart from "@fastify/multipart";
 import staticPlugin from "@fastify/static";
 import websocket from "@fastify/websocket";
-import { closeDb, getDb } from "./db.js";
-import { flushAll } from "./store.js";
+import { getDb } from "./db.js";
 import { registerHttpRoutes } from "./http.js";
+import { createShutdown } from "./shutdown.js";
 import { registerWsRoutes } from "./ws.js";
 
 const app = Fastify({ logger: true });
@@ -76,31 +76,9 @@ if (isProd) {
 
 // Drain dirty cached boards on graceful shutdown so a clean SIGTERM
 // (e.g. nginx reload, manual ctrl-c in dev) doesn't lose play progress.
-// We register the listener once; if both signals fire, the second is
-// ignored. Errors during shutdown are logged but don't block exit —
-// any unflushed work is already lost at that point.
-let shuttingDown = false;
-async function shutdown(signal: NodeJS.Signals) {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  app.log.info({ signal }, "shutdown: flushing dirty boards");
-  try {
-    flushAll(db);
-  } catch (err) {
-    app.log.error({ err }, "shutdown: flushAll failed");
-  }
-  try {
-    await app.close();
-  } catch (err) {
-    app.log.error({ err }, "shutdown: app.close failed");
-  }
-  try {
-    closeDb();
-  } catch (err) {
-    app.log.error({ err }, "shutdown: closeDb failed");
-  }
-  process.exit(0);
-}
+// The shutdown function itself is idempotent — both signal handlers
+// can fire and only the first does real work.
+const shutdown = createShutdown({ app, db });
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
 
