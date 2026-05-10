@@ -1,0 +1,36 @@
+.preview {
+  position: fixed;
+  top: 0.85rem;
+  right: 3.2rem;
+  max-width: 40vw;
+  display: flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  padding: 0.1rem 0.5rem;
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 4px;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 155;
+  pointer-events: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.name {
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.colon {
+  color: #555;
+  flex-shrink: 0;
+}
+
+.body {
+  color: #111;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}

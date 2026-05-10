@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import type { Cell, ClientMessage, GridSnapshot, PuzzleState } from "@crossplay/shared";
 import type { Direction } from "@crossplay/shared";
@@ -15,10 +15,12 @@ import {
   wordCells,
 } from "../cursor";
 import { type ChatLine, usePuzzleSocket } from "../usePuzzleSocket";
-import { type ChatIdentity, readChatIdentity } from "../chatIdentity";
+import { type ChatIdentity, makeIdentity, persistName, readChatIdentity } from "../chatIdentity";
 import type { PuzzleActions } from "../puzzleActions";
 import { Board } from "./Board";
+import { ChatIndicator } from "./ChatIndicator";
 import { ChatPanel } from "./ChatPanel";
+import { ChatPreview } from "./ChatPreview";
 import { ClueList } from "./ClueList";
 import styles from "./PuzzleView.module.css";
 
@@ -85,9 +87,21 @@ export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange
     return { ...start, dir: "across" };
   });
 
-  const [identity] = useState<ChatIdentity>(() => readChatIdentity());
+  const [identity, setIdentity] = useState<ChatIdentity>(() => readChatIdentity());
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatLine[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadColor, setUnreadColor] = useState<string | null>(null);
+  const [previewLine, setPreviewLine] = useState<ChatLine | null>(null);
+  const chatOpenRef = useRef(chatOpen);
+  chatOpenRef.current = chatOpen;
+  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    };
+  }, []);
 
   const { state: connState, send } = usePuzzleSocket(meta.id, {
     onSnapshot: useCallback((snap: GridSnapshot) => {
@@ -101,6 +115,25 @@ export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange
     }, []),
     onChatMessage: useCallback((line: ChatLine) => {
       setChatMessages((prev) => [...prev, line]);
+
+      // Brief preview at top-right that auto-clears after 3s. Independent of
+      // unread state — preview is purely visual and never marks as read.
+      setPreviewLine(line);
+      if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+      previewTimerRef.current = setTimeout(() => setPreviewLine(null), 3000);
+
+      const important = line.text.startsWith("!");
+      if (important && !chatOpenRef.current) {
+        // Force-open: counts as "read" since the user sees it immediately.
+        setChatOpen(true);
+        setUnreadCount(0);
+        setUnreadColor(null);
+        return;
+      }
+      if (!chatOpenRef.current) {
+        setUnreadCount((n) => n + 1);
+        setUnreadColor(line.color);
+      }
     }, []),
   });
 
@@ -110,6 +143,26 @@ export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange
     },
     [send, identity.name, identity.color],
   );
+
+  const renameMe = useCallback((newName: string) => {
+    const next = makeIdentity(newName);
+    setIdentity(next);
+    persistName(next.name);
+  }, []);
+
+  const openChat = useCallback(() => {
+    setChatOpen(true);
+    setUnreadCount(0);
+  }, []);
+
+  const closeChat = useCallback(() => {
+    setChatOpen(false);
+  }, []);
+
+  const toggleChat = useCallback(() => {
+    if (chatOpenRef.current) closeChat();
+    else openChat();
+  }, [openChat, closeChat]);
 
   const onCellClick = useCallback(
     (row: number, col: number) => {
@@ -170,6 +223,15 @@ export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // Tab while chat is open: close the chat, don't navigate the grid.
+      // This applies regardless of where focus is (textarea, close button,
+      // or anywhere else inside the chat panel).
+      if (chatOpenRef.current && e.key === "Tab") {
+        e.preventDefault();
+        closeChat();
+        return;
+      }
+
       // Don't intercept anything when an input/textarea has focus
       // (chat input, future search boxes, etc.).
       const t = e.target as HTMLElement | null;
@@ -178,7 +240,7 @@ export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange
       // "/" opens the chat panel.
       if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
-        setChatOpen(true);
+        openChat();
         return;
       }
 
@@ -335,12 +397,20 @@ export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange
           />
         </div>
       </div>
+      {previewLine && <ChatPreview line={previewLine} />}
+      <ChatIndicator
+        unreadCount={unreadCount}
+        unreadColor={unreadColor}
+        open={chatOpen}
+        onToggle={toggleChat}
+      />
       {chatOpen && (
         <ChatPanel
           identity={identity}
           messages={chatMessages}
           onSend={sendChat}
-          onClose={() => setChatOpen(false)}
+          onRename={renameMe}
+          onClose={closeChat}
         />
       )}
     </div>

@@ -20,9 +20,53 @@ export function colorForName(name: string): string {
 
 export type ChatIdentity = { name: string; color: string };
 
+const NAME_KEY = "crossplay.chatName";
+const MAX_NAME_LEN = 32;
+
+function loadStoredName(): string | null {
+  try {
+    const v = localStorage.getItem(NAME_KEY);
+    return v && v.trim().length > 0 ? v.trim().slice(0, MAX_NAME_LEN) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveStoredName(name: string): void {
+  try {
+    localStorage.setItem(NAME_KEY, name);
+  } catch {
+    // localStorage might be disabled (private mode, quota); silently ignore.
+  }
+}
+
+function clean(name: string): string {
+  return name.trim().slice(0, MAX_NAME_LEN);
+}
+
+export function makeIdentity(name: string): ChatIdentity {
+  const cleaned = clean(name);
+  return { name: cleaned, color: colorForName(cleaned) };
+}
+
+// Priority: ?name= URL param > localStorage > random Rando<2 digits>.
+// URL param and explicit edits also write through to localStorage so the next
+// visit (without a URL param) picks up the same name.
 export function readChatIdentity(): ChatIdentity {
   const params = new URLSearchParams(location.search);
-  const raw = params.get("name")?.trim();
-  const name = raw && raw.length > 0 ? raw.slice(0, 32) : `Rando${Math.floor(Math.random() * 90 + 10)}`;
-  return { name, color: colorForName(name) };
+  const fromUrl = params.get("name")?.trim();
+  if (fromUrl && fromUrl.length > 0) {
+    const cleaned = clean(fromUrl);
+    saveStoredName(cleaned);
+    return makeIdentity(cleaned);
+  }
+  const stored = loadStoredName();
+  if (stored) return makeIdentity(stored);
+  return makeIdentity(`Rando${Math.floor(Math.random() * 90 + 10)}`);
 }
+
+export function persistName(name: string): void {
+  saveStoredName(clean(name));
+}
+
+export const NAME_MAX = MAX_NAME_LEN;
