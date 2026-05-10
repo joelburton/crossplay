@@ -61,6 +61,7 @@ export function parsePuzBuffer(id: string, buffer: Buffer): ParseResult {
     id,
     title: decoded.meta.title ?? "",
     author: decoded.meta.author ?? "",
+    copyright: decoded.meta.copyright ?? "",
     note: decoded.meta.description ?? "",
     width,
     height,

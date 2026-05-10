@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
@@ -17,27 +17,80 @@ await app.register(multipart, {
 await app.register(websocket);
 registerWsRoutes(app);
 
+// Load a library of pre-existing .puz files from GAME_DIR (if set).
+// Defaults to the fixture dir so a fresh checkout has playable games.
 const fixtureDir = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "..",
   "fixtures",
 );
-const DEFAULT_DEV_PUZ = resolve(fixtureDir, "a-very-moth-puzzle.puz");
-const DEV_PUZ_PATH = process.env.CROSSPLAY_DEV_PUZ ?? DEFAULT_DEV_PUZ;
-function loadFixture(id: string, path: string): void {
+const GAME_DIR = process.env.GAME_DIR ?? fixtureDir;
+
+function slugify(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "game"
+  );
+}
+
+function loadGame(id: string, path: string): boolean {
   try {
     const buf = readFileSync(path);
     const parsed = parsePuzBuffer(id, buf);
     putPuzzle(id, parsed);
-    app.log.info({ path, id }, "loaded fixture puzzle");
+    return true;
   } catch (err) {
-    app.log.warn({ err, path, id }, "no fixture puzzle loaded");
+    app.log.warn({ err, path, id }, "skipping unreadable puzzle");
+    return false;
   }
 }
-loadFixture("dev", DEV_PUZ_PATH);
-loadFixture("sunday", resolve(fixtureDir, "sunday-sample.puz"));
+
+const libraryIds: string[] = [];
+try {
+  const entries = readdirSync(GAME_DIR);
+  const seen = new Set<string>();
+  for (const entry of entries) {
+    if (!entry.toLowerCase().endsWith(".puz")) continue;
+    let id = slugify(entry.replace(/\.puz$/i, ""));
+    // ensure uniqueness if two filenames slugify the same
+    let n = 2;
+    while (seen.has(id)) {
+      id = `${slugify(entry.replace(/\.puz$/i, ""))}-${n++}`;
+    }
+    seen.add(id);
+    if (loadGame(id, resolve(GAME_DIR, entry))) libraryIds.push(id);
+  }
+  app.log.info({ path: GAME_DIR, count: libraryIds.length }, "loaded game library");
+} catch (err) {
+  app.log.warn({ err, path: GAME_DIR }, "could not read GAME_DIR");
+}
 
 app.get("/health", async () => ({ ok: true }));
+
+app.get("/games", async () => {
+  const out: Array<{
+    id: string;
+    title: string;
+    author: string;
+    width: number;
+    height: number;
+  }> = [];
+  for (const id of libraryIds) {
+    const entry = getPuzzle(id);
+    if (!entry) continue;
+    const m = entry.state.meta;
+    out.push({
+      id,
+      title: m.title,
+      author: m.author,
+      width: m.width,
+      height: m.height,
+    });
+  }
+  return out;
+});
 
 app.post("/puzzles", async (req, reply) => {
   const file = await req.file();

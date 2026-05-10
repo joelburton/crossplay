@@ -57,10 +57,24 @@
   user-select: none;
   padding: 0.1rem 0.4rem;
   border-radius: 3px;
+  white-space: nowrap;
 }
 
 .title:hover {
   background: #f0f0f0;
+}
+
+.icon {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.2em;
+  margin-right: 0.35rem;
+}
+
+@media (max-width: 1023px) {
+  .titleText {
+    display: none;
+  }
 }
 
 .main {

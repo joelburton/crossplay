@@ -1,8 +1,8 @@
 .button {
   font: inherit;
-  width: 1.7rem;
-  height: 1.7rem;
-  border: 1px solid #333;
+  width: 1.4rem;
+  height: 1.4rem;
+  border: 1px solid #1e40af;
   border-radius: 4px;
   cursor: pointer;
   padding: 0;
@@ -10,19 +10,24 @@
   align-items: center;
   justify-content: center;
   user-select: none;
-  font-size: 1rem;
+  font-size: 0.9rem;
   line-height: 1;
+  /* The header uses align-items: baseline; this smaller button looks
+     more grounded centered against the title rather than baselined,
+     plus a small downward nudge so it sits visually with the text. */
+  align-self: center;
+  transform: translateY(3px);
 }
 
 .pen {
-  background: #333;
+  background: #1e40af;
   color: #fff;
   font-weight: 700;
 }
 
 .pencil {
   background: #fff;
-  color: #333;
+  color: #1e40af;
   font-style: italic;
   font-weight: 500;
 }

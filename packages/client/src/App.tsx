@@ -4,8 +4,10 @@ import { HttpError, fetchPuzzle } from "./api";
 import { navigate, puzzlePath, useRoute } from "./routing";
 import type { PuzzleActions } from "./puzzleActions";
 import { FeedbackBar } from "./components/FeedbackBar";
+import { HomePage } from "./components/HomePage";
 import { Menu } from "./components/Menu";
 import { ModeButton } from "./components/ModeButton";
+import { SiteIcon } from "./components/SiteIcon";
 import { UploadForm } from "./components/UploadForm";
 import { PuzzleView, type ActiveClue, type Mode } from "./components/PuzzleView";
 import type { Feedback } from "./feedback";
@@ -30,6 +32,8 @@ export function App() {
     () => setMode((m) => (m === "pen" ? "pencil" : "pen")),
     [],
   );
+  // (the previous "tried dev once on first mount" ref is gone; users
+  // now pick a game from the home page or upload their own)
 
   const dismissFeedback = useCallback(() => {
     if (feedbackTimerRef.current) {
@@ -55,7 +59,6 @@ export function App() {
       if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
     };
   }, []);
-  const triedDev = useRef(false);
   const actionsRef = useRef<PuzzleActions | null>(null);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
 
@@ -83,21 +86,7 @@ export function App() {
     if (route.kind === "puzzle") {
       void loadById(route.id);
     } else {
-      if (triedDev.current) {
-        setLoad({ kind: "idle" });
-        return;
-      }
-      triedDev.current = true;
-      setLoad({ kind: "loading" });
-      fetchPuzzle("dev")
-        .then((p) => {
-          if (cancelled) return;
-          history.replaceState({}, "", puzzlePath("dev"));
-          setLoad({ kind: "loaded", puzzle: p });
-        })
-        .catch(() => {
-          if (!cancelled) setLoad({ kind: "idle" });
-        });
+      setLoad({ kind: "idle" });
     }
 
     return () => {
@@ -114,7 +103,7 @@ export function App() {
     if (load.kind === "loaded") {
       showFeedback({
         id: `welcome-${load.puzzle.meta.id}`,
-        text: "Welcome! Click the site name for a menu.",
+        text: "Welcome! Click the heart for a menu.",
         level: "info",
       });
     }
@@ -125,8 +114,7 @@ export function App() {
     navigate(puzzlePath(id));
   }
 
-  function onUploadAnother() {
-    triedDev.current = true;
+  function onNewGame() {
     setLoad({ kind: "idle" });
     setMenuOpen(false);
     setActiveClue(null);
@@ -142,13 +130,14 @@ export function App() {
             className={styles.title}
             onClick={() => setMenuOpen((o) => !o)}
           >
-            Crossplay
+            <SiteIcon className={styles.icon} />
+            <span className={styles.titleText}>Crossplay</span>
           </h1>
           {menuOpen && (
             <Menu
               actions={actionsRef.current}
               triggerRef={titleRef}
-              onUploadAnother={onUploadAnother}
+              onNewGame={onNewGame}
               onClose={() => setMenuOpen(false)}
             />
           )}
@@ -188,7 +177,7 @@ export function App() {
             feedbackVisible={feedback != null}
           />
         )}
-        {load.kind === "idle" && <UploadForm onUploaded={onUploaded} />}
+        {load.kind === "idle" && <HomePage onUploaded={onUploaded} />}
       </main>
     </div>
   );

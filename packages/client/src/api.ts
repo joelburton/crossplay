@@ -6,6 +6,20 @@ export class HttpError extends Error {
   }
 }
 
+export type GameSummary = {
+  id: string;
+  title: string;
+  author: string;
+  width: number;
+  height: number;
+};
+
+export async function fetchGames(): Promise<GameSummary[]> {
+  const res = await fetch("/api/games");
+  if (!res.ok) throw new HttpError(res.status, `fetch games failed: ${res.status}`);
+  return res.json();
+}
+
 export async function uploadPuzzle(file: File): Promise<{ puzzleId: string }> {
   const fd = new FormData();
   fd.append("file", file);

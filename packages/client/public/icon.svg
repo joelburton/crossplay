@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Crossplay">
+  <!-- white tile background -->
+  <rect x="0" y="0" width="24" height="24" fill="#fff"/>
+  <!-- grid lines spanning the tile -->
+  <g stroke="#000" stroke-width="0.6">
+    <line x1="0" y1="5"  x2="24" y2="5"/>
+    <line x1="0" y1="19" x2="24" y2="19"/>
+    <line x1="5"  y1="0" x2="5"  y2="24"/>
+    <line x1="19" y1="0" x2="19" y2="24"/>
+  </g>
+  <!-- corner blocks -->
+  <rect x="0"  y="0"  width="5" height="5" fill="#000"/>
+  <rect x="19" y="0"  width="5" height="5" fill="#000"/>
+  <rect x="0"  y="19" width="5" height="5" fill="#000"/>
+  <rect x="19" y="19" width="5" height="5" fill="#000"/>
+  <!-- heart -->
+  <path d="M 12 18.6 C 4.8 13.2 4.8 6.6 8.4 6 C 10.2 6 11.4 7.2 12 8.5 C 12.6 7.2 13.8 6 15.6 6 C 19.2 6.6 19.2 13.2 12 18.6 Z" fill="#dc2626"/>
+  <!-- thin black frame on top, fully inside the viewBox -->
+  <rect x="0.3" y="0.3" width="23.4" height="23.4" fill="none" stroke="#000" stroke-width="0.6"/>
+</svg>

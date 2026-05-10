@@ -1,16 +1,19 @@
 import { useEffect, useRef } from "react";
 import type { RefObject } from "react";
+import pkg from "../../package.json";
 import type { PuzzleActions } from "../puzzleActions";
 import styles from "./Menu.module.css";
+
+const VERSION = pkg.version;
 
 type Props = {
   actions: PuzzleActions | null;
   triggerRef?: RefObject<HTMLElement>;
-  onUploadAnother: () => void;
+  onNewGame: () => void;
   onClose: () => void;
 };
 
-export function Menu({ actions, triggerRef, onUploadAnother, onClose }: Props) {
+export function Menu({ actions, triggerRef, onNewGame, onClose }: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -40,16 +43,20 @@ export function Menu({ actions, triggerRef, onUploadAnother, onClose }: Props) {
 
   return (
     <div ref={ref} className={styles.menu} role="menu">
+      <div className={styles.brand}>Crossplay v{VERSION}</div>
       {actions && (
         <div className={styles.info}>
           <div className={styles.infoTitle}>{actions.meta.title || "Untitled"}</div>
           {actions.meta.author && (
             <div className={styles.infoAuthor}>by {actions.meta.author}</div>
           )}
+          {actions.meta.copyright && (
+            <div className={styles.infoAuthor}>{actions.meta.copyright}</div>
+          )}
         </div>
       )}
-      <button type="button" className={styles.item} onClick={run(onUploadAnother)}>
-        Upload another
+      <button type="button" className={styles.item} onClick={run(onNewGame)}>
+        New game
       </button>
       {actions && (
         <button type="button" className={styles.item} onClick={run(actions.clearBoard)}>

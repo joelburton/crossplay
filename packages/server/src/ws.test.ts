@@ -36,6 +36,7 @@ function entry(): StoredPuzzle {
       id: "test",
       title: "",
       author: "",
+      copyright: "",
       note: "",
       width: 5,
       height: 3,

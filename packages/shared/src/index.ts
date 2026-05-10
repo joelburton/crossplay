@@ -20,6 +20,7 @@ export type PuzzleMeta = {
   id: string;
   title: string;
   author: string;
+  copyright: string;
   note: string;
   width: number;
   height: number;
