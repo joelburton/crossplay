@@ -64,7 +64,8 @@ export function Menu({ actions, triggerRef, onUploadAnother, onShowNotes, onClos
           onClick={run(onShowNotes)}
           disabled={!actions.meta.note}
         >
-          Show notes
+          <span>Show notes</span>
+          <span className={styles.shortcut}>⌥N</span>
         </button>
       )}
       {actions && (

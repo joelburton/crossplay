@@ -20,9 +20,17 @@ import { Board } from "./Board";
 import { ClueList } from "./ClueList";
 import styles from "./PuzzleView.module.css";
 
+export type ActiveClue = {
+  number: number;
+  direction: "across" | "down";
+  text: string;
+};
+
 type Props = {
   puzzle: PuzzleState;
   actionsRef?: MutableRefObject<PuzzleActions | null>;
+  onShowNotes?: () => void;
+  onActiveClueChange?: (clue: ActiveClue | null) => void;
 };
 
 const ARROWS: ReadonlySet<string> = new Set([
@@ -65,7 +73,7 @@ function replaceCell(
   return next;
 }
 
-export function PuzzleView({ puzzle, actionsRef }: Props) {
+export function PuzzleView({ puzzle, actionsRef, onShowNotes, onActiveClueChange }: Props) {
   const { meta } = puzzle;
   const [snapshot, setSnapshot] = useState<GridSnapshot>(puzzle.snapshot);
   const cells = snapshot.cells;
@@ -179,6 +187,11 @@ export function PuzzleView({ puzzle, actionsRef }: Props) {
           }
           return;
         }
+        if (e.code === "KeyN") {
+          e.preventDefault();
+          if (meta.note) onShowNotes?.();
+          return;
+        }
       }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (ARROWS.has(e.key)) {
@@ -247,6 +260,19 @@ export function PuzzleView({ puzzle, actionsRef }: Props) {
 
   const acrossNumber = activeClueNumber(cells, cursor.row, cursor.col, "across");
   const downNumber = activeClueNumber(cells, cursor.row, cursor.col, "down");
+
+  const activeClue: ActiveClue | null = useMemo(() => {
+    const num = cursor.dir === "across" ? acrossNumber : downNumber;
+    if (num == null) return null;
+    const list = cursor.dir === "across" ? meta.clues.across : meta.clues.down;
+    const found = list.find((c) => c.number === num);
+    if (!found) return null;
+    return { number: found.number, direction: cursor.dir, text: found.text };
+  }, [cursor.dir, acrossNumber, downNumber, meta.clues.across, meta.clues.down]);
+
+  useEffect(() => {
+    onActiveClueChange?.(activeClue);
+  }, [activeClue, onActiveClueChange]);
 
   return (
     <div className={styles.wrap}>

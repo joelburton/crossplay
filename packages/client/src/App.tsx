@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PuzzleState } from "@crossplay/shared";
 import { HttpError, fetchPuzzle } from "./api";
 import { navigate, puzzlePath, useRoute } from "./routing";
@@ -6,7 +6,7 @@ import type { PuzzleActions } from "./puzzleActions";
 import { Menu } from "./components/Menu";
 import { NoteDialog } from "./components/NoteDialog";
 import { UploadForm } from "./components/UploadForm";
-import { PuzzleView } from "./components/PuzzleView";
+import { PuzzleView, type ActiveClue } from "./components/PuzzleView";
 import styles from "./App.module.css";
 
 type LoadState =
@@ -20,6 +20,9 @@ export function App() {
   const [load, setLoad] = useState<LoadState>({ kind: "idle" });
   const [menuOpen, setMenuOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [activeClue, setActiveClue] = useState<ActiveClue | null>(null);
+  const onActiveClueChange = useCallback((c: ActiveClue | null) => setActiveClue(c), []);
+  const onShowNotes = useCallback(() => setNotesOpen(true), []);
   const triedDev = useRef(false);
   const actionsRef = useRef<PuzzleActions | null>(null);
   const titleRef = useRef<HTMLHeadingElement | null>(null);
@@ -70,10 +73,11 @@ export function App() {
     };
   }, [route]);
 
-  // close menu / notes when puzzle changes
+  // close menu / notes / clear active clue when puzzle changes
   useEffect(() => {
     setMenuOpen(false);
     setNotesOpen(false);
+    setActiveClue(null);
   }, [load.kind === "loaded" ? load.puzzle.meta.id : null]);
 
   function onUploaded(id: string) {
@@ -84,6 +88,7 @@ export function App() {
     triedDev.current = true;
     setLoad({ kind: "idle" });
     setMenuOpen(false);
+    setActiveClue(null);
     navigate("/");
   }
 
@@ -103,11 +108,20 @@ export function App() {
               actions={actionsRef.current}
               triggerRef={titleRef}
               onUploadAnother={onUploadAnother}
-              onShowNotes={() => setNotesOpen(true)}
+              onShowNotes={onShowNotes}
               onClose={() => setMenuOpen(false)}
             />
           )}
         </div>
+        {activeClue && (
+          <div className={styles.activeClue}>
+            <span className={styles.activeClueLabel}>
+              {activeClue.number}
+              {activeClue.direction === "across" ? "A" : "D"}
+            </span>
+            <span className={styles.activeClueText}>{activeClue.text}</span>
+          </div>
+        )}
       </header>
       <main className={styles.main}>
         {load.kind === "loading" && <p>Loading…</p>}
@@ -118,7 +132,12 @@ export function App() {
           </div>
         )}
         {load.kind === "loaded" && (
-          <PuzzleView puzzle={load.puzzle} actionsRef={actionsRef} />
+          <PuzzleView
+            puzzle={load.puzzle}
+            actionsRef={actionsRef}
+            onShowNotes={onShowNotes}
+            onActiveClueChange={onActiveClueChange}
+          />
         )}
         {load.kind === "idle" && <UploadForm onUploaded={onUploaded} />}
       </main>
