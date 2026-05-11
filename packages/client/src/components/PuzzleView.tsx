@@ -859,6 +859,23 @@ export function PuzzleView({
           }
           zoom={zoomPeek ? zoomPeekValue : null}
         />
+        {/* Narrow-viewport active clue. Shown only when the clue panels
+            are hidden (see PuzzleView.module.css); in that mode the
+            header slot still shows feedback but its clue fallback is
+            hidden via App.module.css, so this panel is the player's
+            only way to read the current clue. Two-line clamp keeps
+            long cryptic clues legible without reflowing the grid. */}
+        <div className={styles.narrowClue}>
+          {activeClue ? (
+            <>
+              <span className={styles.narrowClueLabel}>
+                {activeClue.number}
+                {activeClue.direction === "across" ? "A" : "D"}
+              </span>
+              <span className={styles.narrowClueText}>{activeClue.text}</span>
+            </>
+          ) : null}
+        </div>
         <div className={styles.clues}>
           <ClueList
             title="Across"

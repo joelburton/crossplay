@@ -76,8 +76,15 @@
 }
 
 /* Narrow viewport: keep in sync with NARROW_QUERY in Board.tsx (see index.css). */
-@media (max-width: 1023px) {
+@media (max-width: 1024px) {
   .titleText {
+    display: none;
+  }
+  /* On narrow viewports the active clue moves below the board (see
+     PuzzleView's `.narrowClue`), so the header's clue fallback would
+     just be a redundant truncated copy. Hide it; the slot still shows
+     feedback when present and `min-height` keeps the layout stable. */
+  .activeClue {
     display: none;
   }
 }

@@ -49,12 +49,24 @@ const VERTICAL_OVERHEAD_PX = 64;
 const MAX_CELL_PX = 60;
 // Re-export so PuzzleView and any future narrow-mode code use the same
 // query string. CSS modules can't read this directly — keep the
-// `@media (max-width: 1023px)` rules in App.module.css and
-// PuzzleView.module.css in sync (they're flagged with a comment).
-export const NARROW_QUERY = "(max-width: 1023px)";
+// `@media (max-width: 1024px)` rules in App.module.css and
+// PuzzleView.module.css in sync (they're flagged with a comment). The
+// 1024px cut is one wider than Tailwind's `lg:` default so iPads in
+// landscape (exactly 1024×768) land in narrow mode, matching the
+// platform-priority list in CLAUDE.md ("tablets with a hardware
+// keyboard → same as narrow-window mode").
+export const NARROW_QUERY = "(max-width: 1024px)";
 // In narrow mode the board fills the available width: viewport minus the
 // .main 0.5rem L/R padding (= 1rem total) minus the board's 2x2px border.
 const NARROW_HORIZ_RESERVE_CSS = "1rem + 4px";
+// In narrow mode the active clue moves below the board (.narrowClue in
+// PuzzleView.module.css). The cell-size height bound has to subtract
+// that strip too, or the board would spill into it. Approximate height:
+// 2 lines at 1.35 × 1.05rem font-size + 0.3rem top padding ≈ 50px.
+// Keep this loosely aligned with the `.narrowClue` `min-height` so the
+// fit-on-screen math is conservative (better a few px short than to
+// force an outer scrollbar).
+const NARROW_CLUE_RESERVE_PX = 56;
 
 // Width of the rebus overlay, in cell-widths. Wider than one cell so
 // the player can see the whole rebus they're typing without text
@@ -101,7 +113,7 @@ function useNarrowViewport(): boolean {
  * units so the whole grid scales uniformly under both Chrome page-zoom
  * and Safari text-only-zoom (see CLAUDE.md "Cell sizing").
  *
- * In narrow viewports (max-width 1023px) the clue panels are hidden and
+ * In narrow viewports (max-width 1024px) the clue panels are hidden and
  * the board fills the available width minus the .main padding. Wide
  * viewports use a percentage of viewport width interpolated by puzzle
  * size (see `targetWidthPercent`).
@@ -119,7 +131,8 @@ export const Board = forwardRef<HTMLDivElement, Props>(function Board(
   const horiz = narrow
     ? `calc((100vw - (${NARROW_HORIZ_RESERVE_CSS})) / ${width})`
     : `calc(${targetWidthPercent(width)}vw / ${width})`;
-  const cellSize = `min(${horiz}, calc((100vh - ${VERTICAL_OVERHEAD_PX}px) / ${height}), ${MAX_CELL_PX}px)`;
+  const verticalReservePx = VERTICAL_OVERHEAD_PX + (narrow ? NARROW_CLUE_RESERVE_PX : 0);
+  const cellSize = `min(${horiz}, calc((100vh - ${verticalReservePx}px) / ${height}), ${MAX_CELL_PX}px)`;
   const style: CSSProperties = {
     fontSize: cellSize,
     gridTemplateColumns: `repeat(${width}, 1em)`,

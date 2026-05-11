@@ -37,7 +37,7 @@
 }
 
 /*
- * Narrow-viewport breakpoint: any `@media (max-width: 1023px)` rule in
+ * Narrow-viewport breakpoint: any `@media (max-width: 1024px)` rule in
  * this codebase (App.module.css, PuzzleView.module.css) MUST stay in
  * sync with `NARROW_QUERY` in components/Board.tsx. CSS custom
  * properties don't work inside @media queries, so we can't tokenize it.
