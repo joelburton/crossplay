@@ -20,7 +20,10 @@ import { parseIpuzBuffer } from "./ipuz.js";
 import { computeFillPercent } from "./fillPercent.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_DB_PATH = resolve(here, "..", "data", "crossplay.db");
+/** Path the server uses when DB_PATH is unset. Exported so the import
+ *  CLI can show it in error messages and check its existence without
+ *  re-deriving the path. */
+export const DEFAULT_DB_PATH = resolve(here, "..", "data", "crossplay.db");
 
 export interface Migration {
   version: number;
