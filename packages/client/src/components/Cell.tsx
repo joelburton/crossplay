@@ -33,6 +33,11 @@ type Props = {
   isCursor: boolean;
   isInWord: boolean;
   recentColor: string | null;
+  /** When set, render a thin inset frame in this color — a remote
+   *  player's cursor is on this cell. Visually distinct from the local
+   *  cursor (yellow background). Coexists with `isCursor` if a peer
+   *  happens to land on the same cell. */
+  remoteCursorColor: string | null;
   /** When true, multi-character fills render as just their first
    *  letter (display only — the underlying fill is unchanged, and
    *  the rebus overlay still shows / commits the full string). */
@@ -53,7 +58,17 @@ type Props = {
  * `recentColor` is the 3-second flash color shown when *another* player
  * fills this cell; PuzzleView clears it on a per-cell timer.
  */
-function CellImpl({ cell, row, col, isCursor, isInWord, recentColor, collapseRebus, onClick }: Props) {
+function CellImpl({
+  cell,
+  row,
+  col,
+  isCursor,
+  isInWord,
+  recentColor,
+  remoteCursorColor,
+  collapseRebus,
+  onClick,
+}: Props) {
   if (cell.kind === "block") {
     return <div className={`${styles.cell} ${styles.block}`} />;
   }
@@ -67,6 +82,20 @@ function CellImpl({ cell, row, col, isCursor, isInWord, recentColor, collapseReb
     cell.fill && collapseRebus && cell.fill.length > 1 ? cell.fill[0]! : cell.fill;
   return (
     <div className={cls.join(" ")} onClick={() => onClick(row, col)}>
+      {remoteCursorColor && (
+        // Absolutely-positioned overlay with a per-side border. We used
+        // to do `box-shadow: inset 0 0 0 0.08em color` here, but
+        // box-shadow round-tripped through subpixel rendering can paint
+        // the left edge a hair thicker than the others at some zoom
+        // levels. Border widths are laid out per-side, so this is
+        // visually symmetric. `pointer-events: none` keeps clicks on
+        // the cell.
+        <span
+          className={styles.remoteFrame}
+          style={{ borderColor: remoteCursorColor }}
+          aria-hidden
+        />
+      )}
       {cell.number != null && <span className={styles.number}>{cell.number}</span>}
       {cell.wrong ? (
         <span className={`${styles.mark} ${styles.wrong}`} aria-label="wrong" />

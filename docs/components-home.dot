@@ -1,0 +1,55 @@
+// React render tree for Crossplay's home route ("/").
+// Render with: dot -Tpng docs/components-home.dot -o docs/components-home.png
+//
+// Solid-border boxes are real React components. Dashed-border boxes are
+// logical UI sections that live as inline JSX inside HomePage — they're
+// distinct UI units mentioned in the docs and worth seeing on the map,
+// but they don't have their own files (yet). Dashed edges mark
+// conditional renders.
+
+digraph CrossplayHome {
+  rankdir=TB;
+  splines=true;
+  nodesep=0.4;
+  ranksep=0.5;
+  bgcolor="white";
+  node [
+    shape=box,
+    style="rounded,filled",
+    fontname="Helvetica",
+    fontsize=11,
+    color="#444",
+    penwidth=1
+  ];
+  edge [color="#666", arrowsize=0.7];
+
+  // Real components (solid border)
+  App         [fillcolor="#e3eefc"];
+  HomePage    [fillcolor="#fff4d6"];
+  SiteIcon    [fillcolor="#f6f6f6"];
+  UploadForm  [fillcolor="#f6f6f6"];
+
+  // Inline logical sections within HomePage (dashed border to flag that
+  // they're JSX subtrees, not their own components)
+  Hero            [fillcolor="#fff4d6", style="rounded,filled,dashed", label="Hero\n(icon + wordmark)"];
+  CommunityList   [fillcolor="#fff4d6", style="rounded,filled,dashed", label="Community puzzles\n(filter + puzzle rows)"];
+  YourGamesList   [fillcolor="#fff4d6", style="rounded,filled,dashed", label="Your games\n(filter + board rows\n+ delete confirm)"];
+  UploadSection   [fillcolor="#fff4d6", style="rounded,filled,dashed", label="Upload your own"];
+  Footer          [fillcolor="#fff4d6", style="rounded,filled,dashed", label="Footer"];
+
+  // App mounts HomePage when on the home route and load is idle
+  App -> HomePage [style=dashed, label="home route"];
+
+  // HomePage's render tree — sections in display order
+  HomePage -> Hero;
+  HomePage -> CommunityList [style=dashed, label="puzzles non-empty"];
+  HomePage -> YourGamesList;
+  HomePage -> UploadSection;
+  HomePage -> Footer;
+
+  // The only real-component children of HomePage
+  Hero          -> SiteIcon;
+  UploadSection -> UploadForm;
+
+  { rank=same; Hero; CommunityList; YourGamesList; UploadSection; Footer; }
+}

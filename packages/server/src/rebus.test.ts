@@ -57,6 +57,7 @@ function makeEntry(): StoredBoard {
     sockets: new Set(),
     chat: [],
     recentHellos: new Map(),
+    cursorBySocket: new Map(),
     feedbackCounter: 0,
     dirty: false,
     flushTimer: null,

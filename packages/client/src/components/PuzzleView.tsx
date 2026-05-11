@@ -23,7 +23,9 @@ import { ChatIndicator } from "./ChatIndicator";
 import { ChatPanel } from "./ChatPanel";
 import { ChatPreview } from "./ChatPreview";
 import { ClueList } from "./ClueList";
+import { HelpDialog } from "./HelpDialog";
 import { NoteDialog } from "./NoteDialog";
+import { NumberJumpDialog } from "./NumberJumpDialog";
 import styles from "./PuzzleView.module.css";
 
 export type ActiveClue = {
@@ -46,6 +48,11 @@ type Props = {
   onActivity?: () => void;
   feedbackVisible?: boolean;
 };
+
+/** Outbound cursor-presence throttle window, in ms. Sends fire on the
+ *  leading edge (immediate when the throttle is idle) plus a single
+ *  trailing edge that carries whatever the latest cursor is. */
+const CURSOR_THROTTLE_MS = 80;
 
 const ARROWS: ReadonlySet<string> = new Set([
   "ArrowLeft",
@@ -153,6 +160,8 @@ export function PuzzleView({
   const [previewLine, setPreviewLine] = useState<ChatLine | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
   const [rebusOpen, setRebusOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [numberJumpOpen, setNumberJumpOpen] = useState(false);
   // SPACE on a multi-char fill shows a read-only zoom-peek of the
   // full string (useful when collapse-rebuses is on, or when the
   // shrunk rebus is hard to read at small cell sizes). Any other
@@ -160,8 +169,17 @@ export function PuzzleView({
   const [zoomPeek, setZoomPeek] = useState(false);
   const [recentFills, setRecentFills] = useState<Map<string, string>>(new Map());
   const recentTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // Remote-player cursor positions, keyed by player color. Pure presence:
+  // not persisted, not version-stamped, dropped on `cursorLeft`.
+  const [remoteCursors, setRemoteCursors] = useState<Map<string, { row: number; col: number; name: string }>>(
+    new Map(),
+  );
   const chatOpenRef = useRef(chatOpen);
   chatOpenRef.current = chatOpen;
+  const helpOpenRef = useRef(helpOpen);
+  helpOpenRef.current = helpOpen;
+  const numberJumpOpenRef = useRef(numberJumpOpen);
+  numberJumpOpenRef.current = numberJumpOpen;
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
@@ -217,7 +235,7 @@ export function PuzzleView({
         next.delete(key);
         return next;
       });
-    }, 3000);
+    }, 5000);
     recentTimersRef.current.set(key, timer);
     setRecentFills((prev) => {
       const next = new Map(prev);
@@ -251,6 +269,28 @@ export function PuzzleView({
       },
       [onFeedback],
     ),
+    onCursorMoved: useCallback(
+      (row: number, col: number, color: string, name: string) => {
+        // Skip our own cursor — we already render the local one. (The
+        // server doesn't echo, but be defensive against future fan-out
+        // changes.)
+        if (color === identityRef.current.color) return;
+        setRemoteCursors((prev) => {
+          const next = new Map(prev);
+          next.set(color, { row, col, name });
+          return next;
+        });
+      },
+      [],
+    ),
+    onCursorLeft: useCallback((color: string) => {
+      setRemoteCursors((prev) => {
+        if (!prev.has(color)) return prev;
+        const next = new Map(prev);
+        next.delete(color);
+        return next;
+      });
+    }, []),
     onChatMessage: useCallback((line: ChatLine) => {
       setChatMessages((prev) => [...prev, line]);
 
@@ -288,6 +328,62 @@ export function PuzzleView({
       send({ type: "hello", name: identity.name, color: identity.color });
     }
   }, [connState, send, identity.name, identity.color]);
+
+  // Outbound cursor presence, throttled to ~80ms. Independent of the
+  // typing hot path: `send` is non-blocking and these messages never
+  // affect local rendering or wait on an ack — so adding this traffic
+  // can't make typing feel laggy. See memory `project_optimistic_typing.md`.
+  const cursorRef = useRef(cursor);
+  cursorRef.current = cursor;
+  const lastCursorSentRef = useRef<{ time: number; row: number; col: number }>({
+    time: 0,
+    row: -1,
+    col: -1,
+  });
+  const cursorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sendCursorNow = useCallback(() => {
+    if (cursorTimerRef.current) {
+      clearTimeout(cursorTimerRef.current);
+      cursorTimerRef.current = null;
+    }
+    const c = cursorRef.current;
+    const id = identityRef.current;
+    send({ type: "cursorMoved", row: c.row, col: c.col, color: id.color, name: id.name });
+    lastCursorSentRef.current = { time: Date.now(), row: c.row, col: c.col };
+  }, [send]);
+  useEffect(() => {
+    // On disconnect: clear pending timer, reset send history (so the
+    // next open triggers an immediate send), and drop remote cursors
+    // we won't get fresh updates on until reconnect peers move.
+    if (connState !== "open") {
+      if (cursorTimerRef.current) {
+        clearTimeout(cursorTimerRef.current);
+        cursorTimerRef.current = null;
+      }
+      lastCursorSentRef.current = { time: 0, row: -1, col: -1 };
+      // Drop stale peer cursors — we won't get fresh updates until
+      // peers move after our reconnect. Return the same reference when
+      // already empty to avoid an infinite re-render loop on the initial
+      // "connecting" pass (effect fires → setState(new Map()) → effect
+      // fires again because the reference changed → ...).
+      setRemoteCursors((prev) => (prev.size === 0 ? prev : new Map()));
+      return;
+    }
+    const last = lastCursorSentRef.current;
+    if (last.row === cursor.row && last.col === cursor.col) return;
+    const elapsed = Date.now() - last.time;
+    if (elapsed >= CURSOR_THROTTLE_MS) {
+      sendCursorNow();
+    } else if (!cursorTimerRef.current) {
+      // Trailing send: timer fires after the throttle window with the
+      // latest cursorRef value (not necessarily the value that scheduled
+      // it — fast successive moves coalesce).
+      cursorTimerRef.current = setTimeout(sendCursorNow, CURSOR_THROTTLE_MS - elapsed);
+    }
+  }, [cursor.row, cursor.col, connState, sendCursorNow]);
+  useEffect(() => () => {
+    if (cursorTimerRef.current) clearTimeout(cursorTimerRef.current);
+  }, []);
 
   const renameMe = useCallback((newName: string) => {
     const next = makeIdentity(newName);
@@ -389,6 +485,8 @@ export function PuzzleView({
         }),
       checkPuzzle: () => sendMsg({ type: "check", scope: "puzzle" }),
       showNotes: triggerShowNotes,
+      openRebus: () => setRebusOpen(true),
+      showHelp: () => setHelpOpen(true),
       downloadIpuz: () => {
         // Anchor + click is the simplest way to honor the server's
         // Content-Disposition filename without an extra fetch.
@@ -422,19 +520,41 @@ export function PuzzleView({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      // Tab while chat is open: close the chat, don't navigate the grid.
-      // This applies regardless of where focus is (textarea, close button,
-      // or anywhere else inside the chat panel).
-      if (chatOpenRef.current && e.key === "Tab") {
+      // Help dialog suppresses board keystrokes; its own Esc handler
+      // (capture phase) handles dismissal, and the backdrop swallows
+      // clicks. Nothing else should fire while help is open.
+      if (helpOpenRef.current) return;
+      // Same story for the number-jump popup: it owns its own input.
+      if (numberJumpOpenRef.current) return;
+
+      // Don't intercept anything when an input/textarea has focus
+      // (chat input, future search boxes, etc.) — EXCEPT Tab. Tab is
+      // reserved for clue navigation everywhere; without this exception
+      // a Tab in the chat textarea would move DOM focus out of the
+      // panel, and a Tab elsewhere on the page when chat was open used
+      // to close the chat (worse: it did so regardless of focus). Let
+      // Tab fall through to the clue-navigation branch below; its
+      // preventDefault keeps focus where it is.
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) {
+        if (e.key !== "Tab") return;
+      }
+
+      // "?" opens the help dialog. Shift+/ on US layouts, but we just
+      // match the character so it works on layouts where ? lives on a
+      // different key.
+      if (e.key === "?" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
-        closeChat();
+        setHelpOpen(true);
         return;
       }
 
-      // Don't intercept anything when an input/textarea has focus
-      // (chat input, future search boxes, etc.).
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+      // "#" opens the jump-to-number popup.
+      if (e.key === "#" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        setNumberJumpOpen(true);
+        return;
+      }
 
       // Esc closes the chat from anywhere outside an input/textarea.
       // (Inside the textarea, ChatPanel's own handler still does the same;
@@ -517,14 +637,17 @@ export function PuzzleView({
       // For every other handled key, drop the peek so it doesn't
       // linger over the new cursor position.
       setZoomPeek(false);
-      // Enter opens the rebus overlay over the focused cell. The overlay
-      // takes focus immediately, so subsequent keystrokes hit it instead
-      // of this handler (the INPUT bail above).
+      // Shift+Enter opens the rebus overlay over the focused cell. The
+      // overlay takes focus immediately, so subsequent keystrokes hit it
+      // instead of this handler (the INPUT bail above). Bare Enter is a
+      // no-op (used to open rebus but solvers hit it reflexively at the
+      // end of a word and the accidental overlay was disruptive).
       if (e.key === "Enter") {
+        e.preventDefault();
+        if (!e.shiftKey) return;
         const { row, col } = cursor;
         const cell = cells[row]?.[col];
         if (cell?.kind === "cell") {
-          e.preventDefault();
           onActivity?.();
           setRebusOpen(true);
         }
@@ -627,6 +750,18 @@ export function PuzzleView({
     return set;
   }, [cells, cursor]);
 
+  // Flatten the remote-cursor Map to a per-cell color lookup. If two
+  // peers share a cell, first-seen wins (rare; not worth visualizing
+  // both).
+  const remoteCursorByCell = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const [color, pos] of remoteCursors) {
+      const key = `${pos.row}:${pos.col}`;
+      if (!map.has(key)) map.set(key, color);
+    }
+    return map;
+  }, [remoteCursors]);
+
   const acrossNumber = activeClueNumber(cells, cursor.row, cursor.col, "across");
   const downNumber = activeClueNumber(cells, cursor.row, cursor.col, "down");
 
@@ -709,6 +844,7 @@ export function PuzzleView({
           cursor={cursor}
           highlighted={highlighted}
           recentFills={recentFills}
+          remoteCursorByCell={remoteCursorByCell}
           collapseRebus={collapseRebus}
           onCellClick={onCellClick}
           rebus={
@@ -764,6 +900,20 @@ export function PuzzleView({
           title={meta.title || "Notes"}
           note={meta.note}
           onClose={() => setNotesOpen(false)}
+        />
+      )}
+      {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} />}
+      {numberJumpOpen && (
+        <NumberJumpDialog
+          onSubmit={(n) => {
+            const pos = findCellByNumber(cells, n);
+            if (!pos) return false;
+            setCursor((cur) => ({ ...cur, row: pos.row, col: pos.col }));
+            onActivity?.();
+            setNumberJumpOpen(false);
+            return true;
+          }}
+          onClose={() => setNumberJumpOpen(false)}
         />
       )}
     </div>

@@ -204,7 +204,7 @@ describe("PuzzleView happy path", () => {
     expect(fills[0]!.pencil).toBe(true);
   });
 
-  it("Enter opens the rebus overlay; typing + Enter commits a multi-char fill", () => {
+  it("Shift+Enter opens the rebus overlay; typing + Enter commits a multi-char fill", () => {
     render(
       <PuzzleView
         puzzle={makePuzzle()}
@@ -219,7 +219,7 @@ describe("PuzzleView happy path", () => {
 
     // Open the overlay.
     act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", shiftKey: true }));
     });
     const input = screen.getByLabelText("Rebus entry") as HTMLInputElement;
     expect(input).toBeTruthy();
@@ -264,7 +264,7 @@ describe("PuzzleView happy path", () => {
     act(() => ws.emitOpen());
 
     act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", shiftKey: true }));
     });
     const input = screen.getByLabelText("Rebus entry") as HTMLInputElement;
     act(() => {

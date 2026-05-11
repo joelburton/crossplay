@@ -4,12 +4,18 @@
   left: 0;
   margin-top: 4px;
   min-width: 220px;
+  /* Cap height to the viewport so short phones/landscape laptops don't
+     clip menu items off the bottom of the screen. The whole menu
+     scrolls as one block — the brand bar will scroll along with
+     items. Bigger structural rework (submenus, two-column layout,
+     sticky brand) is a future pass — see CLAUDE.md "mobile philosophy". */
+  max-height: calc(100vh - 60px);
   background: var(--c-card-bg);
   border: 1px solid var(--c-card-border);
   border-radius: 6px;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
   padding-bottom: 0.25rem;
-  overflow: hidden;
+  overflow-y: auto;
   z-index: var(--z-menu);
 }
 

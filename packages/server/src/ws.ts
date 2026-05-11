@@ -119,6 +119,16 @@ export function parseMessage(raw: unknown): ClientMessage | null {
     return { type: "hello", name, color: m.color };
   }
 
+  if (m.type === "cursorMoved") {
+    if (typeof m.row !== "number" || typeof m.col !== "number") return null;
+    if (!Number.isInteger(m.row) || !Number.isInteger(m.col)) return null;
+    if (m.row < 0 || m.col < 0) return null;
+    if (typeof m.name !== "string" || !isHexColor(m.color)) return null;
+    const name = sanitizeName(m.name);
+    if (name.length === 0 || name.length > 32) return null;
+    return { type: "cursorMoved", row: m.row, col: m.col, color: m.color, name };
+  }
+
   if (m.type === "reveal" || m.type === "check") {
     if (!isScope(m.scope)) return null;
     if (m.scope !== "puzzle") {
@@ -553,7 +563,14 @@ function broadcastChanges(entry: StoredBoard, changes: CellChange[]): void {
   }
 }
 
-const HEARTBEAT_INTERVAL_MS = 15_000;
+const HEARTBEAT_INTERVAL_MS = 30_000;
+// Number of consecutive missed pongs we tolerate before terminating
+// the socket. Bumped from 1 → 2 (window 30s → 90s) because Chrome /
+// Safari aggressively throttle JS in backgrounded tabs (App Nap on
+// macOS) and the auto-pong can be late. The previous 15s × 1 window
+// produced spurious "X joined" feedbacks on long cryptic sessions
+// (see memory `project_post_playtest_followups.md` item #7).
+const MISSED_PONG_TOLERANCE = 2;
 
 /** Per-message dispatch context. Every handler receives this plus the
  *  parsed (and narrowed) message. Module-level handlers keep the route
@@ -617,6 +634,28 @@ function handleShowNotes({ entry }: DispatchContext): void {
   broadcast(entry, { type: "notesShown" });
 }
 
+function handleCursorMoved(
+  { entry, socket }: DispatchContext,
+  msg: Extract<ClientMessage, { type: "cursorMoved" }>,
+): void {
+  // Remember this socket's color/name so we can send a `cursorLeft` on
+  // disconnect. Last write wins (a player can change their name in
+  // chat; the latest cursorMoved reflects that).
+  entry.cursorBySocket.set(socket, { color: msg.color, name: msg.name });
+  // Broadcast to peers only — sender doesn't need to see its own
+  // cursor (it owns the local one).
+  const payload = JSON.stringify({
+    type: "cursorMoved",
+    row: msg.row,
+    col: msg.col,
+    color: msg.color,
+    name: msg.name,
+  } satisfies ServerMessage);
+  for (const s of entry.sockets) {
+    if (s !== socket && s.readyState === s.OPEN) s.send(payload);
+  }
+}
+
 function handleHello({ entry, socket }: DispatchContext, msg: Extract<ClientMessage, { type: "hello" }>): void {
   const now = Date.now();
   // Opportunistic GC: keeps the map bounded for long-lived rooms with
@@ -649,6 +688,7 @@ const handlers: { [K in ClientMessage["type"]]: HandlerFor<K> } = {
   chat: handleChat,
   showNotes: handleShowNotes,
   hello: handleHello,
+  cursorMoved: handleCursorMoved,
 };
 
 function dispatchMessage(ctx: DispatchContext, msg: ClientMessage): void {
@@ -665,8 +705,12 @@ export type WsRouteOptions = {
   db: DatabaseSync;
   // Override the per-connection ping cadence. The integration test lowers
   // this to drive the silent-disconnect path in milliseconds rather than
-  // the production 15s.
+  // the production 30s.
   heartbeatIntervalMs?: number;
+  // Override the missed-pong tolerance. Tests can set this to 1 to
+  // mirror the legacy strict behavior; production uses
+  // MISSED_PONG_TOLERANCE for backgrounded-tab leniency.
+  missedPongTolerance?: number;
 };
 
 /**
@@ -691,6 +735,7 @@ export function registerWsRoutes(
 ): void {
   const { db } = opts;
   const heartbeatIntervalMs = opts.heartbeatIntervalMs ?? HEARTBEAT_INTERVAL_MS;
+  const missedPongTolerance = opts.missedPongTolerance ?? MISSED_PONG_TOLERANCE;
   app.get<{ Params: { id: string } }>(
     "/ws/boards/:id",
     { websocket: true },
@@ -704,22 +749,38 @@ export function registerWsRoutes(
 
       entry.sockets.add(socket);
       send(socket, { type: "snapshot", snapshot: entry.state.snapshot });
+      const openedAt = Date.now();
+      req.log.info({ boardId: id, peers: entry.sockets.size }, "ws open");
 
-      // Heartbeat: server pings every interval; browser auto-pongs.
-      // If the previous ping was never answered, terminate the socket.
-      let isAlive = true;
+      // Heartbeat: server pings every interval; browser auto-pongs. We
+      // count consecutive missed pongs and terminate once they reach
+      // `missedPongTolerance`. Default tolerance is 2 (window ≈ 90s with
+      // a 30s interval) so backgrounded tabs whose JS is throttled
+      // briefly don't get killed for a single late pong.
+      let missedPongs = 0;
+      // Diagnostic flag: did the heartbeat decide to kill this socket?
+      // The close handler reads it so we can distinguish a missed-pong
+      // termination from a peer/network close in the log line.
+      let terminatedByHeartbeat = false;
       socket.on("pong", () => {
-        isAlive = true;
+        missedPongs = 0;
       });
       const heartbeat = setInterval(() => {
-        if (!isAlive) {
+        if (missedPongs >= missedPongTolerance) {
+          terminatedByHeartbeat = true;
+          req.log.warn(
+            { boardId: id, missedPongs, heartbeatIntervalMs, missedPongTolerance },
+            "ws heartbeat terminating socket (no pong in window)",
+          );
           socket.terminate();
           return;
         }
-        isAlive = false;
+        missedPongs += 1;
         try {
           socket.ping();
         } catch {
+          terminatedByHeartbeat = true;
+          req.log.warn({ boardId: id }, "ws heartbeat: socket.ping() threw, terminating");
           socket.terminate();
         }
       }, heartbeatIntervalMs);
@@ -730,9 +791,29 @@ export function registerWsRoutes(
         dispatchMessage({ db, entry, socket }, msg);
       });
 
-      socket.on("close", () => {
+      socket.on("close", (code: number, reasonBuf: Buffer) => {
         clearInterval(heartbeat);
         entry.sockets.delete(socket);
+        const reason = reasonBuf?.length ? reasonBuf.toString("utf8") : "";
+        req.log.info(
+          {
+            boardId: id,
+            code,
+            reason,
+            terminatedByHeartbeat,
+            durationMs: Date.now() - openedAt,
+            peers: entry.sockets.size,
+          },
+          "ws close",
+        );
+        // Tell peers to drop our cursor frame. If we never sent a
+        // cursorMoved (e.g. socket died before first move) there's
+        // nothing to clean up.
+        const cursor = entry.cursorBySocket.get(socket);
+        entry.cursorBySocket.delete(socket);
+        if (cursor) {
+          broadcast(entry, { type: "cursorLeft", color: cursor.color });
+        }
         // Last connection out: persist + drop the cache entry. A
         // future reconnect will lazy-load it again.
         if (entry.sockets.size === 0) {

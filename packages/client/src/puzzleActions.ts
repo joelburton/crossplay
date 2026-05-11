@@ -26,5 +26,7 @@ export type PuzzleActions = {
   checkWord: () => void;
   checkPuzzle: () => void;
   showNotes: () => void;
+  openRebus: () => void;
+  showHelp: () => void;
   downloadIpuz: () => void;
 };

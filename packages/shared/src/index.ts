@@ -92,7 +92,8 @@ export type ClientMessage =
   | { type: "clear" }
   | { type: "chat"; name: string; color: string; text: string }
   | { type: "showNotes" }
-  | { type: "hello"; name: string; color: string };
+  | { type: "hello"; name: string; color: string }
+  | { type: "cursorMoved"; row: number; col: number; color: string; name: string };
 
 export type ServerMessage =
   | { type: "snapshot"; snapshot: GridSnapshot }
@@ -112,4 +113,12 @@ export type ServerMessage =
       text: string;
       level: "info" | "warning" | "celebration";
       autoVanishMs?: number;
-    };
+    }
+  // Pure presence: broadcast (to other sockets, not the sender) when a
+  // peer's cursor moves. Not persisted, not version-stamped, not
+  // replayed on reconnect. Receivers track the latest (row, col) per
+  // `color` and render a thin frame on that cell.
+  | { type: "cursorMoved"; row: number; col: number; color: string; name: string }
+  // Broadcast when a peer's socket closes (clean disconnect, peer close,
+  // or heartbeat termination). Receivers drop that color from their map.
+  | { type: "cursorLeft"; color: string };

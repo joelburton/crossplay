@@ -70,6 +70,7 @@ function entry(): StoredBoard {
     chat: [],
     sockets: new Set(),
     recentHellos: new Map(),
+    cursorBySocket: new Map(),
     feedbackCounter: 0,
     dirty: false,
   };

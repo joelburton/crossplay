@@ -196,15 +196,21 @@ export function App() {
           <div className={styles.headerSlot}>
             {feedback ? (
               <FeedbackBar feedback={feedback} onDismiss={dismissFeedback} />
-            ) : activeClue ? (
+            ) : (
               <div className={styles.activeClue}>
-                <span className={styles.activeClueLabel}>
-                  {activeClue.number}
-                  {activeClue.direction === "across" ? "A" : "D"}
-                </span>
-                <span className={styles.activeClueText}>{activeClue.text}</span>
+                {activeClue ? (
+                  <>
+                    <span className={styles.activeClueLabel}>
+                      {activeClue.number}
+                      {activeClue.direction === "across" ? "A" : "D"}
+                    </span>
+                    <span className={styles.activeClueText}>{activeClue.text}</span>
+                  </>
+                ) : (
+                  <span>&nbsp;</span>
+                )}
               </div>
-            ) : null}
+            )}
           </div>
         </header>
       )}

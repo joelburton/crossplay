@@ -18,6 +18,11 @@ type Props = {
   cursor: Cursor;
   highlighted: Set<string>;
   recentFills: Map<string, string>;
+  /** Per-cell remote-cursor color (key = `${row}:${col}`). Cells with
+   *  an entry render a thin colored frame in that color. PuzzleView
+   *  builds this from the live presence map; first-seen wins on cell
+   *  collisions. */
+  remoteCursorByCell: Map<string, string>;
   /** Display-only: when true, multi-character (rebus) fills render as
    *  just their first letter so they're legible on small screens. The
    *  underlying fill is unchanged. */
@@ -105,7 +110,7 @@ function useNarrowViewport(): boolean {
  * board's right edge for the chat indicator alignment.
  */
 export const Board = forwardRef<HTMLDivElement, Props>(function Board(
-  { cells, cursor, highlighted, recentFills, collapseRebus, onCellClick, rebus, zoom },
+  { cells, cursor, highlighted, recentFills, remoteCursorByCell, collapseRebus, onCellClick, rebus, zoom },
   ref,
 ) {
   const width = cells[0]?.length ?? 0;
@@ -133,6 +138,7 @@ export const Board = forwardRef<HTMLDivElement, Props>(function Board(
               isCursor={cursor.row === r && cursor.col === c}
               isInWord={highlighted.has(key)}
               recentColor={recentFills.get(key) ?? null}
+              remoteCursorColor={remoteCursorByCell.get(key) ?? null}
               collapseRebus={collapseRebus}
               onClick={onCellClick}
             />

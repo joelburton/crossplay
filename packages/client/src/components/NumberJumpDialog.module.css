@@ -1,0 +1,50 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  z-index: var(--z-help-dialog);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 20vh;
+}
+
+.card {
+  composes: card from "./Panel.module.css";
+  width: min(280px, calc(100% - 2rem));
+  /* Panel.card sets height:100% for the draggable panels (Rnd controls
+     their box). For this modal we want to size to content. */
+  height: auto;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+}
+
+.body {
+  padding: 0.75rem 1rem 0.85rem;
+}
+
+.label {
+  font-size: 0.85rem;
+  color: var(--c-text-mute);
+  margin-bottom: 0.4rem;
+}
+
+.input {
+  width: 100%;
+  font: inherit;
+  font-size: 1.2rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--c-card-border);
+  border-radius: 4px;
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--c-link);
+}
+
+.error {
+  margin-top: 0.4rem;
+  font-size: 0.85rem;
+  color: #c00;
+  min-height: 1.1em;
+}

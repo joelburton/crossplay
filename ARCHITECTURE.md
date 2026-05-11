@@ -46,9 +46,16 @@ Reveal and check operations are server-authoritative too. They have to be: the s
 
 One WebSocket connection per browser tab per board, at `/ws/boards/:id`. The server holds the set of sockets per board and broadcasts to all of them on any change.
 
-A 15-second server ping detects silently-dead connections (closed laptop lid, dead WiFi) within ~30 seconds. The client's reconnect logic retries with exponential backoff and re-announces presence on each reconnect.
+A 30-second server ping detects silently-dead connections (closed laptop lid, dead WiFi) within ~90 seconds — the server tolerates 2 consecutive missed pongs before terminating, because macOS App Nap throttles JS in backgrounded tabs and a single late pong shouldn't kill an idle solver. The client's reconnect logic retries with exponential backoff and re-announces presence on each reconnect.
 
 There's no protocol versioning, no schema negotiation, no acks beyond the cell-update broadcasts. The wire is small and untyped past the JSON; the server validates each incoming message defensively.
+
+## Two classes of WebSocket message
+
+The wire carries two architecturally distinct kinds of message, and they have different rules:
+
+- **State changes** — `fill`, `reveal`, `check`, `clear`, `chat`, `showNotes`. The server is authoritative, mutations bump a snapshot version, broadcasts are durable (persisted via the 15-second flush), and clients reconcile by version.
+- **Pure presence** — `cursorMoved` (peer cursor position), `cursorLeft` (peer disconnected), and the "X joined" feedback derived from `hello`. None of this is persisted, version-stamped, or replayed on reconnect. A peer that misses a `cursorMoved` while reconnecting just sees the next one. The cost of presence traffic is intentionally cheap so it can't impact the typing hot path (see `project_optimistic_typing.md`): outbound `cursorMoved` is throttled to ~80ms on the client and is fire-and-forget; inbound updates only re-render the affected cell.
 
 ## Persistence: SQLite, partial today
 
@@ -91,7 +98,8 @@ Source: [`docs/components-game.dot`](docs/components-game.dot) (regenerate with 
 - **The cell is sized in `font-size`, and everything inside uses `em`.** This means letters, numbers, and the revealed/wrong corner triangles all scale together when the cell scales — including when Safari does text-only zoom (which would otherwise grow the letter past the cell box).
 - **Layout is a `height: 100vh` flex chain with `min-height: 0` on every flex item that should be allowed to shrink.** Removing those `min-height: 0`s breaks the layout in subtle ways; they're load-bearing.
 - **The two big floating panels (chat and notes) use `react-rnd`** for drag and resize, with their position/size persisted to `localStorage` per panel. The Rect/load/save/clamp logic and the shared card/header/drag-handle CSS live in one place (`draggablePanel.ts` + `Panel.module.css`); each panel composes those bones and overrides the bits that differ.
-- **Modifier keys bypass the keyboard handler.** `Cmd-L` focuses the address bar like usual; we don't try to capture browser shortcuts. `Option`/`Alt` + a letter is the namespace we use for in-app shortcuts (`⌥R` reveal, `⌥C` check, `⌥N` notes, `⌥P` toggle pen/pencil).
+- **Modifier keys bypass the keyboard handler.** `Cmd-L` focuses the address bar like usual; we don't try to capture browser shortcuts. `Option`/`Alt` + a letter is the namespace we use for in-app action shortcuts (`⌥R` reveal, `⌥C` check, `⌥N` notes, `⌥P` toggle pen/pencil). A few unmodified-keypress shortcuts also exist for things that open a dialog rather than mutate the board: `⇧Enter` (rebus overlay), `#` (jump-to-clue-number), `?` (help dialog), `/` (open chat or focus its input). See CLAUDE.md for the full list and rationale.
+- **Three modal dialogs share a pattern.** `HelpDialog`, `NumberJumpDialog`, and the inline `RebusInput` overlay are all centered cards with backdrop / Esc / × dismissal. `PuzzleView` tracks an `*Open` boolean per dialog plus a `*OpenRef` so its window-level keystroke handler can bail out cleanly while a dialog is taking input. The chat panel and notes panel are different — those are draggable `react-rnd` panels with persisted geometry.
 - **Home page and board page have separate headers.** The shared top bar (small icon, title-with-menu, feedback slot) only renders on `/b/:id`. The home page (`/`) draws its own centered hero (large icon + wordmark) and intentionally has no menu — landing pages and play views have different needs and they no longer share a component.
 - **Welcome feedback is once-per-browser.** The "Click the heart for a menu" hint fires on first board-load only, gated on a `seenWelcome` localStorage flag. When user accounts land, this should move from per-browser to per-user.
 - **Home-page list filters are pure client-side.** Both lists do a case-insensitive substring match across title + author + copyright (so e.g. "times" finds NYT puzzles via the copyright field). The library is expected to stay in the hundreds; server-side filtering would buy nothing.
@@ -99,6 +107,6 @@ Source: [`docs/components-game.dot`](docs/components-game.dot) (regenerate with 
 ## What's deliberately out of scope
 
 - Authentication or accounts. The trust model is "share the URL with a friend you trust." Boards are global, not per-user (yet).
-- Mobile/touch input. Targets laptops only.
+- Mobile / touch input *without a hardware keyboard*. Tablets and phones that have an external keyboard (option keys work on iPad/iPhone keyboards) get the same UI as a narrow laptop window. See CLAUDE.md "Platform philosophy" for the full audience priorities and the rules that follow (no main-page scroll, no hover-gated info, don't bloat tap targets at the expense of grid readability).
 - A solve timer — flagged for future work and needs its own design conversation.
 - Other `.ipuz` features outside the standard-crossword subset (circles, shading, bars, irregular grids) are rejected at upload time with a clear message rather than partially loaded. Basic rebus *is* now supported (cells with 1–8 uppercase letters); see CLAUDE.md "Basic rebus" for the wire + UX details.

@@ -64,12 +64,13 @@ function buildBoard(id: string): StoredBoard {
     chat: [],
     sockets: new Set(),
     recentHellos: new Map(),
+    cursorBySocket: new Map(),
     feedbackCounter: 0,
     dirty: false,
   };
 }
 
-async function startServer(opts: { heartbeatIntervalMs?: number } = {}) {
+async function startServer(opts: { heartbeatIntervalMs?: number; missedPongTolerance?: number } = {}) {
   const app = Fastify();
   await app.register(websocket);
   // The WS route requires a db handle for lazy-load fallback, but our
@@ -329,10 +330,11 @@ describe("ws integration heartbeat", () => {
   });
 
   beforeAll(async () => {
-    // 50ms heartbeat: first tick pings, second tick (100ms in) terminates
-    // the connection if no pong arrived. The `ws` client is constructed
-    // with autoPong:false below so it stays silent and triggers that path.
-    const started = await startServer({ heartbeatIntervalMs: 50 });
+    // 50ms heartbeat + strict (tolerance=1) so the test runs in tens of
+    // ms rather than the production 30s × 3 = 90s window. The `ws`
+    // client is constructed with autoPong:false below so it stays silent
+    // and triggers the missed-pong path.
+    const started = await startServer({ heartbeatIntervalMs: 50, missedPongTolerance: 1 });
     app = started.app;
     port = started.port;
   });

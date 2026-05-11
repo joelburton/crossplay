@@ -99,6 +99,18 @@ export function Menu({ actions, triggerRef, onNewGame, onClose }: Props) {
         </button>
       )}
       {actions && (
+        <button type="button" className={styles.item} onClick={run(actions.openRebus)}>
+          <span>Enter rebus</span>
+          <span className={styles.shortcut}>⇧↵</span>
+        </button>
+      )}
+      {actions && (
+        <button type="button" className={styles.item} onClick={run(actions.showHelp)}>
+          <span>Help</span>
+          <span className={styles.shortcut}>?</span>
+        </button>
+      )}
+      {actions && (
         <>
           <div className={styles.sep} role="separator" />
           <button type="button" className={styles.item} onClick={run(actions.revealLetter)}>

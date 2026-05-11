@@ -23,6 +23,8 @@ type Handlers = {
   onChatMessage?: (line: ChatLine) => void;
   onNotesShown?: () => void;
   onFeedback?: (feedback: Feedback) => void;
+  onCursorMoved?: (row: number, col: number, color: string, name: string) => void;
+  onCursorLeft?: (color: string) => void;
   onOpen?: () => void;
 };
 
@@ -56,6 +58,11 @@ export function useBoardSocket(boardId: string, handlers: Handlers) {
     let cancelled = false;
     let attempt = 0;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    // Diagnostic timestamps logged on close so we can tell an
+    // idle-timeout kill from a peer/server close. Reset on each
+    // connect() so they describe the most recent socket only.
+    let openedAt = 0;
+    let lastMessageAt = 0;
 
     function connect() {
       if (cancelled) return;
@@ -67,20 +74,43 @@ export function useBoardSocket(boardId: string, handlers: Handlers) {
       ws.addEventListener("open", () => {
         if (cancelled) return;
         attempt = 0;
+        openedAt = Date.now();
+        lastMessageAt = openedAt;
         setState("open");
+        console.info("[ws] open", { url, boardId });
         handlersRef.current.onOpen?.();
       });
-      ws.addEventListener("close", () => {
+      ws.addEventListener("close", (ev) => {
         if (cancelled) return;
         setState("closed");
+        const now = Date.now();
+        // wasClean + standard close codes help triage: 1000 normal,
+        // 1001 going-away (tab close / refresh), 1006 abnormal
+        // (network drop / server terminate), 1008 policy (e.g. our
+        // "board not found"). If `code === 1006` and the socket was
+        // idle for > the server's heartbeat window, suspect a
+        // missed-pong termination.
+        console.warn("[ws] close", {
+          boardId,
+          code: ev.code,
+          reason: ev.reason,
+          wasClean: ev.wasClean,
+          msSinceOpen: openedAt ? now - openedAt : null,
+          msSinceLastMessage: lastMessageAt ? now - lastMessageAt : null,
+          attempt,
+        });
         const delay = RECONNECT_DELAYS_MS[Math.min(attempt, RECONNECT_DELAYS_MS.length - 1)]!;
         attempt += 1;
         retryTimer = setTimeout(connect, delay);
       });
       ws.addEventListener("error", () => {
-        // close handler will fire next; let it own the retry logic
+        // close handler will fire next; let it own the retry logic.
+        // The Event object on ws errors carries no useful info, so we
+        // just log the fact — close will follow with the real code.
+        console.warn("[ws] error (close follows)", { boardId });
       });
       ws.addEventListener("message", (e) => {
+        lastMessageAt = Date.now();
         let msg: ServerMessage;
         try {
           msg = JSON.parse(typeof e.data === "string" ? e.data : "");
@@ -112,6 +142,10 @@ export function useBoardSocket(boardId: string, handlers: Handlers) {
             level: msg.level,
             autoVanishMs: msg.autoVanishMs,
           });
+        } else if (msg.type === "cursorMoved") {
+          handlersRef.current.onCursorMoved?.(msg.row, msg.col, msg.color, msg.name);
+        } else if (msg.type === "cursorLeft") {
+          handlersRef.current.onCursorLeft?.(msg.color);
         }
       });
     }

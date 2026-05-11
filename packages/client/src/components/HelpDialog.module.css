@@ -1,0 +1,83 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: var(--z-help-dialog);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.card {
+  composes: card from "./Panel.module.css";
+  width: min(640px, 100%);
+  max-height: calc(100vh - 2rem);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+}
+
+.header {
+  composes: header from "./Panel.module.css";
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--c-header-bg);
+  color: var(--c-header-fg);
+}
+
+.title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.close {
+  composes: close from "./Panel.module.css";
+  font-size: 1.4rem;
+  color: var(--c-header-fg);
+}
+
+.close:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.body {
+  padding: 1rem 1.25rem 1.25rem;
+  overflow-y: auto;
+  line-height: 1.5;
+  font-size: 0.95rem;
+  color: var(--c-text);
+  flex: 1;
+  min-height: 0;
+}
+
+.body section + section {
+  margin-top: 1.1rem;
+}
+
+.body h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--c-text);
+}
+
+.body p {
+  margin: 0.3rem 0;
+}
+
+.shortcuts {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.shortcuts td {
+  padding: 0.2rem 0.5rem 0.2rem 0;
+  vertical-align: top;
+}
+
+.shortcuts td:first-child {
+  white-space: nowrap;
+  width: 1%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--c-text-mute);
+}

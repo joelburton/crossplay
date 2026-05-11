@@ -19,6 +19,7 @@ function renderCell(cell: CellT, props: Partial<Parameters<typeof Cell>[0]> = {}
       isCursor={false}
       isInWord={false}
       recentColor={null}
+      remoteCursorColor={null}
       collapseRebus={false}
       onClick={() => {}}
       {...props}

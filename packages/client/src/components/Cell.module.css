@@ -33,12 +33,24 @@
 
 .number {
   position: absolute;
-  top: 0.03em;
-  left: 0.06em;
+  /* Nudged in from the corner just enough that a remote-cursor frame
+     (0.08em) doesn't crowd the digit. */
+  top: 0.08em;
+  left: 0.11em;
   font-size: 0.3em;
   font-weight: 700;
   line-height: 1;
   color: #222;
+}
+
+/* Remote-player cursor frame. Color is set inline by Cell.tsx from the
+   peer's chat-identity color. Inset 0 + per-side border renders
+   symmetrically (see Cell.tsx for the box-shadow story we replaced). */
+.remoteFrame {
+  position: absolute;
+  inset: 0;
+  border: 0.08em solid;
+  pointer-events: none;
 }
 
 .fill {
