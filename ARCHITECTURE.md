@@ -72,11 +72,19 @@ The in-memory cache (`store.ts`) keeps a board around as long as at least one so
 
 ## Component tree
 
-The client's React render tree at a glance. Solid edges are always-rendered children; dashed edges are conditional (route, load state, or panel-open flag). Hooks and pure helpers are omitted.
+The client's React render tree at a glance. Solid edges are always-rendered children; dashed edges are conditional (route, load state, panel-open flag, or transient overlay). Hooks and pure helpers are omitted. The home page and the board page share very little structure, so they get one diagram each.
 
-![Component tree](docs/components.png)
+**Home page (`/`)** — solid-border nodes are real components; dashed-border nodes are logical UI sections that live as inline JSX inside `HomePage` (filter inputs, list rows, section wrappers) rather than their own files.
 
-Source: [`docs/components.dot`](docs/components.dot) (regenerate with `dot -Tpng docs/components.dot -o docs/components.png`).
+![Home page component tree](docs/components-home.png)
+
+Source: [`docs/components-home.dot`](docs/components-home.dot) (regenerate with `dot -Tpng docs/components-home.dot -o docs/components-home.png`).
+
+**Board page (`/b/:id`)** — App's header chrome plus `PuzzleView` and its panels.
+
+![Board page component tree](docs/components-game.png)
+
+Source: [`docs/components-game.dot`](docs/components-game.dot) (regenerate with `dot -Tpng docs/components-game.dot -o docs/components-game.png`).
 
 ## Frontend choices worth knowing
 

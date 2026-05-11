@@ -24,11 +24,6 @@
   flex-shrink: 0;
 }
 
-.dragHandle {
-  cursor: move;
-  user-select: none;
-}
-
 .close {
   background: none;
   border: 0;

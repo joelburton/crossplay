@@ -14,7 +14,8 @@
 }
 
 .dragHandle {
-  composes: dragHandle from "./Panel.module.css";
+  cursor: move;
+  user-select: none;
 }
 
 .close {
