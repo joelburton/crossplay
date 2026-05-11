@@ -12,7 +12,9 @@
 .card {
   composes: card from "./Panel.module.css";
   width: min(640px, 100%);
-  max-height: calc(100vh - 2rem);
+  /* dvh, not vh — iOS Safari's `100vh` includes the URL bar, so the
+     cap was effectively taller than the screen. */
+  max-height: calc(100dvh - 2rem);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
 }
 

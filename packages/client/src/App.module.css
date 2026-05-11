@@ -1,6 +1,11 @@
 .app {
   font-family: system-ui, sans-serif;
-  height: 100vh;
+  /* `dvh` (dynamic viewport height) excludes the iOS browser chrome
+     (URL bar / bottom toolbar) so the layout matches the visible
+     area. `100vh` on iOS Safari treats those bars as part of the
+     viewport, which made the page taller than the screen and let it
+     scroll past the layout revealing whitespace below. */
+  height: 100dvh;
   display: flex;
   flex-direction: column;
 }

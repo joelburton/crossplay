@@ -132,7 +132,10 @@ export const Board = forwardRef<HTMLDivElement, Props>(function Board(
     ? `calc((100vw - (${NARROW_HORIZ_RESERVE_CSS})) / ${width})`
     : `calc(${targetWidthPercent(width)}vw / ${width})`;
   const verticalReservePx = VERTICAL_OVERHEAD_PX + (narrow ? NARROW_CLUE_RESERVE_PX : 0);
-  const cellSize = `min(${horiz}, calc((100vh - ${verticalReservePx}px) / ${height}), ${MAX_CELL_PX}px)`;
+  // 100dvh, not 100vh — on iOS Safari the dynamic viewport excludes
+  // the URL bar / bottom toolbar; `100vh` would size cells assuming
+  // those bars weren't there and push the board off-screen.
+  const cellSize = `min(${horiz}, calc((100dvh - ${verticalReservePx}px) / ${height}), ${MAX_CELL_PX}px)`;
   const style: CSSProperties = {
     fontSize: cellSize,
     gridTemplateColumns: `repeat(${width}, 1em)`,

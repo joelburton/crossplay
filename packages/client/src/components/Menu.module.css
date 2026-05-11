@@ -9,7 +9,11 @@
      scrolls as one block — the brand bar will scroll along with
      items. Bigger structural rework (submenus, two-column layout,
      sticky brand) is a future pass — see CLAUDE.md "mobile philosophy". */
-  max-height: calc(100vh - 60px);
+  /* dvh, not vh — on iOS Safari `100vh` includes the URL bar height
+     so the cap never actually constrained the menu below the visible
+     area, and a tall menu pushed the document instead of scrolling
+     internally. */
+  max-height: calc(100dvh - 60px);
   background: var(--c-card-bg);
   border: 1px solid var(--c-card-border);
   border-radius: 6px;

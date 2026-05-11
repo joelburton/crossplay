@@ -91,6 +91,42 @@
   gap: 0.5rem;
 }
 
+/* On narrow viewports we drop the wide 3-column layout in favor of a
+ * vertical stack. The board page's no-scroll invariant doesn't apply
+ * here — this is a landing page, and on phones the user expects to
+ * scroll through sections. Each list gets a per-section height cap so
+ * the user can see all three section headings without having to scroll
+ * past a long list of games. Keep the breakpoint in sync with
+ * NARROW_QUERY in Board.tsx (see index.css). */
+@media (max-width: 1024px) {
+  .outer {
+    /* Let the home page scroll on narrow viewports. The .app shell is
+       100dvh so this scroll happens inside the viewport, not the
+       document. */
+    overflow-y: auto;
+  }
+  .wrap {
+    flex-direction: column;
+    /* Stop competing with .outer for vertical space — let sections
+       size to their (capped) content and let .outer scroll. */
+    flex: 0 0 auto;
+    gap: 1.25rem;
+  }
+  .section,
+  .section.listSection,
+  .section.uploadSection {
+    flex: 0 0 auto;
+    min-height: 0;
+  }
+  .games {
+    /* Cap each list so all three section headings stay visible on a
+       single phone screen. Internal scroll handles long lists; the
+       existing `overflow-y: auto` on .games still applies. */
+    max-height: 40dvh;
+    flex: 0 0 auto;
+  }
+}
+
 .heading {
   margin: 0;
   font-size: 0.85rem;
