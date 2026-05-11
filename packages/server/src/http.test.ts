@@ -418,17 +418,19 @@ describe("http: POST /api/boards/upload", () => {
   });
 
   it("returns 400 with the underlying message on unsupported ipuz features", async () => {
-    // Minimal ipuz with a circled cell (style.shapebg) — parser rejects.
+    // Minimal ipuz with a shaded cell (style.shading) — parser rejects.
+    // (Circled cells are supported now; we keep this test on a feature
+    // we still reject so the 400 path stays exercised.)
     const ipuz = {
       version: "http://ipuz.org/v2",
       kind: ["http://ipuz.org/crossword#1"],
-      title: "circled",
+      title: "shaded",
       author: "test",
       copyright: "",
       dimensions: { width: 2, height: 1 },
       puzzle: [
         [
-          { cell: 1, style: { shapebg: "circle" } },
+          { cell: 1, style: { shading: "lightgrey" } },
           2,
         ],
       ],
@@ -438,7 +440,7 @@ describe("http: POST /api/boards/upload", () => {
     const buf = Buffer.from(JSON.stringify(ipuz), "utf8");
     const { payload, contentType } = multipartFile({
       fieldName: "file",
-      filename: "circled.ipuz",
+      filename: "shaded.ipuz",
       contentType: "application/json",
       body: buf,
     });
@@ -449,7 +451,7 @@ describe("http: POST /api/boards/upload", () => {
       payload,
     });
     expect(res.statusCode).toBe(400);
-    expect((res.json() as { error: string }).error).toMatch(/circled|shapebg/i);
+    expect((res.json() as { error: string }).error).toMatch(/shading|shaded/i);
   });
 });
 

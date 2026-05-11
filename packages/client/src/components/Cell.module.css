@@ -41,6 +41,17 @@
   font-weight: 700;
   line-height: 1;
   color: #222;
+  /* White pad so the digit stays legible when it sits over a colored
+     overlay (circled theme cells, remote-cursor frames). Grid lines are
+     drawn as `outline` on .cell, which paints outside the cell's box,
+     so this background can never erase them — no need to manage the
+     number's height for that. The `z-index` is defensive: source order
+     already puts .number above .circle and .remoteFrame, but a future
+     reorder shouldn't be able to bury it. */
+  background: #fff;
+  padding: 0 0.04em;
+  border-radius: 0.04em;
+  z-index: 1;
 }
 
 /* Remote-player cursor frame. Color is set inline by Cell.tsx from the
@@ -50,6 +61,22 @@
   position: absolute;
   inset: 0;
   border: 0.08em solid;
+  pointer-events: none;
+}
+
+/* Author-defined circle (theme cells). Em-sized so it tracks the cell's
+   inline font-size like every other dimension here. Asymmetric inset:
+   more breathing room at top/left so the circle doesn't crowd the
+   clue number (which lives at top: 0.08em / left: 0.11em); a tighter
+   bottom/right keeps the circle visually centered on the cell's fill
+   (which is itself translated +0.08em down-right by .fill). Sits
+   underneath the number, fill, marks, and remote-cursor frame;
+   `pointer-events: none` so clicks pass through to the cell. */
+.circle {
+  position: absolute;
+  inset: 0.13em 0.05em 0.05em 0.13em;
+  border: 0.025em solid #333;
+  border-radius: 50%;
   pointer-events: none;
 }
 

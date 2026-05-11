@@ -26,4 +26,12 @@
 
 .error {
   color: #c00;
+  margin: 0;
+  /* Cap the error to roughly the dropzone's intrinsic width so a long
+   * message (e.g. an upload-rejection reason) wraps instead of growing
+   * the upload column and reflowing the rest of the home page.
+   * `overflow-wrap: anywhere` covers the rare case where the message
+   * contains a long unbreakable token. */
+  max-width: 14rem;
+  overflow-wrap: anywhere;
 }

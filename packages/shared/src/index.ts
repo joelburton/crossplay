@@ -27,6 +27,10 @@ export type Cell =
       revealed?: boolean;
       wrong?: boolean;
       pencil?: boolean;
+      /** Author-defined circle around the cell (common theme marker).
+       *  Pure presentation: set at parse time, never mutated, ignored
+       *  by reveal/check/clear/fill. */
+      circled?: boolean;
     };
 
 export type Clue = {

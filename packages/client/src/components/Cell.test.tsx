@@ -98,6 +98,21 @@ describe("Cell rendering", () => {
     expect(span.style.color).toBe("rgb(31, 119, 180)");
   });
 
+  it("renders a circle overlay for circled cells", () => {
+    const { container } = renderCell(open({ circled: true }));
+    expect(container.querySelector("span[aria-hidden]")).toBeTruthy();
+    // Sanity: classList includes the circle module class (CSS modules
+    // hash the name, but it always contains "circle").
+    const span = container.querySelector("span[aria-hidden]") as HTMLElement;
+    expect(span.className).toMatch(/circle/);
+  });
+
+  it("does not render a circle overlay when circled is absent", () => {
+    const { container } = renderCell(open({ fill: "A" }));
+    const aria = container.querySelector("span[aria-hidden]");
+    expect(aria).toBeNull();
+  });
+
   it("renders the clue number when present", () => {
     const { container } = renderCell(open({ number: 7, fill: null }));
     expect(container.textContent).toContain("7");

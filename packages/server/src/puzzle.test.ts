@@ -127,4 +127,39 @@ describe("parsePuzBuffer — unsupported features", () => {
     expect(() => parsePuzBuffer("x", Buffer.alloc(0))).toThrow(IpuzUnsupportedError);
     expect(() => parsePuzBuffer("x", Buffer.alloc(0))).toThrow(/rebus/);
   });
+
+  it("rejects shaded cells (we don't render shading)", () => {
+    stubDecode({
+      grid: [
+        ["A", "B"],
+        ["C", "D"],
+      ],
+      meta: { title: "", author: "", copyright: "", description: "" },
+      circles: [],
+      shades: [1],
+      clues: { across: {}, down: {} },
+    });
+    expect(() => parsePuzBuffer("x", Buffer.alloc(0))).toThrow(IpuzUnsupportedError);
+    expect(() => parsePuzBuffer("x", Buffer.alloc(0))).toThrow(/shaded/);
+  });
+
+  it("sets circled:true on cells whose flat index appears in decoded.circles", () => {
+    // 2x2 grid; mark (0,1) and (1,0) as circled.
+    stubDecode({
+      grid: [
+        ["A", "B"],
+        ["C", "D"],
+      ],
+      meta: { title: "", author: "", copyright: "", description: "" },
+      circles: [1, 2],
+      shades: [],
+      clues: { across: {}, down: {} },
+    });
+    const { state } = parsePuzBuffer("x", Buffer.alloc(0));
+    const at = (r: number, c: number) => state.snapshot.cells[r]![c]!;
+    if (at(0, 0).kind === "cell") expect((at(0, 0) as { circled?: boolean }).circled).toBeUndefined();
+    if (at(0, 1).kind === "cell") expect((at(0, 1) as { circled?: boolean }).circled).toBe(true);
+    if (at(1, 0).kind === "cell") expect((at(1, 0) as { circled?: boolean }).circled).toBe(true);
+    if (at(1, 1).kind === "cell") expect((at(1, 1) as { circled?: boolean }).circled).toBeUndefined();
+  });
 });

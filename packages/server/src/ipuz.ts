@@ -6,14 +6,18 @@
  * (alongside .puz) and emit it for the future "download puzzle"
  * button.
  *
- * Scope today is the standard-crossword subset plus basic rebus:
- * square grid, integer cell numbers, plain text clues, and
- * solutions/saved values that are 1–MAX_REBUS_LEN uppercase letters.
- * Any ipuz feature outside that subset (circled or shaded cells,
- * barred grids, irregular/null cells, non-crossword `kind`) causes
- * `parseIpuzBuffer` to throw `IpuzUnsupportedError` so we can see what
- * real puzzles in the wild are using before deciding which to
- * support. Silent degradation would hide that signal.
+ * Scope today is the standard-crossword subset plus basic rebus and
+ * circled cells: square grid, integer cell numbers, plain text clues,
+ * solutions/saved values 1–MAX_REBUS_LEN uppercase letters, and
+ * `style.shapebg === "circle"` as a per-cell decoration. Any ipuz
+ * feature outside that subset (shaded cells, barred grids,
+ * irregular/null cells, non-crossword `kind`, unknown style keys or
+ * cell-object keys, named style references) causes `parseIpuzBuffer`
+ * to throw `IpuzUnsupportedError` so we can see what real puzzles in
+ * the wild are using before deciding which to support. Silent
+ * degradation would hide that signal — checks are whitelists, not
+ * blacklists, so a new unknown feature surfaces as a 400 rather than
+ * a quietly-stripped puzzle.
  *
  * The pivot for both directions is the same `PuzzleState` + solution
  * grid that `parsePuzBuffer` produces, so anything downstream
@@ -48,24 +52,52 @@ const CROSSWORD_KIND = /(^|\/)crossword(#|$)/i;
 
 type IpuzCellObject = {
   cell?: unknown;
-  style?: Record<string, unknown>;
+  style?: unknown;
   value?: unknown;
 };
+
+const ALLOWED_CELL_OBJECT_KEYS = new Set(["cell", "style", "value"]);
 
 function isPlainObject(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null && !Array.isArray(x);
 }
 
-/** Reject the ipuz `style` features we don't render. Anything we do
- *  encounter in real puzzles becomes a candidate to support later. */
-function checkStyle(style: Record<string, unknown>, where: string): void {
-  if (style.shapebg !== undefined) fail(`${where}: circled/shaded cells (style.shapebg) are not supported`);
-  if (style.shading !== undefined) fail(`${where}: shaded cells (style.shading) are not supported`);
-  if (style.barred !== undefined) fail(`${where}: barred grids (style.barred) are not supported`);
-  if (style.color !== undefined) fail(`${where}: colored cells (style.color) are not supported`);
-  if (style.imagebg !== undefined) fail(`${where}: image backgrounds (style.imagebg) are not supported`);
-  if (style.image !== undefined) fail(`${where}: cell images (style.image) are not supported`);
-  if (style.divided !== undefined) fail(`${where}: divided cells (style.divided) are not supported`);
+/** Whitelist of ipuz `style` features we render. Everything else is
+ *  rejected so unknown features surface as 400s rather than silent
+ *  drops — when a real puzzle hits one of these, that's the signal
+ *  to decide whether to support it. */
+function parseStyle(style: unknown, where: string): { circled: boolean } {
+  // Named styles (`style: "themeAccent"`) would need to be resolved
+  // against the top-level `styles` table; we don't read that table, so
+  // honoring the reference would be a silent drop.
+  if (typeof style === "string") {
+    fail(`${where}: named style references (style: "${style}") are not supported`);
+  }
+  if (!isPlainObject(style)) fail(`${where}: style must be an object`);
+  let circled = false;
+  for (const [key, value] of Object.entries(style)) {
+    if (key === "shapebg") {
+      if (value === "circle") {
+        circled = true;
+      } else {
+        fail(`${where}: style.shapebg=${JSON.stringify(value)} is not supported (only "circle")`);
+      }
+    } else {
+      fail(`${where}: style.${key} is not supported`);
+    }
+  }
+  return { circled };
+}
+
+/** Reject any keys on a cell object beyond the ones we know how to
+ *  read. Catches new ipuz features (marks, clue cross-references,
+ *  etc.) at parse time rather than silently dropping them. */
+function checkCellObjectKeys(obj: Record<string, unknown>, where: string): void {
+  for (const key of Object.keys(obj)) {
+    if (!ALLOWED_CELL_OBJECT_KEYS.has(key)) {
+      fail(`${where}: unsupported cell-object key '${key}'`);
+    }
+  }
 }
 
 /** Decode one ipuz clue entry. Accepts `[number, "text"]` and the
@@ -123,7 +155,8 @@ function parseSolutionCell(
   if (isBlock) return null;
   let value: unknown = raw;
   if (isPlainObject(raw)) {
-    if (raw.style && isPlainObject(raw.style)) checkStyle(raw.style, where);
+    checkCellObjectKeys(raw, where);
+    if (raw.style !== undefined) parseStyle(raw.style, where);
     value = "value" in raw ? raw.value : raw.cell;
   }
   if (value === blockChar) {
@@ -206,9 +239,13 @@ export function parseIpuzBuffer(id: string, buffer: Buffer): ParseResult {
       const where = `puzzle[${r}][${c}]`;
       const raw = puzRow[c];
       let cellValue: unknown = raw;
+      let circled = false;
       if (isPlainObject(raw)) {
         const obj = raw as IpuzCellObject;
-        if (obj.style && isPlainObject(obj.style)) checkStyle(obj.style, where);
+        checkCellObjectKeys(raw, where);
+        if (obj.style !== undefined) {
+          ({ circled } = parseStyle(obj.style, where));
+        }
         if (obj.value !== undefined) fail(`${where}: pre-filled cell values are not supported`);
         cellValue = obj.cell ?? emptyMarker;
       }
@@ -217,6 +254,7 @@ export function parseIpuzBuffer(id: string, buffer: Buffer): ParseResult {
         fail(`${where}: null cells (irregular grids) are not supported`);
       }
       if (cellValue === blockChar) {
+        if (circled) fail(`${where}: circled blocks are not supported`);
         cellRow.push({ kind: "block" });
         solOut.push(parseSolutionCell(solRow[c], blockChar, true, `solution[${r}][${c}]`));
         continue;
@@ -230,7 +268,12 @@ export function parseIpuzBuffer(id: string, buffer: Buffer): ParseResult {
         fail(`${where}: unrecognized cell value ${JSON.stringify(cellValue)}`);
       }
 
-      cellRow.push({ kind: "cell", number, fill: null });
+      cellRow.push({
+        kind: "cell",
+        number,
+        fill: null,
+        ...(circled ? { circled: true } : {}),
+      });
       solOut.push(parseSolutionCell(solRow[c], blockChar, false, `solution[${r}][${c}]`));
     }
     cells.push(cellRow);
@@ -258,7 +301,8 @@ export function parseIpuzBuffer(id: string, buffer: Buffer): ParseResult {
         const raw = row[c];
         let value: unknown = raw;
         if (isPlainObject(raw)) {
-          if (raw.style && isPlainObject(raw.style)) checkStyle(raw.style, `saved[${r}][${c}]`);
+          checkCellObjectKeys(raw, `saved[${r}][${c}]`);
+          if (raw.style !== undefined) parseStyle(raw.style, `saved[${r}][${c}]`);
           value = "value" in raw ? raw.value : raw.cell;
         }
         if (value === emptyMarker || value === 0 || value === null || value === "") continue;
@@ -310,8 +354,19 @@ export function parseIpuzBuffer(id: string, buffer: Buffer): ParseResult {
 export function writeIpuz(state: PuzzleState, solution: (string | null)[][]): string {
   const { meta, snapshot } = state;
 
+  // Circled cells need the object form `{ cell, style: { shapebg: "circle" } }`
+  // so the decoration survives the round-trip through the stored ipuz
+  // blob — boards are flushed as canonical ipuz on every idle tick,
+  // and a flat-number representation would erase the circles.
   const puzzle = snapshot.cells.map((row) =>
-    row.map((cell) => (cell.kind === "block" ? "#" : (cell.number ?? 0))),
+    row.map((cell): string | number | Record<string, unknown> => {
+      if (cell.kind === "block") return "#";
+      const value = cell.number ?? 0;
+      if (cell.circled) {
+        return { cell: value, style: { shapebg: "circle" } };
+      }
+      return value;
+    }),
   );
 
   const sol = solution.map((row) => row.map((c) => (c === null ? "#" : c.toUpperCase())));

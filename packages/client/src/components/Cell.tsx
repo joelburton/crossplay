@@ -82,6 +82,7 @@ function CellImpl({
     cell.fill && collapseRebus && cell.fill.length > 1 ? cell.fill[0]! : cell.fill;
   return (
     <div className={cls.join(" ")} onClick={() => onClick(row, col)}>
+      {cell.circled && <span className={styles.circle} aria-hidden />}
       {remoteCursorColor && (
         // Absolutely-positioned overlay with a per-side border. We used
         // to do `box-shadow: inset 0 0 0 0.08em color` here, but

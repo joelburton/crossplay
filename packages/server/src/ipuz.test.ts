@@ -159,6 +159,22 @@ describe("writeIpuz", () => {
     expect(obj.saved[0][0]).toBe("Q");
   });
 
+  it("round-trips circled cells through write -> parse", () => {
+    const obj = structuredClone(MINIMAL_IPUZ);
+    (obj.puzzle[0] as unknown[])[0] = { cell: 1, style: { shapebg: "circle" } };
+    const parsed = parseIpuzBuffer("x", ipuzOf(obj));
+    const json = writeIpuz(parsed.state, parsed.solution);
+    const written = JSON.parse(json);
+    // Emitted shape: object form with the style preserved.
+    expect(written.puzzle[0][0]).toEqual({ cell: 1, style: { shapebg: "circle" } });
+    // Non-circled cells stay as plain numbers.
+    expect(written.puzzle[0][1]).toBe(2);
+
+    const reparsed = parseIpuzBuffer("x", Buffer.from(json, "utf8"));
+    const cell = reparsed.state.snapshot.cells[0]![0]!;
+    if (cell.kind === "cell") expect(cell.circled).toBe(true);
+  });
+
   it("emits standard ipuz crossword headers", () => {
     const puzBuf = readFileSync(SUNDAY_PUZ);
     const { state, solution } = parsePuzBuffer("sunday", puzBuf);
@@ -202,22 +218,55 @@ describe("parseIpuzBuffer (rejections)", () => {
     expectReject(obj, /rebus solutions over 8 characters/);
   });
 
-  it("rejects circled cells (style.shapebg)", () => {
+  it("accepts circled cells (style.shapebg='circle') and sets circled:true", () => {
     const obj = structuredClone(MINIMAL_IPUZ);
     (obj.puzzle[0] as unknown[])[0] = { cell: 1, style: { shapebg: "circle" } };
-    expectReject(obj, /shapebg/);
+    const { state } = parseIpuzBuffer("x", ipuzOf(obj));
+    const cell = state.snapshot.cells[0]![0]!;
+    expect(cell.kind).toBe("cell");
+    if (cell.kind === "cell") {
+      expect(cell.circled).toBe(true);
+      expect(cell.number).toBe(1);
+    }
+    // Untouched cells stay unmarked.
+    const other = state.snapshot.cells[0]![1]!;
+    if (other.kind === "cell") expect(other.circled).toBeUndefined();
   });
 
-  it("rejects shaded cells", () => {
+  it("rejects unsupported shapebg values", () => {
+    const obj = structuredClone(MINIMAL_IPUZ);
+    (obj.puzzle[0] as unknown[])[0] = { cell: 1, style: { shapebg: "diamond" } };
+    expectReject(obj, /shapebg.*not supported/);
+  });
+
+  it("rejects shaded cells (style.shading)", () => {
     const obj = structuredClone(MINIMAL_IPUZ);
     (obj.puzzle[0] as unknown[])[0] = { cell: 1, style: { shading: "lightgrey" } };
-    expectReject(obj, /shaded cells/);
+    expectReject(obj, /style\.shading is not supported/);
   });
 
-  it("rejects barred grids", () => {
+  it("rejects barred grids (style.barred)", () => {
     const obj = structuredClone(MINIMAL_IPUZ);
     (obj.puzzle[0] as unknown[])[0] = { cell: 1, style: { barred: "T" } };
-    expectReject(obj, /barred grids/);
+    expectReject(obj, /style\.barred is not supported/);
+  });
+
+  it("rejects unknown style keys (whitelist)", () => {
+    const obj = structuredClone(MINIMAL_IPUZ);
+    (obj.puzzle[0] as unknown[])[0] = { cell: 1, style: { somethingNew: "x" } };
+    expectReject(obj, /style\.somethingNew is not supported/);
+  });
+
+  it("rejects named style references", () => {
+    const obj = structuredClone(MINIMAL_IPUZ);
+    (obj.puzzle[0] as unknown[])[0] = { cell: 1, style: "themeAccent" };
+    expectReject(obj, /named style references/);
+  });
+
+  it("rejects unknown cell-object keys", () => {
+    const obj = structuredClone(MINIMAL_IPUZ);
+    (obj.puzzle[0] as unknown[])[0] = { cell: 1, marks: { TL: "x" } };
+    expectReject(obj, /unsupported cell-object key 'marks'/);
   });
 
   it("rejects null cells (irregular grids)", () => {
