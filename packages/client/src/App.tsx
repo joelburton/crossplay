@@ -141,7 +141,14 @@ export function App() {
       if (!seen) {
         showFeedback({
           id: `welcome-${load.puzzle.meta.id}`,
-          text: "Click heart for menu",
+          // Red heart matches the SiteIcon in the title; ⌥ is the
+          // standard Mac Option-key glyph (U+2325). Both render as
+          // inline characters — no SVG to load, no asset to ship.
+          text: (
+            <>
+              Click <span style={{ color: "#dc2626" }}>♥</span>/⌥M for menu
+            </>
+          ),
           level: "info",
         });
         try {

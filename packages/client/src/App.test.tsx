@@ -182,7 +182,12 @@ describe("App localStorage tolerance", () => {
       window.history.replaceState({}, "", "/b/p-1");
       expect(() => render(<App />)).not.toThrow();
       await flush();
-      expect(screen.getByText(/click heart for menu/i)).toBeTruthy();
+      // FeedbackBar carries the welcome text now as a JSX fragment
+      // (a styled heart between two text nodes), so plain `getByText`
+      // can't match — its default matcher doesn't traverse children.
+      // Match against the bar's `role="status"` and check `textContent`,
+      // which concatenates across children.
+      expect(screen.getByRole("status").textContent).toMatch(/click.*menu/i);
     } finally {
       fake.restore();
     }
@@ -196,7 +201,7 @@ describe("App localStorage tolerance", () => {
       window.history.replaceState({}, "", "/b/p-1");
       render(<App />);
       await flush();
-      expect(screen.getByText(/click heart for menu/i)).toBeTruthy();
+      expect(screen.getByRole("status").textContent).toMatch(/click.*menu/i);
       expect(fake.store["seenWelcome"]).toBe("1");
     } finally {
       fake.restore();
@@ -211,7 +216,7 @@ describe("App localStorage tolerance", () => {
       window.history.replaceState({}, "", "/b/p-1");
       render(<App />);
       await flush();
-      expect(screen.queryByText(/click heart for menu/i)).toBeNull();
+      expect(screen.queryByRole("status")).toBeNull();
     } finally {
       fake.restore();
     }
