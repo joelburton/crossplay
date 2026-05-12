@@ -36,7 +36,12 @@ type PuzzleRow = {
 /** Shared INSERT for the `boards` table. Used by `findOrCreateBoard`
  *  (stamps from a library puzzle) and the upload route (ad-hoc, with
  *  `puzzleId: null`). One spelling of the column order so the two
- *  call sites can't drift. Chat starts empty. */
+ *  call sites can't drift. Chat starts empty.
+ *
+ *  `ownerId` is nullable on the column itself for migration / cascade
+ *  reasons, but every fresh board under Posture A carries one — the
+ *  route layer is responsible for refusing creation without an
+ *  authenticated user. */
 export function insertBoardRow(args: {
   db: DatabaseSync;
   boardId: string;
@@ -46,11 +51,12 @@ export function insertBoardRow(args: {
   author: string;
   copyright: string;
   snapshot: string;
+  ownerId: number | null;
 }): void {
   const now = new Date().toISOString();
   args.db
     .prepare(
-      "INSERT INTO boards (id, puzzle_id, ipuz, title, author, copyright, snapshot, chat, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, '[]', ?, ?)",
+      "INSERT INTO boards (id, puzzle_id, ipuz, title, author, copyright, snapshot, chat, owner_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?)",
     )
     .run(
       args.boardId,
@@ -60,20 +66,24 @@ export function insertBoardRow(args: {
       args.author,
       args.copyright,
       args.snapshot,
+      args.ownerId,
       now,
       now,
     );
 }
 
-/** Find-or-create the (single) global board for a library puzzle.
- *  With users, this will become per-(user, puzzle); for now it's
- *  global. Ad-hoc upload boards (puzzle_id IS NULL) are intentionally
- *  invisible to this lookup — they're separate playthroughs created
- *  by `POST /api/boards/upload`, not surfaced under any puzzle id.
+/** Find-or-create a board for `(puzzleId, ownerId)`. The dedup is
+ *  per-user: every account gets at most one board per library puzzle.
+ *  (Phase 3 will switch the dedup to query `boards_users` so shared
+ *  membership counts too, but for Phase 2 ownership stands in for
+ *  membership.) Ad-hoc upload boards (`puzzleId IS NULL`) are
+ *  intentionally invisible to this lookup — they're separate
+ *  playthroughs created by `POST /api/boards/upload`.
  *  Throws PuzzleNotFoundError if the puzzle row doesn't exist. */
 export function findOrCreateBoard(
   db: DatabaseSync,
   puzzleId: string,
+  ownerId: number,
 ): { boardId: string; newlyCreated: boolean } {
   const puzzle = db
     .prepare("SELECT id, ipuz, title, author, copyright FROM puzzles WHERE id = ?")
@@ -81,8 +91,8 @@ export function findOrCreateBoard(
   if (!puzzle) throw new PuzzleNotFoundError(puzzleId);
 
   const existing = db
-    .prepare("SELECT id FROM boards WHERE puzzle_id = ? LIMIT 1")
-    .get(puzzleId) as { id: string } | undefined;
+    .prepare("SELECT id FROM boards WHERE puzzle_id = ? AND owner_id = ? LIMIT 1")
+    .get(puzzleId, ownerId) as { id: string } | undefined;
   if (existing) return { boardId: existing.id, newlyCreated: false };
 
   const boardId = randomUUID();
@@ -99,6 +109,7 @@ export function findOrCreateBoard(
     author: puzzle.author,
     copyright: puzzle.copyright,
     snapshot,
+    ownerId,
   });
 
   return { boardId, newlyCreated: true };
@@ -137,12 +148,16 @@ export function deleteBoard(db: DatabaseSync, boardId: string): { existed: boole
   return { existed: result.changes > 0 };
 }
 
-export function listBoards(db: DatabaseSync): BoardSummary[] {
+/** List a user's boards (Phase 2: by owner_id). Phase 3 will switch
+ *  this to query the `boards_users` join so shared boards show up
+ *  too. Anon-era boards (`owner_id IS NULL`) never appear in any
+ *  user's list — they're URL-accessible but invisible. */
+export function listBoards(db: DatabaseSync, ownerId: number): BoardSummary[] {
   const rows = db
     .prepare(
-      "SELECT id, puzzle_id, title, author, copyright, updated_at, fill_percent FROM boards ORDER BY updated_at DESC",
+      "SELECT id, puzzle_id, title, author, copyright, updated_at, fill_percent FROM boards WHERE owner_id = ? ORDER BY updated_at DESC",
     )
-    .all() as Array<{
+    .all(ownerId) as Array<{
     id: string;
     puzzle_id: string | null;
     title: string;

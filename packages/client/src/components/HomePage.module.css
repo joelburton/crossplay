@@ -55,6 +55,43 @@
   flex: 0 0 auto;
 }
 
+/* Top-right "Hi, <handle> · Log out" strip. Fixed-position so it's
+   visible even when the page scrolls on narrow viewports. Quick
+   functional treatment for multi-user testing; revisit when the
+   account UX is properly designed. */
+.userBar {
+  position: fixed;
+  top: 0.4rem;
+  right: 0.8rem;
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--c-text-mute, #555);
+  z-index: 50;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.3rem;
+}
+
+.userBarHandle {
+  font-weight: 600;
+  color: var(--c-text, #111);
+}
+
+.userBarLogout {
+  font: inherit;
+  padding: 0.15rem 0.5rem;
+  background: transparent;
+  border: 1px solid var(--c-card-border, #ccc);
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+
+.userBarLogout:hover {
+  background: var(--c-card-bg-soft, #fafafa);
+}
+
 /* Help text below the drop zone — explains that uploads are private
    to "Your games" and don't grow the curated library. Smaller +
    muted so it reads as guidance, not a section heading. The

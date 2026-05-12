@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  type AuthUser,
   type BoardSummary,
   type PuzzleSummary,
   createBoard,
@@ -15,6 +16,12 @@ import styles from "./HomePage.module.css";
 
 type Props = {
   onUploaded: (boardId: string) => void;
+  /** Logged-in user. Always set at the moment we render — App only
+   *  mounts HomePage when auth.kind === "user". */
+  user: AuthUser;
+  /** Log out + return to landing page. Provided by App so HomePage
+   *  doesn't have to know the routing details. */
+  onLogout: () => void;
 };
 
 function formatFillPercent(pct: number | null): string {
@@ -50,7 +57,7 @@ function matchesQuery(
  * Both fetches fall through to `[]` on failure rather than surfacing an
  * error — the upload form keeps the page useful either way.
  */
-export function HomePage({ onUploaded }: Props) {
+export function HomePage({ onUploaded, user, onLogout }: Props) {
   const [puzzles, setPuzzles] = useState<PuzzleSummary[] | null>(null);
   const [boards, setBoards] = useState<BoardSummary[] | null>(null);
   // Set when one or both list fetches fail (e.g. dev server isn't
@@ -146,6 +153,16 @@ export function HomePage({ onUploaded }: Props) {
 
   return (
     <div className={styles.outer}>
+      {/* Small top-right strip showing the logged-in handle + a log
+          out button. Functional (lets Joel tell tabs apart during
+          multi-user testing) more than designed; lay it out properly
+          when the rest of the user UX is built. */}
+      <div className={styles.userBar}>
+        <span className={styles.userBarHandle}>Hi, {user.handle}</span>
+        <button type="button" className={styles.userBarLogout} onClick={onLogout}>
+          Log out
+        </button>
+      </div>
       <div className={styles.hero}>
         <SiteIcon className={styles.heroIcon} />
         <h1 className={styles.heroTitle}>Crossplay</h1>

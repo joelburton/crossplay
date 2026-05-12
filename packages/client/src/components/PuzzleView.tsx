@@ -55,6 +55,9 @@ type Props = {
   /** Called when the user picks "Play a new game" in the celebratory
    *  solved-puzzle dialog. App routes home. */
   onNewGame?: () => void;
+  /** Logged-in user's handle, if any. Used as the default chat name
+   *  when there's no localStorage override and no `?name=` param. */
+  authedHandle?: string | null;
 };
 
 /** Outbound cursor-presence throttle window, in ms. Sends fire on the
@@ -179,6 +182,7 @@ export function PuzzleView({
   feedbackVisible,
   onToggleMenu,
   onNewGame,
+  authedHandle,
 }: Props) {
   const { meta } = puzzle;
   const [snapshot, setSnapshot] = useState<GridSnapshot>(puzzle.snapshot);
@@ -193,7 +197,9 @@ export function PuzzleView({
     () => initialCursor(puzzle.snapshot.cells) ?? { row: 0, col: 0, dir: "across" },
   );
 
-  const [identity, setIdentity] = useState<ChatIdentity>(() => readChatIdentity());
+  const [identity, setIdentity] = useState<ChatIdentity>(
+    () => readChatIdentity(authedHandle),
+  );
   const identityRef = useRef(identity);
   identityRef.current = identity;
   const [chatOpen, setChatOpen] = useState(false);

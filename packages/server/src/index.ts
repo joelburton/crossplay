@@ -20,9 +20,11 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
+import cookie from "@fastify/cookie";
 import multipart from "@fastify/multipart";
 import staticPlugin from "@fastify/static";
 import websocket from "@fastify/websocket";
+import { registerAuthMiddleware } from "./authRoutes.js";
 import { getDb } from "./db.js";
 import { registerHttpRoutes } from "./http.js";
 import { createShutdown } from "./shutdown.js";
@@ -35,6 +37,12 @@ const app = Fastify({ logger: true });
 const db = getDb();
 app.log.info({ schemaVersion: (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version }, "sqlite ready");
 
+await app.register(cookie);
+// Session middleware: resolves req.user from the session cookie on
+// every request. Runs before routes so any handler can read it.
+// Registered globally because /api/auth/me + future board routes
+// all want to see it.
+registerAuthMiddleware(app, db);
 await app.register(multipart, {
   limits: { fileSize: 5 * 1024 * 1024 },
 });

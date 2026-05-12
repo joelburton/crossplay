@@ -21,8 +21,15 @@ const SUNDAY_PUZ = resolve(FIXTURE_DIR, "sunday-sample.puz");
 
 function freshDbWithBoard() {
   const db = openDb(":memory:");
+  // Seed a user — findOrCreateBoard now requires an owner under Phase 2.
+  db.prepare(
+    "INSERT INTO users (handle, handle_lower, password_hash, created_at) VALUES (?, ?, ?, ?)",
+  ).run("owner", "owner", "x", "2026-05-12");
+  const ownerId = (
+    db.prepare("SELECT id FROM users WHERE handle_lower = 'owner'").get() as { id: number }
+  ).id;
   importPuzzle({ db, path: SUNDAY_PUZ, force: false });
-  const { boardId } = findOrCreateBoard(db, "sunday-sample");
+  const { boardId } = findOrCreateBoard(db, "sunday-sample", ownerId);
   return { db, boardId };
 }
 

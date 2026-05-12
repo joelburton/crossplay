@@ -13,8 +13,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
+import cookie from "@fastify/cookie";
 import multipart from "@fastify/multipart";
 import type { DatabaseSync } from "node:sqlite";
+import { registerAuthMiddleware } from "./authRoutes.js";
 import { openDb } from "./db.js";
 import { registerHttpRoutes } from "./http.js";
 import { insertPuzzleRow } from "./importer.js";
@@ -27,8 +29,12 @@ async function buildApp(
   opts: { fileSize?: number } = {},
 ): Promise<{ app: FastifyInstance; db: DatabaseSync }> {
   const app = Fastify();
-  await app.register(multipart, { limits: { fileSize: opts.fileSize ?? 5 * 1024 * 1024 } });
+  await app.register(cookie);
   const db = openDb(":memory:");
+  // Auth middleware reads req.cookies, so the cookie plugin must
+  // register first. Order matches index.ts.
+  registerAuthMiddleware(app, db);
+  await app.register(multipart, { limits: { fileSize: opts.fileSize ?? 5 * 1024 * 1024 } });
   await registerHttpRoutes(app, { db });
   await app.ready();
   return { app, db };
@@ -40,6 +46,42 @@ function seedPuzzle(db: DatabaseSync, id = "test-puzzle"): string {
   const { state, solution } = parsePuzBuffer(id, buf);
   insertPuzzleRow({ db, id, state, solution, replaceIfExists: false });
   return id;
+}
+
+/** Register a test user against the live HTTP surface, return the
+ *  session cookie value. Most board-route tests now need this to
+ *  satisfy the Phase 2 auth gates. The cookies object is the shape
+ *  Fastify's inject() accepts as `cookies: {...}`. */
+async function seedAuth(
+  app: FastifyInstance,
+  db: DatabaseSync,
+  handle = "tester",
+): Promise<{ cookies: Record<string, string>; userId: number }> {
+  db.prepare(
+    "INSERT OR IGNORE INTO invite_codes (code, label, created_at) VALUES (?, ?, ?)",
+  ).run("test-invite", "test", "2026-05-12");
+  const res = await app.inject({
+    method: "POST",
+    url: "/api/auth/register",
+    payload: { handle, password: "hunter2", inviteCode: "test-invite" },
+  });
+  if (res.statusCode !== 200) {
+    throw new Error(`seedAuth failed: ${res.statusCode} ${res.body}`);
+  }
+  const setCookie = res.headers["set-cookie"];
+  const headers = Array.isArray(setCookie) ? setCookie : [setCookie ?? ""];
+  let token = "";
+  for (const h of headers) {
+    const m = h?.match(/crossplay_session=([^;]+)/);
+    if (m) { token = m[1]!; break; }
+  }
+  if (!token) throw new Error("seedAuth: no session cookie returned");
+  const userId = (
+    db.prepare("SELECT id FROM users WHERE handle_lower = ?").get(handle.toLowerCase()) as
+      | { id: number }
+      | undefined
+  )!.id;
+  return { cookies: { crossplay_session: token }, userId };
 }
 
 /** Build a minimal `multipart/form-data` body with a single file part.
@@ -128,10 +170,12 @@ describe("http: /api/puzzles", () => {
 describe("http: POST /api/boards", () => {
   let app: FastifyInstance;
   let db: DatabaseSync;
+  let cookies: Record<string, string>;
 
   beforeEach(async () => {
     _clearCacheForTest();
     ({ app, db } = await buildApp());
+    ({ cookies } = await seedAuth(app, db));
   });
   afterEach(async () => {
     await app.close();
@@ -144,6 +188,7 @@ describe("http: POST /api/boards", () => {
       method: "POST",
       url: "/api/boards",
       payload: { puzzleId },
+      cookies,
     });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { boardId: string };
@@ -151,17 +196,27 @@ describe("http: POST /api/boards", () => {
     expect(body.boardId.length).toBeGreaterThan(0);
   });
 
-  it("is idempotent (find-or-create returns the same board)", async () => {
+  it("is idempotent for the same user (find-or-create returns the same board)", async () => {
     const puzzleId = seedPuzzle(db);
-    const r1 = await app.inject({ method: "POST", url: "/api/boards", payload: { puzzleId } });
-    const r2 = await app.inject({ method: "POST", url: "/api/boards", payload: { puzzleId } });
+    const r1 = await app.inject({ method: "POST", url: "/api/boards", payload: { puzzleId }, cookies });
+    const r2 = await app.inject({ method: "POST", url: "/api/boards", payload: { puzzleId }, cookies });
     expect((r1.json() as { boardId: string }).boardId).toBe(
       (r2.json() as { boardId: string }).boardId,
     );
   });
 
+  it("returns 401 when not logged in", async () => {
+    const puzzleId = seedPuzzle(db);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { puzzleId },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
   it("returns 400 when puzzleId is missing", async () => {
-    const res = await app.inject({ method: "POST", url: "/api/boards", payload: {} });
+    const res = await app.inject({ method: "POST", url: "/api/boards", payload: {}, cookies });
     expect(res.statusCode).toBe(400);
     expect((res.json() as { error: string }).error).toMatch(/missing puzzleId/i);
   });
@@ -171,33 +226,52 @@ describe("http: POST /api/boards", () => {
       method: "POST",
       url: "/api/boards",
       payload: { puzzleId: "no-such" },
+      cookies,
     });
     expect(res.statusCode).toBe(404);
     expect((res.json() as { error: string }).error).toMatch(/not found/i);
+  });
+
+  it("two users clicking the same puzzle each get their own board", async () => {
+    const puzzleId = seedPuzzle(db);
+    const a = await seedAuth(app, db, "alice");
+    const b = await seedAuth(app, db, "bob");
+    const ra = await app.inject({ method: "POST", url: "/api/boards", payload: { puzzleId }, cookies: a.cookies });
+    const rb = await app.inject({ method: "POST", url: "/api/boards", payload: { puzzleId }, cookies: b.cookies });
+    expect((ra.json() as { boardId: string }).boardId).not.toBe(
+      (rb.json() as { boardId: string }).boardId,
+    );
   });
 });
 
 describe("http: GET /api/boards and GET /api/boards/:id", () => {
   let app: FastifyInstance;
   let db: DatabaseSync;
+  let cookies: Record<string, string>;
 
   beforeEach(async () => {
     _clearCacheForTest();
     ({ app, db } = await buildApp());
+    ({ cookies } = await seedAuth(app, db));
   });
   afterEach(async () => {
     await app.close();
     _clearCacheForTest();
   });
 
-  it("lists boards newest-first and exposes nullable puzzleId", async () => {
+  it("lists the user's boards newest-first and exposes nullable puzzleId", async () => {
     seedPuzzle(db, "p1");
-    const r1 = await app.inject({ method: "POST", url: "/api/boards", payload: { puzzleId: "p1" } });
+    const r1 = await app.inject({ method: "POST", url: "/api/boards", payload: { puzzleId: "p1" }, cookies });
     const b1 = (r1.json() as { boardId: string }).boardId;
-    const res = await app.inject({ method: "GET", url: "/api/boards" });
+    const res = await app.inject({ method: "GET", url: "/api/boards", cookies });
     expect(res.statusCode).toBe(200);
     const list = res.json() as Array<{ id: string; puzzleId: string | null }>;
     expect(list.some((b) => b.id === b1 && b.puzzleId === "p1")).toBe(true);
+  });
+
+  it("GET /api/boards returns 401 when not authed", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/boards" });
+    expect(res.statusCode).toBe(401);
   });
 
   it("returns the board state with no solution leak", async () => {
@@ -206,8 +280,11 @@ describe("http: GET /api/boards and GET /api/boards/:id", () => {
       method: "POST",
       url: "/api/boards",
       payload: { puzzleId: "test-puzzle" },
+      cookies,
     });
     const { boardId } = create.json() as { boardId: string };
+    // GET /api/boards/:id is public (URL access for any visitor) so
+    // no cookies needed here.
     const res = await app.inject({ method: "GET", url: `/api/boards/${boardId}` });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { meta: { width: number }; snapshot: { version: number } };
@@ -226,10 +303,12 @@ describe("http: GET /api/boards and GET /api/boards/:id", () => {
 describe("http: GET /api/boards/:id/ipuz", () => {
   let app: FastifyInstance;
   let db: DatabaseSync;
+  let cookies: Record<string, string>;
 
   beforeEach(async () => {
     _clearCacheForTest();
     ({ app, db } = await buildApp());
+    ({ cookies } = await seedAuth(app, db));
   });
   afterEach(async () => {
     await app.close();
@@ -242,8 +321,10 @@ describe("http: GET /api/boards/:id/ipuz", () => {
       method: "POST",
       url: "/api/boards",
       payload: { puzzleId: "test-puzzle" },
+      cookies,
     });
     const { boardId } = create.json() as { boardId: string };
+    // Download is public — anyone with the URL can pull the ipuz.
     const res = await app.inject({ method: "GET", url: `/api/boards/${boardId}/ipuz` });
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toMatch(/application\/json/);
@@ -262,10 +343,12 @@ describe("http: GET /api/boards/:id/ipuz", () => {
 describe("http: DELETE /api/boards/:id", () => {
   let app: FastifyInstance;
   let db: DatabaseSync;
+  let cookies: Record<string, string>;
 
   beforeEach(async () => {
     _clearCacheForTest();
     ({ app, db } = await buildApp());
+    ({ cookies } = await seedAuth(app, db));
   });
   afterEach(async () => {
     await app.close();
@@ -278,10 +361,11 @@ describe("http: DELETE /api/boards/:id", () => {
       method: "POST",
       url: "/api/boards",
       payload: { puzzleId: "test-puzzle" },
+      cookies,
     });
     const { boardId } = create.json() as { boardId: string };
 
-    const del = await app.inject({ method: "DELETE", url: `/api/boards/${boardId}` });
+    const del = await app.inject({ method: "DELETE", url: `/api/boards/${boardId}`, cookies });
     expect(del.statusCode).toBe(200);
     expect((del.json() as { ok: boolean }).ok).toBe(true);
 
@@ -290,7 +374,7 @@ describe("http: DELETE /api/boards/:id", () => {
   });
 
   it("returns 404 for unknown board", async () => {
-    const res = await app.inject({ method: "DELETE", url: "/api/boards/no-such" });
+    const res = await app.inject({ method: "DELETE", url: "/api/boards/no-such", cookies });
     expect(res.statusCode).toBe(404);
   });
 
@@ -300,10 +384,11 @@ describe("http: DELETE /api/boards/:id", () => {
       method: "POST",
       url: "/api/boards",
       payload: { puzzleId: "test-puzzle" },
+      cookies,
     });
     const { boardId } = create.json() as { boardId: string };
-    const r1 = await app.inject({ method: "DELETE", url: `/api/boards/${boardId}` });
-    const r2 = await app.inject({ method: "DELETE", url: `/api/boards/${boardId}` });
+    const r1 = await app.inject({ method: "DELETE", url: `/api/boards/${boardId}`, cookies });
+    const r2 = await app.inject({ method: "DELETE", url: `/api/boards/${boardId}`, cookies });
     expect(r1.statusCode).toBe(200);
     expect(r2.statusCode).toBe(404);
   });
@@ -311,14 +396,28 @@ describe("http: DELETE /api/boards/:id", () => {
 
 describe("http: POST /api/boards/upload", () => {
   let app: FastifyInstance;
+  let db: DatabaseSync;
+  let cookies: Record<string, string>;
 
   beforeEach(async () => {
     _clearCacheForTest();
-    ({ app } = await buildApp());
+    ({ app, db } = await buildApp());
+    ({ cookies } = await seedAuth(app, db));
   });
   afterEach(async () => {
     await app.close();
     _clearCacheForTest();
+  });
+
+  it("returns 401 when not logged in", async () => {
+    const { payload, contentType } = multipartEmpty();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/boards/upload",
+      headers: { "content-type": contentType },
+      payload,
+    });
+    expect(res.statusCode).toBe(401);
   });
 
   it("accepts a .puz upload and creates an ad-hoc board (puzzle_id NULL)", async () => {
@@ -334,13 +433,14 @@ describe("http: POST /api/boards/upload", () => {
       url: "/api/boards/upload",
       headers: { "content-type": contentType },
       payload,
+      cookies,
     });
     expect(res.statusCode).toBe(200);
     const { boardId } = res.json() as { boardId: string };
     expect(typeof boardId).toBe("string");
 
     // The new board should be in the list with puzzleId === null.
-    const list = await app.inject({ method: "GET", url: "/api/boards" });
+    const list = await app.inject({ method: "GET", url: "/api/boards", cookies });
     const row = (list.json() as Array<{ id: string; puzzleId: string | null }>).find(
       (b) => b.id === boardId,
     );
@@ -361,6 +461,7 @@ describe("http: POST /api/boards/upload", () => {
       url: "/api/boards/upload",
       headers: { "content-type": contentType },
       payload,
+      cookies,
     });
     expect(res.statusCode).toBe(200);
   });
@@ -372,6 +473,7 @@ describe("http: POST /api/boards/upload", () => {
       url: "/api/boards/upload",
       headers: { "content-type": contentType },
       payload,
+      cookies,
     });
     expect(res.statusCode).toBe(400);
     expect((res.json() as { error: string }).error).toMatch(/missing file/i);
@@ -389,19 +491,17 @@ describe("http: POST /api/boards/upload", () => {
       url: "/api/boards/upload",
       headers: { "content-type": contentType },
       payload,
+      cookies,
     });
     expect(res.statusCode).toBe(400);
     expect((res.json() as { error: string }).error).toMatch(/invalid \.puz/i);
   });
 
   it("returns 400 (not 500) when the file exceeds the size cap", async () => {
-    // Fresh app with a tiny cap so we don't have to push megabytes
-    // through inject(). 64 bytes is well below the size of any real
-    // puzzle but large enough to fit a few header bytes before the
-    // multipart plugin's limit fires.
     await app.close();
     _clearCacheForTest();
-    ({ app } = await buildApp({ fileSize: 64 }));
+    ({ app, db } = await buildApp({ fileSize: 64 }));
+    ({ cookies } = await seedAuth(app, db));
     const { payload, contentType } = multipartFile({
       fieldName: "file",
       filename: "big.puz",
@@ -413,14 +513,12 @@ describe("http: POST /api/boards/upload", () => {
       url: "/api/boards/upload",
       headers: { "content-type": contentType },
       payload,
+      cookies,
     });
     expect(res.statusCode).toBe(400);
   });
 
   it("returns 400 with the underlying message on unsupported ipuz features", async () => {
-    // Minimal ipuz with a shaded cell (style.shading) — parser rejects.
-    // (Circled cells are supported now; we keep this test on a feature
-    // we still reject so the 400 path stays exercised.)
     const ipuz = {
       version: "http://ipuz.org/v2",
       kind: ["http://ipuz.org/crossword#1"],
@@ -449,6 +547,7 @@ describe("http: POST /api/boards/upload", () => {
       url: "/api/boards/upload",
       headers: { "content-type": contentType },
       payload,
+      cookies,
     });
     expect(res.statusCode).toBe(400);
     expect((res.json() as { error: string }).error).toMatch(/shading|shaded/i);
@@ -462,10 +561,12 @@ describe("boards survive their source puzzle being deleted", () => {
   // full lifecycle: stamp → delete puzzle row → load board.
   let app: FastifyInstance;
   let db: DatabaseSync;
+  let cookies: Record<string, string>;
 
   beforeEach(async () => {
     _clearCacheForTest();
     ({ app, db } = await buildApp());
+    ({ cookies } = await seedAuth(app, db));
   });
   afterEach(async () => {
     await app.close();
@@ -478,6 +579,7 @@ describe("boards survive their source puzzle being deleted", () => {
       method: "POST",
       url: "/api/boards",
       payload: { puzzleId: "to-delete" },
+      cookies,
     });
     const { boardId } = create.json() as { boardId: string };
 
@@ -495,19 +597,17 @@ describe("boards survive their source puzzle being deleted", () => {
   });
 
   it("boards.puzzleId reflects the original id even after the puzzle is deleted", async () => {
-    // puzzle_id is informational only — there's no FK, so deletion
-    // doesn't cascade. The board row keeps the stale pointer; the list
-    // surface still returns it as the puzzleId.
     seedPuzzle(db, "lingering");
     const create = await app.inject({
       method: "POST",
       url: "/api/boards",
       payload: { puzzleId: "lingering" },
+      cookies,
     });
     const { boardId } = create.json() as { boardId: string };
     db.prepare("DELETE FROM puzzles WHERE id = ?").run("lingering");
 
-    const list = await app.inject({ method: "GET", url: "/api/boards" });
+    const list = await app.inject({ method: "GET", url: "/api/boards", cookies });
     const row = (list.json() as Array<{ id: string; puzzleId: string | null }>).find(
       (b) => b.id === boardId,
     );
@@ -520,6 +620,7 @@ describe("boards survive their source puzzle being deleted", () => {
       method: "POST",
       url: "/api/boards",
       payload: { puzzleId: "downloadable" },
+      cookies,
     });
     const { boardId } = create.json() as { boardId: string };
     db.prepare("DELETE FROM puzzles WHERE id = ?").run("downloadable");

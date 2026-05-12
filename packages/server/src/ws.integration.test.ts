@@ -361,16 +361,42 @@ describe("ws integration: DELETE force-close", () => {
   let app: FastifyInstance;
   let port: number;
   let uploadedBoardId: string;
+  let sessionCookie: string;
 
   beforeAll(async () => {
     app = Fastify();
+    const cookie = (await import("@fastify/cookie")).default;
+    await app.register(cookie);
     await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } });
     await app.register(websocket);
     const db = openDb(":memory:");
+    // Auth middleware runs on every request; mount before routes.
+    const { registerAuthMiddleware } = await import("./authRoutes.js");
+    registerAuthMiddleware(app, db);
     registerWsRoutes(app, { db });
     await registerHttpRoutes(app, { db });
     const address = await app.listen({ port: 0, host: "127.0.0.1" });
     port = Number(new URL(address).port);
+
+    // Seed an invite + register a user once for the whole describe.
+    // We need a session cookie because POST /api/boards/upload now
+    // requires auth.
+    db.prepare(
+      "INSERT INTO invite_codes (code, label, created_at) VALUES (?, ?, ?)",
+    ).run("test-invite", "test", "2026-05-12");
+    const reg = await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { handle: "tester", password: "hunter2", inviteCode: "test-invite" },
+    });
+    const setCookie = reg.headers["set-cookie"];
+    const headers = Array.isArray(setCookie) ? setCookie : [setCookie ?? ""];
+    sessionCookie = "";
+    for (const h of headers) {
+      const m = h?.match(/crossplay_session=([^;]+)/);
+      if (m) { sessionCookie = m[1]!; break; }
+    }
+    if (!sessionCookie) throw new Error("integration setup: no session cookie");
   });
 
   beforeEach(async () => {
@@ -390,6 +416,7 @@ describe("ws integration: DELETE force-close", () => {
       url: "/api/boards/upload",
       headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
       payload: body,
+      cookies: { crossplay_session: sessionCookie },
     });
     uploadedBoardId = (res.json() as { boardId: string }).boardId;
   });
@@ -412,6 +439,7 @@ describe("ws integration: DELETE force-close", () => {
     const del = await app.inject({
       method: "DELETE",
       url: `/api/boards/${uploadedBoardId}`,
+      cookies: { crossplay_session: sessionCookie },
     });
     expect(del.statusCode).toBe(200);
 

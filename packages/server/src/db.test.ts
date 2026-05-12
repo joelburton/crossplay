@@ -88,7 +88,7 @@ describe("db", () => {
       ["author", "copyright", "created_at", "height", "id", "ipuz", "title", "updated_at", "width"],
     );
     expect(boardsCols.map((c) => c.name).sort()).toEqual(
-      ["author", "chat", "copyright", "created_at", "fill_percent", "id", "ipuz", "puzzle_id", "snapshot", "title", "updated_at"],
+      ["author", "chat", "copyright", "created_at", "fill_percent", "id", "ipuz", "owner_id", "puzzle_id", "snapshot", "title", "updated_at"],
     );
     // fill_percent is nullable: no NOT NULL constraint, no default — a
     // freshly inserted board is "NEW" until the first flushBoard.
@@ -112,6 +112,86 @@ describe("db", () => {
     db.close();
   });
 
+  it("v4 creates the auth tables (users, invite_codes, sessions) with correct shape", () => {
+    const db = openDb(":memory:");
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+      .all() as Array<{ name: string }>;
+    const tableNames = tables.map((t) => t.name);
+    expect(tableNames).toContain("users");
+    expect(tableNames).toContain("invite_codes");
+    expect(tableNames).toContain("sessions");
+
+    type ColInfo = { name: string; type: string; notnull: number; pk: number };
+    const usersCols = db.prepare("PRAGMA table_info(users)").all() as ColInfo[];
+    expect(usersCols.map((c) => c.name).sort()).toEqual([
+      "created_at",
+      "email",
+      "handle",
+      "handle_lower",
+      "id",
+      "invite_code_used",
+      "is_admin",
+      "password_hash",
+      "prefs",
+    ]);
+    expect(usersCols.find((c) => c.name === "handle_lower")!.notnull).toBe(1);
+    expect(usersCols.find((c) => c.name === "email")!.notnull).toBe(0);
+
+    // handle_lower has UNIQUE index (sqlite creates an auto-index).
+    db.prepare(
+      "INSERT INTO users (handle, handle_lower, password_hash, created_at) VALUES (?, ?, ?, ?)",
+    ).run("Moth", "moth", "x", "2026-05-12");
+    expect(() =>
+      db
+        .prepare(
+          "INSERT INTO users (handle, handle_lower, password_hash, created_at) VALUES (?, ?, ?, ?)",
+        )
+        .run("MOTH", "moth", "y", "2026-05-12"),
+    ).toThrow();
+
+    // sessions FK cascade: deleting a user removes their sessions.
+    db.prepare(
+      "INSERT INTO sessions (id, user_id, created_at, last_seen_at, expires_at) VALUES (?, 1, ?, ?, ?)",
+    ).run("tok1", "2026-05-12", "2026-05-12", "2026-06-11");
+    db.prepare("DELETE FROM users WHERE id = 1").run();
+    const remaining = db.prepare("SELECT COUNT(*) AS c FROM sessions").get() as { c: number };
+    expect(remaining.c).toBe(0);
+
+    db.close();
+  });
+
+  it("v5 adds boards.owner_id with SET NULL on user delete and an index", () => {
+    const db = openDb(":memory:");
+    // Seed user + board so we can exercise the FK behavior.
+    db.prepare(
+      "INSERT INTO users (handle, handle_lower, password_hash, created_at) VALUES (?, ?, ?, ?)",
+    ).run("Moth", "moth", "x", "2026-05-12");
+    const userId = (
+      db.prepare("SELECT id FROM users WHERE handle_lower = ?").get("moth") as { id: number }
+    ).id;
+    db.prepare(
+      "INSERT INTO boards (id, ipuz, title, snapshot, owner_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).run("b1", "{}", "test", "{}", userId, "2026-05-12", "2026-05-12");
+
+    // Deleting the owner SETs NULL rather than cascading the board
+    // (Phase 3 will use the M2M for the "delete-on-last-member" rule).
+    db.prepare("DELETE FROM users WHERE id = ?").run(userId);
+    const after = db
+      .prepare("SELECT owner_id FROM boards WHERE id = ?")
+      .get("b1") as { owner_id: number | null };
+    expect(after.owner_id).toBeNull();
+
+    const idx = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'boards' AND name = 'boards_owner_id'",
+      )
+      .all();
+    expect(idx).toHaveLength(1);
+
+    db.close();
+  });
+
   it("v3 backfill: populates fill_percent on existing boards by comparing initial vs live snapshot", async () => {
     // Capture the real v3 before we swap the migration list.
     const realV3 = migrations.find((m) => m.version === 3);
@@ -122,7 +202,6 @@ describe("db", () => {
     // these for the fixture import; the real code paths don't touch
     // them directly in this test).
     const { importPuzzle } = await import("./importer.js");
-    const { findOrCreateBoard } = await import("./boards.js");
     const { parseIpuzBuffer } = await import("./ipuz.js");
     const { dirname, resolve } = await import("node:path");
     const { fileURLToPath } = await import("node:url");
@@ -137,9 +216,24 @@ describe("db", () => {
       const db = openDb(":memory:");
       expect(userVersion(db)).toBe(2);
 
-      // Stand up two boards in the v2 schema (no fill_percent column).
+      // Stand up two boards in the v2 schema (no fill_percent column,
+      // no owner_id column — both come in later migrations). Skip
+      // findOrCreateBoard / insertBoardRow here because they're the
+      // *current* code and would try to write columns the v2 schema
+      // doesn't have.
       importPuzzle({ db, path: FIXTURE, force: false });
-      const { boardId: untouchedId } = findOrCreateBoard(db, "sunday-sample");
+      const puzzleIpuz = (
+        db
+          .prepare("SELECT ipuz FROM puzzles WHERE id = ?")
+          .get("sunday-sample") as { ipuz: string }
+      ).ipuz;
+      const parsedPuzzle = parseIpuzBuffer("sunday-sample", Buffer.from(puzzleIpuz, "utf8"));
+      const initialSnapshotJson = JSON.stringify(parsedPuzzle.state.snapshot);
+      const untouchedId = "untouched-board";
+      const seedNow = new Date().toISOString();
+      db.prepare(
+        "INSERT INTO boards (id, puzzle_id, ipuz, title, author, copyright, snapshot, chat, created_at, updated_at) VALUES (?, 'sunday-sample', ?, 'T', '', '', ?, '[]', ?, ?)",
+      ).run(untouchedId, puzzleIpuz, initialSnapshotJson, seedNow, seedNow);
 
       // Second board: clone the row with a different id and a mutated snapshot.
       const row = db

@@ -12,6 +12,7 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { FastifyInstance } from "fastify";
+import { registerAuthRoutes } from "./authRoutes.js";
 import { IpuzUnsupportedError, writeIpuz } from "./ipuz.js";
 import { evictBoard, getCachedBoard, getOrLoadBoard } from "./store.js";
 import { slugify } from "./importer.js";
@@ -35,6 +36,16 @@ export async function registerHttpRoutes(app: FastifyInstance, opts: HttpRouteOp
   const { db } = opts;
   await app.register(
     async (api) => {
+      // Auth routes (register / login / logout / me) under /api/auth.
+      // The session middleware itself is registered globally in
+      // index.ts so it runs on every request, not just /api/auth.
+      await api.register(
+        async (auth) => {
+          registerAuthRoutes(auth, db);
+        },
+        { prefix: "/auth" },
+      );
+
       api.get("/health", async () => ({ ok: true }));
 
       api.get("/puzzles", async () => {
@@ -56,11 +67,13 @@ export async function registerHttpRoutes(app: FastifyInstance, opts: HttpRouteOp
       });
 
       api.post("/boards/upload", async (req, reply) => {
-        // Ad-hoc upload: parse the file and create a board directly with
-        // no puzzle row (puzzle_id IS NULL). The puzzles table stays
-        // CLI-only — uploads are how *players* bring a one-off file to
-        // play, not how the curated library grows.
-        //
+        // Upload requires a logged-in user under Posture A — uploads
+        // are how account-holders bring a one-off file to play, not
+        // an anon entry point. The session middleware has already
+        // attached req.user; we just check it.
+        if (!req.user) {
+          return reply.code(401).send({ error: "not logged in" });
+        }
         // The multipart plugin throws on (a) non-multipart bodies and
         // (b) files over the configured fileSize cap. Both should be
         // reported as 400, not bubbled to a 500. The parser is in a
@@ -94,6 +107,7 @@ export async function registerHttpRoutes(app: FastifyInstance, opts: HttpRouteOp
             author: meta.author,
             copyright: meta.copyright,
             snapshot: JSON.stringify(parsed.state.snapshot),
+            ownerId: req.user.id,
           });
           // No in-memory mirror: the first WS connect to this board will
           // lazy-load it via getOrLoadBoard.
@@ -108,12 +122,18 @@ export async function registerHttpRoutes(app: FastifyInstance, opts: HttpRouteOp
       });
 
       api.post<{ Body: { puzzleId?: string } }>("/boards", async (req, reply) => {
+        // Per-user dedup: clicking a library puzzle either creates a
+        // new board for me OR navigates to my existing one for that
+        // puzzle. Requires auth — anons have no identity to scope by.
+        if (!req.user) {
+          return reply.code(401).send({ error: "not logged in" });
+        }
         const puzzleId = req.body?.puzzleId;
         if (!puzzleId || typeof puzzleId !== "string") {
           return reply.code(400).send({ error: "missing puzzleId" });
         }
         try {
-          const { boardId } = findOrCreateBoard(db, puzzleId);
+          const { boardId } = findOrCreateBoard(db, puzzleId, req.user.id);
           // No in-memory mirror: the first WS connect to this board will
           // lazy-load it via getOrLoadBoard.
           return { boardId };
@@ -125,7 +145,15 @@ export async function registerHttpRoutes(app: FastifyInstance, opts: HttpRouteOp
         }
       });
 
-      api.get("/boards", async () => listBoards(db));
+      api.get("/boards", async (req, reply) => {
+        // "My games": boards this user owns (Phase 2 interim — Phase 3
+        // switches to a `boards_users` membership query so shared
+        // boards also show up).
+        if (!req.user) {
+          return reply.code(401).send({ error: "not logged in" });
+        }
+        return listBoards(db, req.user.id);
+      });
 
       api.get<{ Params: { id: string } }>("/boards/:id", async (req, reply) => {
         const state = getBoardState(db, req.params.id);

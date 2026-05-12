@@ -40,8 +40,21 @@ const SUNDAY_PUZ = resolve(FIXTURE_DIR, "sunday-sample.puz");
 
 /** Mimic the `POST /api/boards/upload` route end-to-end without spinning
  *  up Fastify: parse a fixture, re-serialize to canonical ipuz, insert
- *  a boards row with NULL puzzle_id. Returns the new boardId. */
-function uploadFixtureAsBoard(db: DatabaseSync, path: string): string {
+ *  a boards row with NULL puzzle_id. Returns `{boardId, ownerId}` —
+ *  ownership matters because findOrCreateBoard / listBoards both scope
+ *  to the user under Phase 2. */
+function uploadFixtureAsBoard(
+  db: DatabaseSync,
+  path: string,
+): { boardId: string; ownerId: number } {
+  db.prepare(
+    "INSERT INTO users (handle, handle_lower, password_hash, created_at) VALUES (?, ?, ?, ?)",
+  ).run("uploader", "uploader", "x", "2026-05-12");
+  const ownerId = (
+    db
+      .prepare("SELECT id FROM users WHERE handle_lower = 'uploader'")
+      .get() as { id: number }
+  ).id;
   const buffer = readFileSync(path);
   const id = randomUUID();
   const parsed = parsePuzBuffer(id, buffer);
@@ -50,9 +63,9 @@ function uploadFixtureAsBoard(db: DatabaseSync, path: string): string {
   const meta = parsed.state.meta;
   const now = new Date().toISOString();
   db.prepare(
-    "INSERT INTO boards (id, puzzle_id, ipuz, title, author, snapshot, chat, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, ?, '[]', ?, ?)",
-  ).run(id, ipuz, meta.title, meta.author, snapshot, now, now);
-  return id;
+    "INSERT INTO boards (id, puzzle_id, ipuz, title, author, snapshot, chat, owner_id, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, ?, '[]', ?, ?, ?)",
+  ).run(id, ipuz, meta.title, meta.author, snapshot, ownerId, now, now);
+  return { boardId: id, ownerId };
 }
 
 function assertNoPuzzles(db: DatabaseSync): void {
@@ -71,7 +84,7 @@ afterEach(() => {
 describe("board lifecycle with no puzzle row", () => {
   it("upload-as-board persists with puzzle_id NULL and an empty puzzles table", () => {
     const db = openDb(":memory:");
-    const boardId = uploadFixtureAsBoard(db, SUNDAY_PUZ);
+    const { boardId, ownerId } = uploadFixtureAsBoard(db, SUNDAY_PUZ);
 
     const row = db
       .prepare("SELECT puzzle_id, title, snapshot FROM boards WHERE id = ?")
@@ -86,7 +99,7 @@ describe("board lifecycle with no puzzle row", () => {
 
   it("getBoardState hydrates meta+snapshot without consulting puzzles", () => {
     const db = openDb(":memory:");
-    const boardId = uploadFixtureAsBoard(db, SUNDAY_PUZ);
+    const { boardId, ownerId } = uploadFixtureAsBoard(db, SUNDAY_PUZ);
 
     const state = getBoardState(db, boardId);
     expect(state).not.toBeNull();
@@ -101,9 +114,9 @@ describe("board lifecycle with no puzzle row", () => {
 
   it("listBoards exposes the ad-hoc board with puzzleId=null", () => {
     const db = openDb(":memory:");
-    const boardId = uploadFixtureAsBoard(db, SUNDAY_PUZ);
+    const { boardId, ownerId } = uploadFixtureAsBoard(db, SUNDAY_PUZ);
 
-    const list = listBoards(db);
+    const list = listBoards(db, ownerId);
     expect(list).toHaveLength(1);
     expect(list[0]!.id).toBe(boardId);
     expect(list[0]!.puzzleId).toBeNull();
@@ -117,15 +130,15 @@ describe("board lifecycle with no puzzle row", () => {
     // puzzle id, never a board id. Passing the board id here must
     // raise PuzzleNotFoundError — there's no row in puzzles to find.
     const db = openDb(":memory:");
-    const boardId = uploadFixtureAsBoard(db, SUNDAY_PUZ);
-    expect(() => findOrCreateBoard(db, boardId)).toThrow(PuzzleNotFoundError);
+    const { boardId, ownerId } = uploadFixtureAsBoard(db, SUNDAY_PUZ);
+    expect(() => findOrCreateBoard(db, boardId, ownerId)).toThrow(PuzzleNotFoundError);
     assertNoPuzzles(db);
     db.close();
   });
 
   it("full play path (fill → reveal → check → clear) works against the in-memory cache", () => {
     const db = openDb(":memory:");
-    const boardId = uploadFixtureAsBoard(db, SUNDAY_PUZ);
+    const { boardId, ownerId } = uploadFixtureAsBoard(db, SUNDAY_PUZ);
 
     const entry = getOrLoadBoard(db, boardId)!;
     expect(entry).toBeDefined();
@@ -183,7 +196,7 @@ describe("board lifecycle with no puzzle row", () => {
 
   it("survives a restart-style hydration: flush + evict + reload", () => {
     const db = openDb(":memory:");
-    const boardId = uploadFixtureAsBoard(db, SUNDAY_PUZ);
+    const { boardId, ownerId } = uploadFixtureAsBoard(db, SUNDAY_PUZ);
 
     // Play a move, mark dirty, flush, then evict the cache entry —
     // simulates the process dying after a debounced flush completed.

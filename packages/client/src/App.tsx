@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PuzzleState } from "@crossplay/shared";
-import { HttpError, fetchBoard } from "./api";
+import { type AuthUser, HttpError, fetchBoard, fetchMe, logout as apiLogout } from "./api";
 import { boardPath, navigate, useRoute } from "./routing";
 import type { PuzzleActions } from "./puzzleActions";
 import { FeedbackBar } from "./components/FeedbackBar";
 import { HomePage } from "./components/HomePage";
+import { LandingPage } from "./components/LandingPage";
 import { Menu } from "./components/Menu";
 import { ModeButton } from "./components/ModeButton";
 import { SiteIcon } from "./components/SiteIcon";
@@ -12,6 +13,13 @@ import { UploadForm } from "./components/UploadForm";
 import { PuzzleView, type ActiveClue, type Mode } from "./components/PuzzleView";
 import type { Feedback } from "./feedback";
 import styles from "./App.module.css";
+
+/** Auth state. "loading" only on the initial /api/auth/me probe;
+ *  every render after that is either "anon" or a resolved user. */
+type AuthState =
+  | { kind: "loading" }
+  | { kind: "anon" }
+  | { kind: "user"; user: AuthUser };
 
 type LoadState =
   | { kind: "idle" }
@@ -33,7 +41,59 @@ type LoadState =
 export function App() {
   const route = useRoute();
   const [load, setLoad] = useState<LoadState>({ kind: "idle" });
+  const [auth, setAuth] = useState<AuthState>({ kind: "loading" });
   const [menuOpen, setMenuOpen] = useState(false);
+
+  // Probe /api/auth/me once on mount. The cookie rides natively; a
+  // 401 means we're anon, a 200 carries the user. Network failure is
+  // treated as anon — better to show the landing page than a blank.
+  useEffect(() => {
+    let cancelled = false;
+    fetchMe()
+      .then((user) => {
+        if (cancelled) return;
+        setAuth(user ? { kind: "user", user } : { kind: "anon" });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAuth({ kind: "anon" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const onAuthed = useCallback((user: AuthUser) => {
+    setAuth({ kind: "user", user });
+    // Return-after-login: future-proofing. If a deep link routed
+    // through the landing page with ?return=/foo, send the user back.
+    // (No producers of this query param yet — Phase 1 doesn't have
+    // any auth-required deep links — but the consumer side is cheap
+    // to wire now.)
+    try {
+      const url = new URL(window.location.href);
+      const ret = url.searchParams.get("return");
+      if (ret && ret.startsWith("/")) {
+        navigate(ret);
+      }
+    } catch {
+      // ignore; malformed URL → stay on / which now shows HomePage
+    }
+  }, []);
+
+  const onLogout = useCallback(async () => {
+    try {
+      await apiLogout();
+    } catch {
+      // Server-side logout failed; still flip the client state so
+      // the user isn't stuck "logged in" from their perspective.
+    }
+    setAuth({ kind: "anon" });
+    setMenuOpen(false);
+    setLoad({ kind: "idle" });
+    navigate("/");
+  }, []);
+
   const [activeClue, setActiveClue] = useState<ActiveClue | null>(null);
   const [mode, setMode] = useState<Mode>("pen");
   // Persisted across sessions: collapse-rebuses preference. Display
@@ -184,9 +244,22 @@ export function App() {
   }
 
   // Home page (`load.kind === "idle"`) gets its own hero header inside
-  // HomePage — no shared top bar, no menu, no welcome feedback there.
-  // The board route keeps the small top-left title + menu + feedback slot.
+  // HomePage / LandingPage — no shared top bar, no menu, no welcome
+  // feedback there. The board route keeps the small top-left title +
+  // menu + feedback slot.
   const showHeader = load.kind !== "idle";
+
+  // Decide what to render at `/`. Three states:
+  //   - auth still loading: render nothing visible (avoid the
+  //     anon→user flicker when the cookie probe resolves quickly).
+  //   - anon: LandingPage.
+  //   - user: HomePage.
+  // The board route bypasses this entirely — URLs are public.
+  function renderHome() {
+    if (auth.kind === "loading") return null;
+    if (auth.kind === "anon") return <LandingPage onAuthed={onAuthed} />;
+    return <HomePage onUploaded={onUploaded} user={auth.user} onLogout={onLogout} />;
+  }
 
   return (
     <div className={styles.app}>
@@ -206,6 +279,7 @@ export function App() {
                 actions={actionsRef.current}
                 triggerRef={titleRef}
                 onNewGame={onNewGame}
+                onLogout={auth.kind === "user" ? onLogout : null}
                 onClose={() => setMenuOpen(false)}
               />
             )}
@@ -254,9 +328,10 @@ export function App() {
             feedbackVisible={feedback != null}
             onToggleMenu={() => setMenuOpen((o) => !o)}
             onNewGame={onNewGame}
+            authedHandle={auth.kind === "user" ? auth.user.handle : null}
           />
         )}
-        {load.kind === "idle" && <HomePage onUploaded={onUploaded} />}
+        {load.kind === "idle" && renderHome()}
       </main>
     </div>
   );

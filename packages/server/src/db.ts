@@ -131,6 +131,79 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    // Auth scaffolding (Phase 1 of the users feature). Three tables:
+    //   - users: accounts with a unique handle (case-insensitive),
+    //     scrypt password hash, optional email (admin out-of-band use
+    //     only), is_admin boolean, the invite code they used at signup
+    //     (forensic — delete-every-account-from-this-code recovery),
+    //     and a reserved prefs JSON column for v2.
+    //   - invite_codes: shared-secret words admins manage by hand.
+    //     Stored lowercased; lookup is `code = LOWER(?)`.
+    //   - sessions: server-side session table keyed by a random token.
+    //     Sliding expiry; logout deletes the row.
+    //
+    // No board-side schema changes here — that's Phase 2 (owner_id) /
+    // Phase 3 (boards_users). Phase 1 is purely additive; existing
+    // anon board play is unaffected.
+    version: 4,
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE users (
+          id                INTEGER PRIMARY KEY AUTOINCREMENT,
+          handle            TEXT NOT NULL,
+          handle_lower      TEXT NOT NULL UNIQUE,
+          password_hash     TEXT NOT NULL,
+          email             TEXT,
+          is_admin          INTEGER NOT NULL DEFAULT 0,
+          invite_code_used  TEXT,
+          prefs             TEXT,
+          created_at        TEXT NOT NULL
+        );
+
+        CREATE TABLE invite_codes (
+          code        TEXT PRIMARY KEY,
+          label       TEXT,
+          created_at  TEXT NOT NULL
+        );
+
+        CREATE TABLE sessions (
+          id            TEXT PRIMARY KEY,
+          user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_at    TEXT NOT NULL,
+          last_seen_at  TEXT NOT NULL,
+          expires_at    TEXT NOT NULL
+        );
+
+        CREATE INDEX sessions_user_id    ON sessions (user_id);
+        CREATE INDEX sessions_expires_at ON sessions (expires_at);
+      `);
+    },
+  },
+  {
+    // Phase 2 of the users feature: boards know their creator.
+    //
+    // owner_id is NULLABLE in the schema for two reasons:
+    //   1. ON DELETE SET NULL: deleting a user shouldn't cascade-delete
+    //      their boards if other people are also on them (Phase 3 will
+    //      use the M2M for membership; Phase 2 is a stepping-stone
+    //      where "owner" stands in for "the only member").
+    //   2. Existing anon-era rows have no owner. Under Posture A we
+    //      stop creating those, but pre-existing ones survive the
+    //      migration unchanged.
+    //
+    // Application-level rule: every newly-created board carries an
+    // owner_id. Routes that create boards now require auth (see
+    // Phase 2 changes in http.ts).
+    version: 5,
+    up: (db) => {
+      db.exec(`
+        ALTER TABLE boards ADD COLUMN owner_id INTEGER
+          REFERENCES users(id) ON DELETE SET NULL;
+        CREATE INDEX boards_owner_id ON boards (owner_id);
+      `);
+    },
+  },
 ];
 
 export function openDb(path: string = process.env.DB_PATH ?? DEFAULT_DB_PATH): DatabaseSync {

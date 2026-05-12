@@ -1,0 +1,113 @@
+.outer {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Hero matches the logged-in HomePage so a user transitioning from
+   signup to home doesn't see the page "reset" — only the body
+   changes. */
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.heroIcon {
+  width: 4rem;
+  height: 4rem;
+}
+
+.heroTitle {
+  margin: 0;
+  font-size: 2.2rem;
+  font-weight: 700;
+}
+
+.intro {
+  max-width: 32rem;
+  margin: 0 auto;
+  text-align: center;
+  color: var(--c-text-mute, #555);
+  line-height: 1.5;
+}
+
+.forms {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 1.2rem;
+  border: 1px solid var(--c-card-border, #ccc);
+  border-radius: 0.5rem;
+  background: var(--c-card-bg-soft, #fafafa);
+  min-width: 18rem;
+  flex: 1 1 18rem;
+  max-width: 22rem;
+}
+
+.formTitle {
+  margin: 0 0 0.3rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.field input {
+  font: inherit;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--c-card-border, #ccc);
+  border-radius: 0.3rem;
+  background: #fff;
+}
+
+.field input:focus-visible {
+  outline: 2px solid var(--c-cursor, #ffd24d);
+  outline-offset: 1px;
+}
+
+.submit {
+  margin-top: 0.4rem;
+  padding: 0.55rem 1rem;
+  font: inherit;
+  font-weight: 600;
+  border-radius: 0.4rem;
+  border: 1px solid var(--c-cursor-strong, #e6b833);
+  background: var(--c-cursor, #ffd24d);
+  cursor: pointer;
+}
+
+.submit:hover {
+  background: var(--c-cursor-strong, #e6b833);
+}
+
+.submit:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.error {
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  background: #fff0f0;
+  border: 1px solid #f3c0c0;
+  border-radius: 0.3rem;
+  color: #a00;
+  font-size: 0.85rem;
+}

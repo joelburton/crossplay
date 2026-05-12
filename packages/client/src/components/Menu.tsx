@@ -10,6 +10,9 @@ type Props = {
   actions: PuzzleActions | null;
   triggerRef?: RefObject<HTMLElement>;
   onNewGame: () => void;
+  /** When set, the menu shows a Log out item that calls this. Null
+   *  when the user is anon (the item is hidden entirely). */
+  onLogout: (() => void) | null;
   onClose: () => void;
 };
 
@@ -30,7 +33,7 @@ type Props = {
  * (home page, no puzzle loaded) only "New game" is shown. Disabled
  * states: "Show notes" greys out when the puzzle has no note text.
  */
-export function Menu({ actions, triggerRef, onNewGame, onClose }: Props) {
+export function Menu({ actions, triggerRef, onNewGame, onLogout, onClose }: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -188,6 +191,14 @@ export function Menu({ actions, triggerRef, onNewGame, onClose }: Props) {
           <div className={styles.sep} role="separator" />
           <button type="button" className={styles.item} onClick={run(actions.downloadIpuz)}>
             <span>Download as .ipuz</span>
+          </button>
+        </>
+      )}
+      {onLogout && (
+        <>
+          <div className={styles.sep} role="separator" />
+          <button type="button" className={styles.item} onClick={run(onLogout)}>
+            <span>Log out</span>
           </button>
         </>
       )}

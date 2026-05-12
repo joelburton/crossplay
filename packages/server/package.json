@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@crossplay/shared": "*",
+    "@fastify/cookie": "^11.0.2",
     "@fastify/multipart": "^9.0.0",
     "@fastify/static": "^9.1.3",
     "@fastify/websocket": "^11.2.0",

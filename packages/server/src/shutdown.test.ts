@@ -33,6 +33,15 @@ async function setup(): Promise<{ app: FastifyInstance; db: DatabaseSync; boardI
   const parsed = parsePuzBuffer("test", buf);
   const ipuz = writeIpuz(parsed.state, parsed.solution);
   const boardId = "test-board";
+  // Seed a user so the board has a non-null owner (matches the
+  // application-level rule under Posture A even though shutdown
+  // tests don't otherwise exercise auth).
+  db.prepare(
+    "INSERT INTO users (handle, handle_lower, password_hash, created_at) VALUES (?, ?, ?, ?)",
+  ).run("owner", "owner", "x", "2026-05-12");
+  const ownerId = (
+    db.prepare("SELECT id FROM users WHERE handle_lower = 'owner'").get() as { id: number }
+  ).id;
   insertBoardRow({
     db,
     boardId,
@@ -42,6 +51,7 @@ async function setup(): Promise<{ app: FastifyInstance; db: DatabaseSync; boardI
     author: parsed.state.meta.author,
     copyright: parsed.state.meta.copyright,
     snapshot: JSON.stringify(parsed.state.snapshot),
+    ownerId,
   });
   return { app, db, boardId };
 }

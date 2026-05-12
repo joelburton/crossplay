@@ -76,10 +76,15 @@ export function makeIdentity(name: string): ChatIdentity {
  *   1. `?name=` URL parameter — useful for "share two URLs with two
  *      friends" testing; also written through to localStorage so the
  *      next visit without `?name=` keeps the same name.
- *   2. Previously stored name in localStorage.
- *   3. A random fallback `Rando<NN>` (NN = 10–99).
+ *   2. Previously stored name in localStorage (covers both anon
+ *      renames AND a logged-in user who picked a playful chat name
+ *      like "DrAnagram" — that override sticks).
+ *   3. `defaultName` if provided. App passes the logged-in user's
+ *      account handle here, so a fresh-from-signup user lands on
+ *      "moth" instead of "Rando42".
+ *   4. A random fallback `Rando<NN>` (NN = 10–99).
  */
-export function readChatIdentity(): ChatIdentity {
+export function readChatIdentity(defaultName?: string | null): ChatIdentity {
   const params = new URLSearchParams(location.search);
   const fromUrl = params.get("name")?.trim();
   if (fromUrl && fromUrl.length > 0) {
@@ -89,6 +94,9 @@ export function readChatIdentity(): ChatIdentity {
   }
   const stored = loadStoredName();
   if (stored) return makeIdentity(stored);
+  if (defaultName && defaultName.trim().length > 0) {
+    return makeIdentity(defaultName);
+  }
   return makeIdentity(`Rando${Math.floor(Math.random() * 90 + 10)}`);
 }
 
