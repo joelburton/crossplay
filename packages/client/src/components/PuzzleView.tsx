@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { MutableRefObject } from "react";
 import type { Cell, ClientMessage, GridSnapshot, PuzzleState } from "@crossplay/shared";
 import { MAX_REBUS_LEN, type Direction } from "@crossplay/shared";
@@ -56,12 +57,12 @@ type Props = {
   collapseRebus: boolean;
   onToggleCollapseRebus: () => void;
   actionsRef?: MutableRefObject<PuzzleActions | null>;
-  /** Called when the set of players in the room (me + peers) changes
-   *  — at connect, on peer join via `cursorMoved`, on peer leave via
-   *  `cursorLeft`, and on local-identity changes (chat rename). Not
-   *  called for cursor *moves*; only for join/leave/name changes,
-   *  so App's header doesn't re-render on every keystroke. */
-  onPresenceChange?: (presence: Presence[]) => void;
+  /** DOM nodes in App's header that we portal the chat indicator
+   *  and the presence-or-preview content into. Null when the
+   *  feedback bar is taking over the middle area (App un-mounts the
+   *  slots so the portals naturally render nothing). */
+  chatSlot?: HTMLDivElement | null;
+  presenceSlot?: HTMLDivElement | null;
   onFeedback?: (f: Feedback) => void;
   onActivity?: () => void;
   feedbackVisible?: boolean;
@@ -193,7 +194,8 @@ export function PuzzleView({
   collapseRebus,
   onToggleCollapseRebus,
   actionsRef,
-  onPresenceChange,
+  chatSlot,
+  presenceSlot,
   onFeedback,
   onActivity,
   feedbackVisible,
@@ -885,31 +887,20 @@ export function PuzzleView({
     return { number: found.number, direction: cursor.dir, text: found.text };
   }, [cursor.dir, acrossNumber, downNumber, meta.clues.across, meta.clues.down]);
 
-  // Report the current player roster to App so the header can render
-  // colored dots + names. Stable identity per (name, color) — depends
-  // only on the join/leave set, not on cursor positions, so a typical
-  // cursor move doesn't re-render the header.
-  const presenceKey = useMemo(() => {
-    const peers = [...remoteCursors.entries()]
-      .map(([color, c]) => `${color}${c.name}`)
-      .sort()
-      .join("");
-    return `${identity.color}${identity.name}${peers}`;
-  }, [remoteCursors, identity.color, identity.name]);
-  useEffect(() => {
-    if (!onPresenceChange) return;
+  // Composed player roster (me + peers) for the header presence
+  // portal. Memoized on the (color, name) set so a typical cursor
+  // move doesn't churn the portal contents — the underlying
+  // remoteCursors map updates every time a peer moves, but the
+  // identity we care about here is who's in the room.
+  const presenceList = useMemo(() => {
     const list: Presence[] = [
       { name: identity.name, color: identity.color, isMe: true },
     ];
     for (const [color, c] of remoteCursors) {
       list.push({ name: c.name, color, isMe: false });
     }
-    onPresenceChange(list);
-    // presenceKey is the actual dependency; recomputing the list per
-    // key change keeps it cheap and avoids spurious re-emits when only
-    // cursor positions changed.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [presenceKey, onPresenceChange]);
+    return list;
+  }, [remoteCursors, identity.name, identity.color]);
 
   const onRebusCommit = useCallback(
     (raw: string, post: "advance" | "jumpNext" | "jumpPrev") => {
@@ -1035,13 +1026,49 @@ export function PuzzleView({
           />
         </div>
       </div>
-      {previewLine && !feedbackVisible && <ChatPreview line={previewLine} />}
-      <ChatIndicator
-        unreadCount={unreadCount}
-        unreadColor={unreadColor}
-        open={chatOpen}
-        onToggle={toggleChat}
-      />
+      {/* Chat indicator + presence/preview both portal into App's
+          header slots. App un-mounts the slots when feedback is
+          active, so `chatSlot` / `presenceSlot` become null and these
+          portals just don't render — feedback gets the area to
+          itself. */}
+      {chatSlot &&
+        createPortal(
+          <ChatIndicator
+            unreadCount={unreadCount}
+            unreadColor={unreadColor}
+            open={chatOpen}
+            onToggle={toggleChat}
+          />,
+          chatSlot,
+        )}
+      {presenceSlot &&
+        createPortal(
+          previewLine ? (
+            <ChatPreview line={previewLine} />
+          ) : (
+            // Up to 4 entries — at friend-group scale this is the
+            // realistic ceiling. Overflow is silently truncated; the
+            // chat panel is the channel for "everyone here" when it
+            // matters.
+            <ul className={styles.presence} aria-label="Players in this board">
+              {presenceList.slice(0, 4).map((p) => (
+                <li
+                  key={`${p.color}:${p.name}`}
+                  className={styles.presenceEntry}
+                  title={p.isMe ? `${p.name} (you)` : p.name}
+                >
+                  <span
+                    className={styles.presenceDot}
+                    style={{ background: p.color }}
+                    aria-hidden="true"
+                  />
+                  <span className={styles.presenceName}>{p.name}</span>
+                </li>
+              ))}
+            </ul>
+          ),
+          presenceSlot,
+        )}
       {chatOpen && (
         <ChatPanel
           identity={identity}

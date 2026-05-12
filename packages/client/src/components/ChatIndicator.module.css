@@ -1,13 +1,12 @@
-/* `--user-menu-offset` is set by UserMenu (via ResizeObserver) when
-   authed so the indicator slides leftward past the fixed `UserMenu`
-   tab. Defaults to 0 for anons → indicator hugs the viewport's right
-   edge at 0.5rem (matches `.main` padding). */
+/* Inline-flow now: PuzzleView portals this into App's `.chatSlot`
+   in the header, so it rides next to the presence list (chat and
+   presence are conceptually paired). The button keeps its circular
+   shape; the unread badge anchors to its top-right corner as
+   before. */
 .button {
-  position: fixed;
-  top: 0.4rem;
-  right: calc(0.5rem + var(--user-menu-offset, 0px));
-  width: 2.2rem;
-  height: 2.2rem;
+  position: relative;
+  width: 1.8rem;
+  height: 1.8rem;
   border-radius: 50%;
   border: 0;
   cursor: pointer;
@@ -16,7 +15,8 @@
   justify-content: center;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
   transition: transform 0.1s;
-  z-index: var(--z-chat-indicator);
+  flex-shrink: 0;
+  padding: 0;
 }
 
 .button:hover {

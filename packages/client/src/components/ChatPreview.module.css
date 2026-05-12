@@ -1,12 +1,7 @@
-/* `--user-menu-offset` is set by UserMenu (via ResizeObserver) when
-   authed so the preview rides to the left of the `UserMenu` tab.
-   Defaults to 0 for anons. The +2.7rem clears the round chat
-   indicator button itself, which sits at the same right anchor. */
+/* Inline-flow now: PuzzleView portals this into App's
+   `.presenceSlot`, replacing the presence list for the few seconds
+   after a chat message arrives. */
 .preview {
-  position: fixed;
-  top: 0.85rem;
-  right: calc(0.5rem + var(--user-menu-offset, 0px) + 2.7rem);
-  max-width: 40vw;
   display: flex;
   align-items: baseline;
   gap: 0.25rem;
@@ -17,9 +12,10 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  z-index: var(--z-chat-preview);
   pointer-events: none;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  min-width: 0;
+  flex: 1;
 }
 
 .name {

@@ -32,6 +32,44 @@
   min-height: 0;
 }
 
+/* Live player roster portaled into App's header presence slot.
+   Colored dot + chat name per entry; the local user is always first.
+   Lives in PuzzleView's CSS because PuzzleView owns the data — App
+   just hosts the slot. */
+.presence {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.presenceEntry {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  font-size: 0.95rem;
+  color: #222;
+}
+
+.presenceDot {
+  flex-shrink: 0;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.presenceName {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
 .conn {
   align-self: flex-end;
   color: #b00;

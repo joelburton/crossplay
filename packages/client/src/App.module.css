@@ -19,62 +19,49 @@
   min-width: 0;
 }
 
-/* Reserves a fixed-height slot for either the presence list or a
-   feedback pill. The min-height keeps the header from shifting
-   vertically when feedback appears or vanishes (see CLAUDE.md
-   "Feedback bar"). The active clue itself lives below the board now,
-   in PuzzleView's `.activeClue` strip — there's exactly one place
-   for the clue to render. Extra left margin separates the presence
-   list from the pen/pencil button — without it the colored dots
-   visually grouped with the P toggle. */
-.headerSlot {
+/* Thin vertical line that visually separates the "puzzle controls"
+   side of the header (logo, title, pen/pencil) from the "share
+   stuff" side (chat indicator, presence, feedback). Sits between
+   ModeButton and the middle area. */
+.divider {
+  align-self: stretch;
+  width: 1px;
+  background: var(--c-card-border, #d0d0d0);
+  margin: 0 0.4rem;
+  flex-shrink: 0;
+}
+
+/* The middle area holds either the feedback pill (when feedback is
+   active) or the chat-indicator + presence/preview slots. min-height
+   keeps the header from shifting vertically as content swaps in and
+   out. The right padding reserves space for the fixed-position
+   UserMenu tab — `--user-menu-offset` is published by UserMenu via
+   ResizeObserver. */
+.middle {
   flex: 1;
   min-width: 0;
   min-height: 1.7rem;
-  margin-left: 1.25rem;
   display: flex;
   align-items: center;
+  gap: 0.7rem;
+  padding-right: calc(0.5rem + var(--user-menu-offset, 0px));
 }
 
-/* Live player roster: a colored dot + the player's chat name for each
-   member currently in the WS room. Local user is always first. App
-   slices to 4 entries; overflow is hidden silently (chat is the
-   channel for "everyone" when it matters). */
-.presence {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  min-width: 0;
-  /* Entries flex-shrink past their natural width via ellipsis on
-     `.presenceName`. Without min-width:0 the list refuses to shrink
-     and pushes the chat indicator off-screen on narrow viewports. */
-}
-
-.presenceEntry {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  min-width: 0;
-  font-size: 0.95rem;
-  color: #222;
-}
-
-.presenceDot {
+/* DOM portal targets. PuzzleView render-portals its chat indicator
+   into `.chatSlot` and the presence list / preview into
+   `.presenceSlot`. App owns the structural placement; PuzzleView owns
+   the content. */
+.chatSlot {
   flex-shrink: 0;
-  width: 0.7rem;
-  height: 0.7rem;
-  border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
 }
 
-.presenceName {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.presenceSlot {
+  flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
 }
 
 /* The authed `UserMenu` is fixed-positioned (a dark tab hanging

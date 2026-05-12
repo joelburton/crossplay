@@ -11,7 +11,7 @@ import { ModeButton } from "./components/ModeButton";
 import { SiteIcon } from "./components/SiteIcon";
 import { UserMenu } from "./components/UserMenu";
 import { UploadForm } from "./components/UploadForm";
-import { PuzzleView, type Mode, type Presence } from "./components/PuzzleView";
+import { PuzzleView, type Mode } from "./components/PuzzleView";
 import type { Feedback } from "./feedback";
 import styles from "./App.module.css";
 
@@ -95,12 +95,12 @@ export function App() {
     navigate("/");
   }, []);
 
-  // Live player roster reported by PuzzleView (me + WS peers). Drives
-  // the colored-dot list in the header slot, replaced by the
-  // FeedbackBar pill when feedback is active. Updates on join / leave
-  // / rename, not on every cursor move — see PuzzleView's
-  // `onPresenceChange` for the stability story.
-  const [presence, setPresence] = useState<Presence[]>([]);
+  // PuzzleView owns the chat + presence state and renders the chat
+  // indicator + presence-or-preview content via React portals into
+  // these header slots. App keeps the slots so it can collapse them
+  // when the feedback bar takes over the middle area.
+  const [chatSlot, setChatSlot] = useState<HTMLDivElement | null>(null);
+  const [presenceSlot, setPresenceSlot] = useState<HTMLDivElement | null>(null);
   const [mode, setMode] = useState<Mode>("pen");
   // Persisted across sessions: collapse-rebuses preference. Display
   // only — server-side fills stay full. localStorage read is wrapped
@@ -125,7 +125,6 @@ export function App() {
   }, []);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const onPresenceChange = useCallback((p: Presence[]) => setPresence(p), []);
   const onToggleMode = useCallback(
     () => setMode((m) => (m === "pen" ? "pencil" : "pen")),
     [],
@@ -206,7 +205,6 @@ export function App() {
   // exist, this should move from per-browser to per-user.
   useEffect(() => {
     setMenuOpen(false);
-    setPresence([]);
     setMode("pen");
     if (load.kind === "loaded") {
       let seen = false;
@@ -245,7 +243,6 @@ export function App() {
   function onNewGame() {
     setLoad({ kind: "idle" });
     setMenuOpen(false);
-    setPresence([]);
     navigate("/");
   }
 
@@ -290,32 +287,21 @@ export function App() {
             )}
           </div>
           {load.kind === "loaded" && <ModeButton mode={mode} onToggle={onToggleMode} />}
-          <div className={styles.headerSlot}>
+          {load.kind === "loaded" && (
+            <div className={styles.divider} aria-hidden="true" />
+          )}
+          {/* Middle area. When feedback is active it spans both slots
+              and the chat / presence content hides; otherwise PuzzleView
+              portals the chat indicator into `chatSlotRef` and the
+              presence-or-preview content into `presenceSlotRef`. */}
+          <div className={styles.middle}>
             {feedback ? (
               <FeedbackBar feedback={feedback} onDismiss={dismissFeedback} />
-            ) : presence.length > 0 ? (
-              // Up to 4 entries — at the friend-group scale this is the
-              // realistic ceiling. If more peers join we silently truncate;
-              // the chat indicator + chat panel are the channel for
-              // "everyone in the room" when it matters.
-              <ul className={styles.presence} aria-label="Players in this board">
-                {presence.slice(0, 4).map((p) => (
-                  <li
-                    key={`${p.color}:${p.name}`}
-                    className={styles.presenceEntry}
-                    title={p.isMe ? `${p.name} (you)` : p.name}
-                  >
-                    <span
-                      className={styles.presenceDot}
-                      style={{ background: p.color }}
-                      aria-hidden="true"
-                    />
-                    <span className={styles.presenceName}>{p.name}</span>
-                  </li>
-                ))}
-              </ul>
             ) : (
-              <span>&nbsp;</span>
+              <>
+                <div ref={setChatSlot} className={styles.chatSlot} />
+                <div ref={setPresenceSlot} className={styles.presenceSlot} />
+              </>
             )}
           </div>
         </header>
@@ -342,7 +328,8 @@ export function App() {
             collapseRebus={collapseRebus}
             onToggleCollapseRebus={toggleCollapseRebus}
             actionsRef={actionsRef}
-            onPresenceChange={onPresenceChange}
+            chatSlot={chatSlot}
+            presenceSlot={presenceSlot}
             onFeedback={showFeedback}
             onActivity={dismissFeedback}
             feedbackVisible={feedback != null}
