@@ -59,21 +59,24 @@ async function flushPromises() {
 }
 
 describe("HomePage", () => {
-  it("hides the community section when the puzzles list is empty", async () => {
+  it("hides the puzzle library section when the puzzles list is empty", async () => {
     stubLists([], []);
     render(<HomePage onUploaded={() => {}} />);
     await flushPromises();
-    expect(screen.queryByText("Community puzzles")).toBeNull();
-    // Your games always shows, with empty-state copy.
-    expect(screen.getByText("Your games")).toBeTruthy();
+    // Scope to <h2> so we don't false-match the upload hint's italic
+    // mention of "Puzzle library".
+    expect(screen.queryByRole("heading", { name: "Puzzle library" })).toBeNull();
+    // Your games always shows, with empty-state copy. Scope to the
+    // heading because the upload hint also mentions "Your games".
+    expect(screen.getByRole("heading", { name: "Your games" })).toBeTruthy();
     expect(screen.getByText(/no games yet/i)).toBeTruthy();
   });
 
-  it("shows the community section and a populated games list", async () => {
+  it("shows the puzzle library section and a populated games list", async () => {
     stubLists([puzzle("p1", "First")], [board("b1", "MyBoard")]);
     render(<HomePage onUploaded={() => {}} />);
     await flushPromises();
-    expect(screen.getByText("Community puzzles")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Puzzle library" })).toBeTruthy();
     expect(screen.getByText("First")).toBeTruthy();
     expect(screen.getByText("MyBoard")).toBeTruthy();
   });
@@ -212,7 +215,7 @@ describe("HomePage", () => {
     expect(screen.getByText("100%")).toBeTruthy();
   });
 
-  it("filters the community puzzles list by title (case-insensitive substring)", async () => {
+  it("filters the puzzle library by title (case-insensitive substring)", async () => {
     stubLists(
       [puzzle("p1", "Sunday Times"), puzzle("p2", "Monday Mini"), puzzle("p3", "Friday Themeless")],
       [],
@@ -223,7 +226,7 @@ describe("HomePage", () => {
     expect(screen.getByText("Sunday Times")).toBeTruthy();
     expect(screen.getByText("Monday Mini")).toBeTruthy();
 
-    const input = screen.getByLabelText("Filter community puzzles");
+    const input = screen.getByLabelText("Filter puzzle library");
     await userEvent.type(input, "mond");
     await flushPromises();
 
@@ -232,7 +235,7 @@ describe("HomePage", () => {
     expect(screen.queryByText("Friday Themeless")).toBeNull();
   });
 
-  it("filters community puzzles by copyright (e.g. 'times' → NYT)", async () => {
+  it("filters the puzzle library by copyright (e.g. 'times' → NYT)", async () => {
     stubLists(
       [
         { id: "p1", title: "Sunday", author: "Anon", copyright: "2026, The New York Times", width: 5, height: 5 },
@@ -243,14 +246,14 @@ describe("HomePage", () => {
     render(<HomePage onUploaded={() => {}} />);
     await flushPromises();
 
-    await userEvent.type(screen.getByLabelText("Filter community puzzles"), "times");
+    await userEvent.type(screen.getByLabelText("Filter puzzle library"), "times");
     await flushPromises();
 
     expect(screen.getByText("Sunday")).toBeTruthy();
     expect(screen.queryByText("Monday")).toBeNull();
   });
 
-  it("filters community puzzles by author too", async () => {
+  it("filters the puzzle library by author too", async () => {
     stubLists(
       [
         { id: "p1", title: "Untitled A", author: "Wagner", copyright: "", width: 5, height: 5 },
@@ -261,7 +264,7 @@ describe("HomePage", () => {
     render(<HomePage onUploaded={() => {}} />);
     await flushPromises();
 
-    const input = screen.getByLabelText("Filter community puzzles");
+    const input = screen.getByLabelText("Filter puzzle library");
     await userEvent.type(input, "birn");
     await flushPromises();
 
@@ -274,7 +277,7 @@ describe("HomePage", () => {
     render(<HomePage onUploaded={() => {}} />);
     await flushPromises();
 
-    await userEvent.type(screen.getByLabelText("Filter community puzzles"), "xxxx");
+    await userEvent.type(screen.getByLabelText("Filter puzzle library"), "xxxx");
     await flushPromises();
 
     expect(screen.getByText(/no puzzles match/i)).toBeTruthy();

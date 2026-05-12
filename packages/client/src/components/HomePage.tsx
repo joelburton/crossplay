@@ -41,7 +41,7 @@ function matchesQuery(
 
 /**
  * Landing page when no board is open. Three sections:
- *   - "Community puzzles": curated library, hidden if empty (only Joel
+ *   - "Puzzle library": curated library, hidden if empty (only Joel
  *     curates it via the CLI; an empty list isn't actionable for users).
  *   - "Your games": in-progress boards, ALWAYS shown — empty state
  *     points the user back at the puzzles section.
@@ -156,14 +156,14 @@ export function HomePage({ onUploaded }: Props) {
           const filtered = puzzles.filter((p) => matchesQuery(p, puzzleFilter));
           return (
             <section className={`${styles.section} ${styles.listSection}`}>
-              <h2 className={styles.heading}>Community puzzles</h2>
+              <h2 className={styles.heading}>Puzzle library</h2>
               <input
                 type="search"
                 className={styles.filter}
                 placeholder="Filter puzzles…"
                 value={puzzleFilter}
                 onChange={(e) => setPuzzleFilter(e.target.value)}
-                aria-label="Filter community puzzles"
+                aria-label="Filter puzzle library"
               />
               {filtered.length > 0 ? (
                 <ul className={styles.games}>
@@ -288,6 +288,10 @@ export function HomePage({ onUploaded }: Props) {
         <section className={`${styles.section} ${styles.uploadSection}`}>
           <h2 className={styles.heading}>Upload your own</h2>
           <UploadForm onUploaded={onUploaded} />
+          <p className={styles.uploadHint}>
+            Uploaded puzzles show up in <em>Your games</em> for you to keep playing.
+            They aren&rsquo;t added to the <em>Puzzle library</em>, which is curated.
+          </p>
         </section>
       </div>
       <footer className={styles.footer}>

@@ -55,6 +55,20 @@
   flex: 0 0 auto;
 }
 
+/* Help text below the drop zone — explains that uploads are private
+   to "Your games" and don't grow the curated library. Smaller +
+   muted so it reads as guidance, not a section heading. The
+   `max-width` cap matches `.error` in UploadForm.module.css so the
+   hint wraps instead of growing the upload column and reflowing the
+   page (same fix as the long-error-message case). */
+.uploadHint {
+  margin: 0.75rem 0 0;
+  max-width: 14rem;
+  font-size: 0.85rem;
+  color: var(--c-text-mute, #555);
+  line-height: 1.4;
+}
+
 .footer {
   flex-shrink: 0;
   padding: 0.6rem 0 0.2rem;
