@@ -141,7 +141,7 @@ export function App() {
       if (!seen) {
         showFeedback({
           id: `welcome-${load.puzzle.meta.id}`,
-          text: "Welcome! Click the heart for a menu.",
+          text: "Click heart for menu",
           level: "info",
         });
         try {
@@ -234,6 +234,7 @@ export function App() {
             onFeedback={showFeedback}
             onActivity={dismissFeedback}
             feedbackVisible={feedback != null}
+            onToggleMenu={() => setMenuOpen((o) => !o)}
           />
         )}
         {load.kind === "idle" && <HomePage onUploaded={onUploaded} />}

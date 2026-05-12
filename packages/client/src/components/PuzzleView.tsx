@@ -47,6 +47,10 @@ type Props = {
   onFeedback?: (f: Feedback) => void;
   onActivity?: () => void;
   feedbackVisible?: boolean;
+  /** Toggle the App-owned title menu. Wired from a global ⌥M
+   *  shortcut so keyboard-only players can reach the menu without a
+   *  pointer. */
+  onToggleMenu?: () => void;
 };
 
 /** Outbound cursor-presence throttle window, in ms. Sends fire on the
@@ -135,6 +139,7 @@ export function PuzzleView({
   onFeedback,
   onActivity,
   feedbackVisible,
+  onToggleMenu,
 }: Props) {
   const { meta } = puzzle;
   const [snapshot, setSnapshot] = useState<GridSnapshot>(puzzle.snapshot);
@@ -434,7 +439,7 @@ export function PuzzleView({
     if (!meta.note) {
       onFeedback?.({
         id: `no-notes-${meta.id}-${Date.now()}`,
-        text: "No notes for this puzzle",
+        text: "No notes for puzzle",
         level: "info",
         autoVanishMs: 2500,
       });
@@ -619,6 +624,11 @@ export function PuzzleView({
           onToggleMode();
           return;
         }
+        if (e.code === "KeyM") {
+          e.preventDefault();
+          onToggleMenu?.();
+          return;
+        }
       }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       // Spacebar: peek at a multi-char rebus fill in the same overlay
@@ -740,6 +750,7 @@ export function PuzzleView({
     closeChat,
     openChat,
     onToggleMode,
+    onToggleMenu,
   ]);
 
   const highlighted = useMemo(() => {

@@ -62,11 +62,11 @@ const NARROW_HORIZ_RESERVE_CSS = "1rem + 4px";
 // In narrow mode the active clue moves below the board (.narrowClue in
 // PuzzleView.module.css). The cell-size height bound has to subtract
 // that strip too, or the board would spill into it. Approximate height:
-// 2 lines at 1.35 × 1.05rem font-size + 0.3rem top padding ≈ 50px.
+// 3 lines at 1.35 × 1.05rem font-size + 0.3rem top padding ≈ 73px.
 // Keep this loosely aligned with the `.narrowClue` `min-height` so the
 // fit-on-screen math is conservative (better a few px short than to
 // force an outer scrollbar).
-const NARROW_CLUE_RESERVE_PX = 56;
+const NARROW_CLUE_RESERVE_PX = 76;
 
 // Width of the rebus overlay, in cell-widths. Wider than one cell so
 // the player can see the whole rebus they're typing without text

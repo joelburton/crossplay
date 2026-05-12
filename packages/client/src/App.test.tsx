@@ -182,7 +182,7 @@ describe("App localStorage tolerance", () => {
       window.history.replaceState({}, "", "/b/p-1");
       expect(() => render(<App />)).not.toThrow();
       await flush();
-      expect(screen.getByText(/click the heart/i)).toBeTruthy();
+      expect(screen.getByText(/click heart for menu/i)).toBeTruthy();
     } finally {
       fake.restore();
     }
@@ -196,7 +196,7 @@ describe("App localStorage tolerance", () => {
       window.history.replaceState({}, "", "/b/p-1");
       render(<App />);
       await flush();
-      expect(screen.getByText(/click the heart/i)).toBeTruthy();
+      expect(screen.getByText(/click heart for menu/i)).toBeTruthy();
       expect(fake.store["seenWelcome"]).toBe("1");
     } finally {
       fake.restore();
@@ -211,7 +211,7 @@ describe("App localStorage tolerance", () => {
       window.history.replaceState({}, "", "/b/p-1");
       render(<App />);
       await flush();
-      expect(screen.queryByText(/click the heart/i)).toBeNull();
+      expect(screen.queryByText(/click heart for menu/i)).toBeNull();
     } finally {
       fake.restore();
     }

@@ -668,7 +668,7 @@ function handleHello({ entry, socket }: DispatchContext, msg: Extract<ClientMess
   const payload = JSON.stringify({
     type: "feedback",
     id: nextFeedbackId(entry),
-    text: `${msg.name} joined the game`,
+    text: `${msg.name} joined`,
     level: "info",
     autoVanishMs: 5000,
   });

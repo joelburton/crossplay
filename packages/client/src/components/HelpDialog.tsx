@@ -14,6 +14,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ["Space", "Zoom-peek a multi-letter cell (read-only)"],
   ["/", "Open chat (or focus its input if already open)"],
   ["Esc", "Close chat"],
+  ["⌥M", "Open the menu (arrows to navigate, Enter to choose)"],
   ["⌥P", "Toggle pen / pencil"],
   ["⌥N", "Show puzzle notes"],
   ["⌥R / ⌥⇧R", "Reveal letter / word"],
