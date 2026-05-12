@@ -554,6 +554,153 @@ describe("http: POST /api/boards/upload", () => {
   });
 });
 
+describe("http: POST /api/boards/:id/share", () => {
+  let app: FastifyInstance;
+  let db: DatabaseSync;
+  let cookies: Record<string, string>;
+  let boardId: string;
+
+  beforeEach(async () => {
+    _clearCacheForTest();
+    ({ app, db } = await buildApp());
+    ({ cookies } = await seedAuth(app, db, "alice"));
+    // Caller creates a board they own — that's their membership.
+    seedPuzzle(db);
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { puzzleId: "test-puzzle" },
+      cookies,
+    });
+    boardId = (create.json() as { boardId: string }).boardId;
+  });
+  afterEach(async () => {
+    await app.close();
+    _clearCacheForTest();
+  });
+
+  /** Register a second account so we have someone to share with.
+   *  Returns the display handle (case-preserved). The invite code
+   *  was seeded by seedAuth already. */
+  async function seedSecond(handle: string): Promise<string> {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { handle, password: "hunter2", inviteCode: "test-invite" },
+    });
+    if (res.statusCode !== 200) throw new Error(`seedSecond ${handle}: ${res.body}`);
+    return handle;
+  }
+
+  it("adds a member and returns the canonical handle + alreadyMember:false", async () => {
+    await seedSecond("Moth");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/boards/${boardId}/share`,
+      payload: { handle: "moth" }, // case-insensitive resolve
+      cookies,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { handle: string; alreadyMember: boolean };
+    expect(body.handle).toBe("Moth");
+    expect(body.alreadyMember).toBe(false);
+
+    const row = db
+      .prepare(
+        "SELECT u.handle FROM boards_users bu JOIN users u ON u.id = bu.user_id WHERE bu.board_id = ? AND u.handle_lower = ?",
+      )
+      .get(boardId, "moth") as { handle: string } | undefined;
+    expect(row?.handle).toBe("Moth");
+  });
+
+  it("is idempotent: re-share with the same member returns alreadyMember:true", async () => {
+    await seedSecond("Moth");
+    await app.inject({
+      method: "POST",
+      url: `/api/boards/${boardId}/share`,
+      payload: { handle: "moth" },
+      cookies,
+    });
+    const second = await app.inject({
+      method: "POST",
+      url: `/api/boards/${boardId}/share`,
+      payload: { handle: "MOTH" },
+      cookies,
+    });
+    expect(second.statusCode).toBe(200);
+    expect((second.json() as { alreadyMember: boolean }).alreadyMember).toBe(true);
+
+    const count = db
+      .prepare("SELECT COUNT(*) AS c FROM boards_users WHERE board_id = ?")
+      .get(boardId) as { c: number };
+    expect(count.c).toBe(2); // alice (owner) + moth, not 3
+  });
+
+  it("sharing with self is a no-op (alreadyMember:true)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/boards/${boardId}/share`,
+      payload: { handle: "alice" },
+      cookies,
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { alreadyMember: boolean }).alreadyMember).toBe(true);
+  });
+
+  it("returns 401 when not authed", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/boards/${boardId}/share`,
+      payload: { handle: "moth" },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("returns 403 when caller isn't a member of the board", async () => {
+    await seedSecond("Moth");
+    const bob = await seedAuth(app, db, "bob");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/boards/${boardId}/share`,
+      payload: { handle: "moth" },
+      cookies: bob.cookies, // bob has no membership on alice's board
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("returns 404 for unknown board", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/boards/no-such/share",
+      payload: { handle: "moth" },
+      cookies,
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("returns 404 when the target handle is valid-shape but unknown", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/boards/${boardId}/share`,
+      payload: { handle: "ghost" },
+      cookies,
+    });
+    expect(res.statusCode).toBe(404);
+    expect((res.json() as { error: string }).error).toMatch(/no user/i);
+  });
+
+  it("returns 400 for a malformed handle", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/boards/${boardId}/share`,
+      payload: { handle: "!!" },
+      cookies,
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toMatch(/handle/i);
+  });
+});
+
 describe("boards survive their source puzzle being deleted", () => {
   // CLAUDE.md: "boards are stamped, not referenced... deleting the
   // puzzle leaves boards playable." The schema enforces this (no FK,

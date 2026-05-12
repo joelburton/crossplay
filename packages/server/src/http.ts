@@ -12,6 +12,7 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { FastifyInstance } from "fastify";
+import { findUserByHandle, validateHandle } from "./auth.js";
 import { registerAuthRoutes } from "./authRoutes.js";
 import { IpuzUnsupportedError, writeIpuz } from "./ipuz.js";
 import { evictBoard, getCachedBoard, getOrLoadBoard } from "./store.js";
@@ -194,6 +195,52 @@ export async function registerHttpRoutes(app: FastifyInstance, opts: HttpRouteOp
         if (!existed) return reply.code(404).send({ error: "not found" });
         return { ok: true };
       });
+
+      api.post<{ Params: { id: string }; Body: { handle?: unknown } }>(
+        "/boards/:id/share",
+        async (req, reply) => {
+          // Add a user to this board's `boards_users`. Sharing is
+          // idempotent: re-sharing with an existing member returns
+          // 200 with alreadyMember=true (the UI can soften the
+          // confirmation copy). Sharing with yourself is the same —
+          // you're already a member.
+          //
+          // Authorization rule: the caller must already be a member.
+          // Otherwise any anon URL-follower could pull strangers into
+          // their friend's board, which defeats the invite-code gate
+          // at the registration boundary.
+          if (!req.user) {
+            return reply.code(401).send({ error: "not logged in" });
+          }
+          const board = db
+            .prepare("SELECT id FROM boards WHERE id = ?")
+            .get(req.params.id) as { id: string } | undefined;
+          if (!board) return reply.code(404).send({ error: "not found" });
+          const callerMember = db
+            .prepare(
+              "SELECT 1 AS ok FROM boards_users WHERE board_id = ? AND user_id = ?",
+            )
+            .get(req.params.id, req.user.id) as { ok: number } | undefined;
+          if (!callerMember) {
+            return reply
+              .code(403)
+              .send({ error: "you aren't a member of this board" });
+          }
+          const handleInput = typeof req.body?.handle === "string" ? req.body.handle : "";
+          const handleLower = validateHandle(handleInput);
+          if (!handleLower) {
+            return reply
+              .code(400)
+              .send({ error: "Handle must be 2–32 characters: letters, digits, _ or -." });
+          }
+          const target = findUserByHandle(db, handleLower);
+          if (!target) {
+            return reply.code(404).send({ error: "No user with that handle." });
+          }
+          const newlyAdded = addBoardMembership(db, req.params.id, target.id);
+          return { handle: target.handle, alreadyMember: !newlyAdded };
+        },
+      );
 
       api.get<{ Params: { id: string } }>("/boards/:id/ipuz", async (req, reply) => {
         // Download a board (the player's current state) as canonical ipuz.
