@@ -36,6 +36,17 @@ export type ActiveClue = {
   text: string;
 };
 
+/** One entry in the header presence list: a player currently in the
+ *  board's WS room. Local player is always first; peers come from
+ *  the cursor-presence map. Used by App to render colored dots +
+ *  chat names in the header slot. */
+export type Presence = {
+  name: string;
+  color: string;
+  /** True for the local user; lets the renderer hint "you". */
+  isMe: boolean;
+};
+
 export type Mode = "pen" | "pencil";
 
 type Props = {
@@ -45,7 +56,12 @@ type Props = {
   collapseRebus: boolean;
   onToggleCollapseRebus: () => void;
   actionsRef?: MutableRefObject<PuzzleActions | null>;
-  onActiveClueChange?: (clue: ActiveClue | null) => void;
+  /** Called when the set of players in the room (me + peers) changes
+   *  — at connect, on peer join via `cursorMoved`, on peer leave via
+   *  `cursorLeft`, and on local-identity changes (chat rename). Not
+   *  called for cursor *moves*; only for join/leave/name changes,
+   *  so App's header doesn't re-render on every keystroke. */
+  onPresenceChange?: (presence: Presence[]) => void;
   onFeedback?: (f: Feedback) => void;
   onActivity?: () => void;
   feedbackVisible?: boolean;
@@ -177,7 +193,7 @@ export function PuzzleView({
   collapseRebus,
   onToggleCollapseRebus,
   actionsRef,
-  onActiveClueChange,
+  onPresenceChange,
   onFeedback,
   onActivity,
   feedbackVisible,
@@ -899,9 +915,31 @@ export function PuzzleView({
     return { number: found.number, direction: cursor.dir, text: found.text };
   }, [cursor.dir, acrossNumber, downNumber, meta.clues.across, meta.clues.down]);
 
+  // Report the current player roster to App so the header can render
+  // colored dots + names. Stable identity per (name, color) — depends
+  // only on the join/leave set, not on cursor positions, so a typical
+  // cursor move doesn't re-render the header.
+  const presenceKey = useMemo(() => {
+    const peers = [...remoteCursors.entries()]
+      .map(([color, c]) => `${color}${c.name}`)
+      .sort()
+      .join("");
+    return `${identity.color}${identity.name}${peers}`;
+  }, [remoteCursors, identity.color, identity.name]);
   useEffect(() => {
-    onActiveClueChange?.(activeClue);
-  }, [activeClue, onActiveClueChange]);
+    if (!onPresenceChange) return;
+    const list: Presence[] = [
+      { name: identity.name, color: identity.color, isMe: true },
+    ];
+    for (const [color, c] of remoteCursors) {
+      list.push({ name: c.name, color, isMe: false });
+    }
+    onPresenceChange(list);
+    // presenceKey is the actual dependency; recomputing the list per
+    // key change keeps it cheap and avoids spurious re-emits when only
+    // cursor positions changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presenceKey, onPresenceChange]);
 
   const wrapStyle =
     chatRightPx != null
@@ -970,43 +1008,48 @@ export function PuzzleView({
         </div>
       )}
       <div className={styles.layout}>
-        <Board
-          ref={boardRef}
-          cells={cells}
-          cursor={cursor}
-          highlighted={highlighted}
-          recentFills={recentFills}
-          remoteCursorByCell={remoteCursorByCell}
-          collapseRebus={collapseRebus}
-          onCellClick={onCellClick}
-          rebus={
-            rebusOpen
-              ? {
-                  initial: rebusInitial,
-                  maxLength: MAX_REBUS_LEN,
-                  onCommit: onRebusCommit,
-                  onCancel: onRebusCancel,
-                }
-              : null
-          }
-          zoom={zoomPeek ? zoomPeekValue : null}
-        />
-        {/* Narrow-viewport active clue. Shown only when the clue panels
-            are hidden (see PuzzleView.module.css); in that mode the
-            header slot still shows feedback but its clue fallback is
-            hidden via App.module.css, so this panel is the player's
-            only way to read the current clue. Two-line clamp keeps
-            long cryptic clues legible without reflowing the grid. */}
-        <div className={styles.narrowClue}>
-          {activeClue ? (
-            <>
-              <span className={styles.narrowClueLabel}>
-                {activeClue.number}
-                {activeClue.direction === "across" ? "A" : "D"}
-              </span>
-              <span className={styles.narrowClueText}>{activeClue.text}</span>
-            </>
-          ) : null}
+        <div className={styles.boardCol}>
+          <Board
+            ref={boardRef}
+            cells={cells}
+            cursor={cursor}
+            highlighted={highlighted}
+            recentFills={recentFills}
+            remoteCursorByCell={remoteCursorByCell}
+            collapseRebus={collapseRebus}
+            onCellClick={onCellClick}
+            rebus={
+              rebusOpen
+                ? {
+                    initial: rebusInitial,
+                    maxLength: MAX_REBUS_LEN,
+                    onCommit: onRebusCommit,
+                    onCancel: onRebusCancel,
+                  }
+                : null
+            }
+            zoom={zoomPeek ? zoomPeekValue : null}
+          />
+          {/* Active clue, always below the board. The header used to
+              show the same text on wide viewports, but that doubled
+              the layout work and meant the clue lived in two places.
+              Now there's exactly one: this strip. Three-line clamp
+              keeps long cryptic clues legible; `min-height` reserves
+              all three lines unconditionally so the board doesn't
+              reflow as the cursor moves across short and long clues.
+              Coordinate the reserve height with
+              `ACTIVE_CLUE_RESERVE_PX` in Board.tsx. */}
+          <div className={styles.activeClue}>
+            {activeClue ? (
+              <>
+                <span className={styles.activeClueLabel}>
+                  {activeClue.number}
+                  {activeClue.direction === "across" ? "A" : "D"}
+                </span>
+                <span className={styles.activeClueText}>{activeClue.text}</span>
+              </>
+            ) : null}
+          </div>
         </div>
         <div className={styles.clues}>
           <ClueList

@@ -10,7 +10,7 @@ import { Menu } from "./components/Menu";
 import { ModeButton } from "./components/ModeButton";
 import { SiteIcon } from "./components/SiteIcon";
 import { UploadForm } from "./components/UploadForm";
-import { PuzzleView, type ActiveClue, type Mode } from "./components/PuzzleView";
+import { PuzzleView, type Mode, type Presence } from "./components/PuzzleView";
 import type { Feedback } from "./feedback";
 import styles from "./App.module.css";
 
@@ -94,7 +94,12 @@ export function App() {
     navigate("/");
   }, []);
 
-  const [activeClue, setActiveClue] = useState<ActiveClue | null>(null);
+  // Live player roster reported by PuzzleView (me + WS peers). Drives
+  // the colored-dot list in the header slot, replaced by the
+  // FeedbackBar pill when feedback is active. Updates on join / leave
+  // / rename, not on every cursor move — see PuzzleView's
+  // `onPresenceChange` for the stability story.
+  const [presence, setPresence] = useState<Presence[]>([]);
   const [mode, setMode] = useState<Mode>("pen");
   // Persisted across sessions: collapse-rebuses preference. Display
   // only — server-side fills stay full. localStorage read is wrapped
@@ -119,7 +124,7 @@ export function App() {
   }, []);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const onActiveClueChange = useCallback((c: ActiveClue | null) => setActiveClue(c), []);
+  const onPresenceChange = useCallback((p: Presence[]) => setPresence(p), []);
   const onToggleMode = useCallback(
     () => setMode((m) => (m === "pen" ? "pencil" : "pen")),
     [],
@@ -194,13 +199,13 @@ export function App() {
     };
   }, [route]);
 
-  // close menu / clear active clue / reset mode when puzzle changes.
+  // close menu / clear presence / reset mode when puzzle changes.
   // Show the welcome feedback once per browser (localStorage flag);
   // returning users have learned where the menu is. When real users
   // exist, this should move from per-browser to per-user.
   useEffect(() => {
     setMenuOpen(false);
-    setActiveClue(null);
+    setPresence([]);
     setMode("pen");
     if (load.kind === "loaded") {
       let seen = false;
@@ -239,7 +244,7 @@ export function App() {
   function onNewGame() {
     setLoad({ kind: "idle" });
     setMenuOpen(false);
-    setActiveClue(null);
+    setPresence([]);
     navigate("/");
   }
 
@@ -279,7 +284,6 @@ export function App() {
                 actions={actionsRef.current}
                 triggerRef={titleRef}
                 onNewGame={onNewGame}
-                onLogout={auth.kind === "user" ? onLogout : null}
                 onClose={() => setMenuOpen(false)}
               />
             )}
@@ -288,22 +292,43 @@ export function App() {
           <div className={styles.headerSlot}>
             {feedback ? (
               <FeedbackBar feedback={feedback} onDismiss={dismissFeedback} />
+            ) : presence.length > 0 ? (
+              // Up to 4 entries — at the friend-group scale this is the
+              // realistic ceiling. If more peers join we silently truncate;
+              // the chat indicator + chat panel are the channel for
+              // "everyone in the room" when it matters.
+              <ul className={styles.presence} aria-label="Players in this board">
+                {presence.slice(0, 4).map((p) => (
+                  <li
+                    key={`${p.color}:${p.name}`}
+                    className={styles.presenceEntry}
+                    title={p.isMe ? `${p.name} (you)` : p.name}
+                  >
+                    <span
+                      className={styles.presenceDot}
+                      style={{ background: p.color }}
+                      aria-hidden="true"
+                    />
+                    <span className={styles.presenceName}>{p.name}</span>
+                  </li>
+                ))}
+              </ul>
             ) : (
-              <div className={styles.activeClue}>
-                {activeClue ? (
-                  <>
-                    <span className={styles.activeClueLabel}>
-                      {activeClue.number}
-                      {activeClue.direction === "across" ? "A" : "D"}
-                    </span>
-                    <span className={styles.activeClueText}>{activeClue.text}</span>
-                  </>
-                ) : (
-                  <span>&nbsp;</span>
-                )}
-              </div>
+              <span>&nbsp;</span>
             )}
           </div>
+          {auth.kind === "user" && (
+            <div className={styles.userBar}>
+              <span className={styles.userBarHandle}>{auth.user.handle}</span>
+              <button
+                type="button"
+                className={styles.userBarLogout}
+                onClick={onLogout}
+              >
+                Log out
+              </button>
+            </div>
+          )}
         </header>
       )}
       <main className={styles.main}>
@@ -322,7 +347,7 @@ export function App() {
             collapseRebus={collapseRebus}
             onToggleCollapseRebus={toggleCollapseRebus}
             actionsRef={actionsRef}
-            onActiveClueChange={onActiveClueChange}
+            onPresenceChange={onPresenceChange}
             onFeedback={showFeedback}
             onActivity={dismissFeedback}
             feedbackVisible={feedback != null}

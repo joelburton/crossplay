@@ -1,9 +1,10 @@
 /*
- * `.layout` is a 2-column grid (clue panels, then the board column);
- * below the narrow breakpoint we collapse to one column and hide the
- * clues entirely. The `min-height: 0` chain on `.wrap` / `.layout` /
- * `.clues` is load-bearing — it lets the board column claim the
- * remaining viewport height without overflow. Don't remove.
+ * `.layout` is a 2-column grid (board column, then clues column);
+ * below the narrow breakpoint we hide the clues column. The board
+ * column stacks the grid and the active-clue strip vertically. The
+ * `min-height: 0` chain on `.wrap` / `.layout` / `.clues` is
+ * load-bearing — it lets the columns claim the remaining viewport
+ * height without overflow. Don't remove.
  */
 
 .wrap {
@@ -29,6 +30,16 @@
   min-height: 0;
 }
 
+/* Wraps the board + active-clue strip into a single grid item, so the
+   strip sits flush under the board (not floating in extra space) and
+   the strip's height doesn't push the clues column around. */
+.boardCol {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
 .clues {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -37,52 +48,42 @@
   min-height: 0;
 }
 
-/* Active-clue strip shown below the board only on narrow viewports —
- * the side clue lists are hidden there, so this is the player's only
- * way to read the clue. Two-line clamp keeps long cryptic clues
- * legible; `min-height` reserves both lines unconditionally so the
- * board doesn't reflow as the cursor moves across short and long
- * clues. Coordinate the reserve with `NARROW_CLUE_RESERVE_PX` in
- * Board.tsx — the cell-size math subtracts that height. */
-.narrowClue {
-  display: none;
+/* Active-clue strip below the board (both wide and narrow). The
+ * three-line clamp keeps long cryptic clues legible; `min-height`
+ * reserves all three lines unconditionally so the board doesn't
+ * reflow as the cursor moves across short and long clues. Coordinate
+ * the reserve with `ACTIVE_CLUE_RESERVE_PX` in Board.tsx — the
+ * cell-size math subtracts that height. */
+.activeClue {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.3rem 0.1rem 0;
+  font-size: 1.05rem;
+  line-height: 1.35;
+  color: #111;
+  min-height: calc(3 * 1.35em + 0.3rem);
+}
+
+.activeClueLabel {
+  font-weight: 700;
+  color: #444;
+  flex-shrink: 0;
+}
+
+.activeClueText {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  min-width: 0;
 }
 
 /* Narrow viewport: keep in sync with NARROW_QUERY in Board.tsx (see index.css). */
 @media (max-width: 1024px) {
-  .layout {
-    grid-template-columns: auto;
-    /* Pack rows (board, then .narrowClue) to the top of the available
-       height. Without this, the grid stretches both rows to fill the
-       column and the clue panel floats in the middle of the
-       below-board whitespace instead of sitting just under the grid. */
-    align-content: start;
-  }
   .clues {
     display: none;
-  }
-  .narrowClue {
-    display: flex;
-    align-items: baseline;
-    gap: 0.4rem;
-    padding: 0.3rem 0.1rem 0;
-    font-size: 1.05rem;
-    line-height: 1.35;
-    color: #111;
-    min-height: calc(3 * 1.35em + 0.3rem);
-  }
-  .narrowClueLabel {
-    font-weight: 700;
-    color: #444;
-    flex-shrink: 0;
-  }
-  .narrowClueText {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 3;
-    line-clamp: 3;
-    overflow: hidden;
-    min-width: 0;
   }
 }
 

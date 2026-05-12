@@ -19,9 +19,12 @@
   min-width: 0;
 }
 
-/* Reserves a fixed-height slot for either the active clue or a feedback
-   pill. The min-height keeps the header from shifting vertically when
-   feedback appears or vanishes (see CLAUDE.md "Feedback bar"). */
+/* Reserves a fixed-height slot for either the presence list or a
+   feedback pill. The min-height keeps the header from shifting
+   vertically when feedback appears or vanishes (see CLAUDE.md
+   "Feedback bar"). The active clue itself lives below the board now,
+   in PuzzleView's `.activeClue` strip — there's exactly one place
+   for the clue to render. */
 .headerSlot {
   flex: 1;
   min-width: 0;
@@ -30,28 +33,85 @@
   align-items: center;
 }
 
-.activeClue {
+/* Live player roster: a colored dot + the player's chat name for each
+   member currently in the WS room. Local user is always first. App
+   slices to 4 entries; overflow is hidden silently (chat is the
+   channel for "everyone" when it matters). */
+.presence {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.6rem;
   min-width: 0;
-  width: 100%;
-  font-size: 1.3rem;
-  line-height: 1.7rem;
+  /* Entries flex-shrink past their natural width via ellipsis on
+     `.presenceName`. Without min-width:0 the list refuses to shrink
+     and pushes the chat indicator off-screen on narrow viewports. */
 }
 
-.activeClueLabel {
-  font-weight: 700;
-  color: #444;
+.presenceEntry {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  font-size: 0.95rem;
+  color: #222;
+}
+
+.presenceDot {
   flex-shrink: 0;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.2);
 }
 
-.activeClueText {
-  color: #111;
+.presenceName {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+}
+
+/* Top-right strip when authed: "<handle> · Log out". Inside the header
+   flex (not fixed-position) so it participates in horizontal layout
+   alongside the chat indicator. The indicator floats above via
+   `position: fixed` and gets shifted left by `--user-bar-width` so it
+   doesn't overlap. */
+.userBar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 0.4rem;
+  /* Leave room on the right for the chat indicator (which floats over
+     the header at `right: var(--chat-right, 0.5rem)`). */
+  padding-right: 3rem;
+  font-size: 0.85rem;
+  color: var(--c-text-mute, #555);
+}
+
+.userBarHandle {
+  font-weight: 600;
+  color: var(--c-text, #111);
+  max-width: 8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.userBarLogout {
+  font: inherit;
+  padding: 0.15rem 0.5rem;
+  background: transparent;
+  border: 1px solid var(--c-card-border, #ccc);
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+
+.userBarLogout:hover {
+  background: var(--c-card-bg-soft, #fafafa);
 }
 
 .titleWrap {
@@ -85,12 +145,16 @@
   .titleText {
     display: none;
   }
-  /* On narrow viewports the active clue moves below the board (see
-     PuzzleView's `.narrowClue`), so the header's clue fallback would
-     just be a redundant truncated copy. Hide it; the slot still shows
-     feedback when present and `min-height` keeps the layout stable. */
-  .activeClue {
-    display: none;
+  /* On narrow viewports the chat indicator floats flush with the
+     board's right edge (PuzzleView sets `--chat-right` from a
+     ResizeObserver), so userBar's reserved chat-indicator gap shrinks
+     to match. The handle also gets a tighter cap so it doesn't push
+     other header items off-screen on phone widths. */
+  .userBar {
+    padding-right: 2.5rem;
+  }
+  .userBarHandle {
+    max-width: 5rem;
   }
 }
 
