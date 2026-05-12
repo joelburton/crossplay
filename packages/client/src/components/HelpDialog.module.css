@@ -67,6 +67,15 @@
   margin: 0.3rem 0;
 }
 
+/* Small modifier-key legend that sits between the section header and
+   the shortcuts table. Lighter than body text so the table itself
+   stays the dominant element. */
+.legend {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--c-text-mute);
+}
+
 .shortcuts {
   width: 100%;
   border-collapse: collapse;

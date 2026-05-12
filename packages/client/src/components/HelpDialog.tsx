@@ -55,6 +55,14 @@ export function HelpDialog({ onClose }: Props) {
         <div className={styles.body}>
           <section>
             <h3>Keyboard shortcuts</h3>
+            {/* Some keyboards don't print these glyphs, and the
+                Alt/Option naming is a 40-year cross-platform
+                disagreement — spell out both. Keep it inline so it
+                sits right next to the table that uses the symbols. */}
+            <p className={styles.legend}>
+              <strong>⌥</strong> = Alt / Option key &nbsp;·&nbsp;{" "}
+              <strong>⇧</strong> = Shift key
+            </p>
             <table className={styles.shortcuts}>
               <tbody>
                 {SHORTCUTS.map(([keys, desc]) => (
