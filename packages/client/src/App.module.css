@@ -24,11 +24,14 @@
    vertically when feedback appears or vanishes (see CLAUDE.md
    "Feedback bar"). The active clue itself lives below the board now,
    in PuzzleView's `.activeClue` strip — there's exactly one place
-   for the clue to render. */
+   for the clue to render. Extra left margin separates the presence
+   list from the pen/pencil button — without it the colored dots
+   visually grouped with the P toggle. */
 .headerSlot {
   flex: 1;
   min-width: 0;
   min-height: 1.7rem;
+  margin-left: 1.25rem;
   display: flex;
   align-items: center;
 }

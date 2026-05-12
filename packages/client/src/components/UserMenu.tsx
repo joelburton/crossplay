@@ -38,6 +38,39 @@ export function UserMenu({ handle, onLogout }: Props) {
     };
   }, [open]);
 
+  // Publish the tab's actual width as a CSS variable so the chat
+  // indicator + preview can hug its left edge tightly (instead of
+  // reserving a worst-case fixed gap). Set on documentElement so any
+  // fixed-position sibling — including elements outside the React
+  // tree under .app — can read it. Cleaned up on unmount (anon route
+  // resets to 0px).
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const root = document.documentElement;
+    const update = () => {
+      const w = el.getBoundingClientRect().width;
+      // +4px of breathing room between the chat bubble and the tab.
+      root.style.setProperty("--user-menu-offset", `${w + 4}px`);
+    };
+    update();
+    // JSDOM (used by client tests) doesn't ship ResizeObserver — fall
+    // back to a one-shot measurement on mount. The handle shouldn't
+    // change size after that anyway unless the account is renamed
+    // (no UI for that today).
+    if (typeof ResizeObserver === "undefined") {
+      return () => {
+        root.style.removeProperty("--user-menu-offset");
+      };
+    }
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty("--user-menu-offset");
+    };
+  }, []);
+
   return (
     <div ref={wrapRef} className={styles.wrap}>
       <button

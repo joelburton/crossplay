@@ -49,36 +49,38 @@
   flex-shrink: 0;
 }
 
-/* Anchored just below the trigger, right-aligned to it so a long
-   handle doesn't drag the menu off-screen. Same visual treatment as
-   the title `Menu` (Panel-ish card with subtle shadow). */
+/* Anchored just below the trigger, right-aligned to it. Visual
+   treatment matches the title `Menu` so the two dropdowns feel like
+   siblings — same background, border, radius, shadow. */
 .menu {
   position: absolute;
-  top: calc(100% + 0.3rem);
+  top: calc(100% + 4px);
   right: 0;
   min-width: 8rem;
-  background: #fff;
+  background: var(--c-card-bg, #fff);
   border: 1px solid var(--c-card-border, #ccc);
-  border-radius: 0.35rem;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
-  padding: 0.3rem 0;
+  border-radius: 6px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+  padding-bottom: 0.25rem;
   z-index: 50;
 }
 
+/* Match Menu.item so menu items in both dropdowns feel identical. */
 .item {
   display: block;
   width: 100%;
   font: inherit;
+  font-size: 0.9rem;
   text-align: left;
-  padding: 0.35rem 0.8rem;
-  background: transparent;
-  border: none;
+  padding: 0.4rem 0.75rem;
+  background: none;
+  border: 0;
   cursor: pointer;
   color: var(--c-text, #111);
 }
 
 .item:hover,
 .item:focus-visible {
-  background: var(--c-card-bg-soft, #f0f6ff);
+  background: #f0f0f0;
   outline: none;
 }
