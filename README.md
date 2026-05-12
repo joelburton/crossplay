@@ -89,7 +89,8 @@ Optional env vars:
 - Multiplayer over WebSocket. Anyone with the URL is in the same game; their letters appear in real time and briefly flash in their color so you can see what your friend just did.
 - Live chat in a draggable, resizable panel. Messages prefixed with `!` show up bold and force-open the chat for everyone — useful for "going to grab lunch" announcements.
 - Notes (the description field that comes with cryptic puzzles) viewable in a draggable panel. Opening it broadcasts to everyone, so you can spot when a partner consults the notes.
-- A handful of keyboard shortcuts: `⌥R` / `⌥⇧R` reveal letter / word, `⌥C` / `⌥⇧C` check letter / word, `⌥N` notes, `⌥P` toggle pen/pencil, `/` open chat, `Esc` close chat, `Tab` / `⇧Tab` jump between clues.
+- Supports circled theme cells (the cells the NYT draws a thin ring around to mark themers); both `.puz` and `.ipuz` round-trip them.
+- A handful of keyboard shortcuts: `⌥R` / `⌥⇧R` reveal letter / word, `⌥C` / `⌥⇧C` check letter / word, `⌥N` notes, `⌥P` toggle pen/pencil, `⌥M` open the menu (arrow keys navigate, Enter chooses), `/` open chat, `Esc` close chat, `Tab` / `⇧Tab` jump between clues.
 
 ## URL options
 
@@ -97,7 +98,7 @@ Optional env vars:
 
 ## Status
 
-It's a personal project. Puzzles (library) and boards (playthroughs) live in SQLite and survive restarts. There's no auth; anyone with the URL can play and chat. Targets laptops; mobile and touch input aren't supported.
+It's a personal project. Puzzles (library) and boards (playthroughs) live in SQLite and survive restarts. There's no auth; anyone with the URL can play and chat. Targets laptops first; phones and tablets with a hardware keyboard (iPad landscape, iPhone with a Bluetooth keyboard, etc.) are a supported "narrow mode" — the side clue lists collapse and the active clue moves to a 3-line strip below the grid. Touch-only mobile (no keyboard) is explicitly out of scope.
 
 For a high-level walkthrough of how it's put together, see [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
