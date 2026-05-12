@@ -95,6 +95,37 @@ export function App() {
     navigate("/");
   }, []);
 
+  // Backtick stands in for Escape on mobile / tablet hardware keyboards
+  // that lack an Esc key (a real complaint from iPad-with-keyboard
+  // testing). Capture-phase so we beat any element-level handler;
+  // re-dispatch as a synthetic Escape on the focused element so every
+  // existing Esc handler keeps working unchanged. The cost is that
+  // `` ` `` can never be typed into a focused input — there's exactly
+  // one input that accepts text where that matters (chat), and `
+  // is rare enough in casual chat to be a fair trade for the
+  // accessibility win.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!e.isTrusted) return; // skip our own re-dispatch
+      if (e.key !== "`") return;
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      if (e.isComposing) return; // IME mid-composition
+      e.preventDefault();
+      e.stopPropagation();
+      const target = (document.activeElement as HTMLElement | null) ?? document.body;
+      target.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Escape",
+          code: "Escape",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    }
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+
   // PuzzleView owns the chat + presence state and renders the chat
   // indicator + presence-or-preview content via React portals into
   // these header slots. App keeps the slots so it can collapse them

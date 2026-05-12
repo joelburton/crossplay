@@ -16,7 +16,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ["|", "Cycle right-edge mark: break → hyphen → none"],
   ["_", "Cycle bottom-edge mark: break → hyphen → none"],
   ["/", "Open chat (or focus its input if already open)"],
-  ["Esc", "Close chat"],
+  ["Esc (or `)", "Close chat / dialog"],
   ["⌥M", "Open the menu (arrows to navigate, Enter to choose)"],
   ["⌥P", "Toggle pen / pencil"],
   ["⌥N", "Show puzzle notes"],
