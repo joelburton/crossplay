@@ -379,6 +379,49 @@ function checkAt(entry: StoredBoard, row: number, col: number): CellChange | nul
   return null;
 }
 
+/**
+ * True iff every fillable cell on the board has a fill that matches
+ * a solution under `fillMatchesSolution` — i.e. the puzzle is solved.
+ *
+ * Single pass over the grid; rebus first-letter rule applies (typing
+ * "H" for a HEART rebus counts). Pencil cells count when their letter
+ * happens to be right — pencil is a confidence marker, not a
+ * correctness one. Given cells always match their own author letter,
+ * so they pass without special-casing.
+ *
+ * Exported for direct unit testing.
+ */
+export function isPuzzleSolved(entry: StoredBoard): boolean {
+  const { snapshot } = entry.state;
+  const sol = entry.solution;
+  for (let r = 0; r < snapshot.cells.length; r++) {
+    const row = snapshot.cells[r]!;
+    for (let c = 0; c < row.length; c++) {
+      const cell = row[c]!;
+      if (cell.kind !== "cell") continue;
+      if (cell.fill == null) return false;
+      if (!fillMatchesSolution(cell.fill, sol[r]?.[c])) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Recompute the board's solved state and broadcast `puzzleSolved` on a
+ * false → true transition. Silent on the reverse (just resets the
+ * flag). Cheap enough to call after every successful mutation
+ * (~O(W·H), trivial at puzzle sizes).
+ */
+function checkAndBroadcastSolved(entry: StoredBoard): void {
+  const now = isPuzzleSolved(entry);
+  if (now && !entry.solved) {
+    entry.solved = true;
+    broadcast(entry, { type: "puzzleSolved" });
+  } else if (!now && entry.solved) {
+    entry.solved = false;
+  }
+}
+
 /** True if `fill` is an acceptable answer for `sols`. `sols` is the
  *  per-cell answer array: length 1 for normal cells, length > 1 for
  *  Schrödinger cells. Each candidate accepts both an exact match and
@@ -679,13 +722,17 @@ function handleFill({ db, entry }: DispatchContext, msg: Extract<ClientMessage, 
   if (change) {
     broadcastChanges(entry, [change]);
     markDirty(db, entry.id);
+    checkAndBroadcastSolved(entry);
   }
 }
 
 function handleReveal({ db, entry }: DispatchContext, msg: Extract<ClientMessage, { type: "reveal" }>): void {
   const changes = applyReveal(entry, msg);
   broadcastChanges(entry, changes);
-  if (changes.length > 0) markDirty(db, entry.id);
+  if (changes.length > 0) {
+    markDirty(db, entry.id);
+    checkAndBroadcastSolved(entry);
+  }
 }
 
 function handleCheck({ db, entry }: DispatchContext, msg: Extract<ClientMessage, { type: "check" }>): void {
@@ -707,7 +754,13 @@ function handleCheck({ db, entry }: DispatchContext, msg: Extract<ClientMessage,
 function handleClear({ db, entry }: DispatchContext): void {
   const changes = applyClear(entry);
   broadcastChanges(entry, changes);
-  if (changes.length > 0) markDirty(db, entry.id);
+  if (changes.length > 0) {
+    markDirty(db, entry.id);
+    // Clear wipes fills, so the board is no longer solved. Update
+    // the in-memory flag so a re-solve later fires the celebration
+    // again. No broadcast needed for the !solved direction.
+    entry.solved = false;
+  }
 }
 
 function handleMark({ db, entry }: DispatchContext, msg: Extract<ClientMessage, { type: "mark" }>): void {

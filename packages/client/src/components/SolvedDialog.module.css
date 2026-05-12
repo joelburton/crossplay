@@ -1,0 +1,107 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  /* Above every other floating layer (chat panel, menu, note dialog,
+     help dialog). Hard-coded — the existing --z-* tokens stop at
+     z-help-dialog: 250, so we sit above that. */
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card {
+  position: relative;
+  background: #fff;
+  border-radius: 0.8rem;
+  padding: 2rem 2rem 1.5rem;
+  min-width: 280px;
+  max-width: min(90vw, 420px);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.35);
+  text-align: center;
+  /* Subtle scale-up on mount so the box doesn't just appear; pairs
+     with the confetti pieces dropping in. */
+  animation: cardIn 0.35s cubic-bezier(0.18, 1.15, 0.45, 1.0) both;
+}
+
+@keyframes cardIn {
+  from { transform: scale(0.85); opacity: 0; }
+  to   { transform: scale(1);     opacity: 1; }
+}
+
+/* Confetti row above the title. Each emoji bounces in with a small
+   stagger (animationDelay set inline) plus a continuous wiggle. */
+.confetti {
+  display: flex;
+  justify-content: center;
+  gap: 0.3rem;
+  font-size: 2.4rem;
+  line-height: 1;
+  margin-bottom: 0.4rem;
+  /* Keeps tall emoji descenders from cropping the card padding. */
+  height: 2.6rem;
+}
+
+.piece {
+  display: inline-block;
+  animation:
+    pieceIn 0.5s cubic-bezier(0.18, 1.4, 0.5, 1.0) both,
+    pieceWiggle 2.4s ease-in-out 0.6s infinite;
+}
+
+@keyframes pieceIn {
+  0%   { transform: translateY(-1.6em) scale(0.4) rotate(-30deg); opacity: 0; }
+  60%  { opacity: 1; }
+  100% { transform: translateY(0) scale(1) rotate(0); opacity: 1; }
+}
+
+@keyframes pieceWiggle {
+  0%, 100% { transform: translateY(0) rotate(-6deg); }
+  50%      { transform: translateY(-0.15em) rotate(6deg); }
+}
+
+.title {
+  margin: 0.2rem 0 0.3rem;
+  font-size: 1.5rem;
+  color: #111;
+}
+
+.body {
+  margin: 0 0 1.4rem;
+  color: var(--c-text-mute, #555);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.button {
+  font: inherit;
+  padding: 0.55rem 1rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--c-card-border, #ccc);
+  background: #fafafa;
+  cursor: pointer;
+}
+
+.button:hover {
+  background: #f0f0f0;
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--c-cursor, #ffd24d);
+  outline-offset: 2px;
+}
+
+.button.primary {
+  background: var(--c-cursor, #ffd24d);
+  border-color: var(--c-cursor-strong, #e6b833);
+  font-weight: 600;
+}
+
+.button.primary:hover {
+  background: var(--c-cursor-strong, #e6b833);
+}

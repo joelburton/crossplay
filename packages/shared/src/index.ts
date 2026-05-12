@@ -141,6 +141,12 @@ export type ClientMessage =
 
 export type ServerMessage =
   | { type: "snapshot"; snapshot: GridSnapshot }
+  /** Broadcast on the false → true transition of "every fillable cell
+   *  matches a solution." Drives the celebratory modal on the client.
+   *  Server-side state is in-memory only — players connecting to an
+   *  already-solved board don't get a fresh broadcast (the modal is
+   *  the *moment of solving*, not "this is a solved puzzle"). */
+  | { type: "puzzleSolved" }
   | {
       type: "cellUpdate";
       row: number;

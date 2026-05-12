@@ -26,6 +26,7 @@ import { ClueList } from "./ClueList";
 import { HelpDialog } from "./HelpDialog";
 import { NoteDialog } from "./NoteDialog";
 import { NumberJumpDialog } from "./NumberJumpDialog";
+import { SolvedDialog } from "./SolvedDialog";
 import styles from "./PuzzleView.module.css";
 
 export type ActiveClue = {
@@ -51,6 +52,9 @@ type Props = {
    *  shortcut so keyboard-only players can reach the menu without a
    *  pointer. */
   onToggleMenu?: () => void;
+  /** Called when the user picks "Play a new game" in the celebratory
+   *  solved-puzzle dialog. App routes home. */
+  onNewGame?: () => void;
 };
 
 /** Outbound cursor-presence throttle window, in ms. Sends fire on the
@@ -174,6 +178,7 @@ export function PuzzleView({
   onActivity,
   feedbackVisible,
   onToggleMenu,
+  onNewGame,
 }: Props) {
   const { meta } = puzzle;
   const [snapshot, setSnapshot] = useState<GridSnapshot>(puzzle.snapshot);
@@ -200,6 +205,7 @@ export function PuzzleView({
   const [rebusOpen, setRebusOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [numberJumpOpen, setNumberJumpOpen] = useState(false);
+  const [solvedOpen, setSolvedOpen] = useState(false);
   // SPACE on a multi-char fill shows a read-only zoom-peek of the
   // full string (useful when collapse-rebuses is on, or when the
   // shrunk rebus is hard to read at small cell sizes). Any other
@@ -218,6 +224,8 @@ export function PuzzleView({
   helpOpenRef.current = helpOpen;
   const numberJumpOpenRef = useRef(numberJumpOpen);
   numberJumpOpenRef.current = numberJumpOpen;
+  const solvedOpenRef = useRef(solvedOpen);
+  solvedOpenRef.current = solvedOpen;
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
@@ -321,6 +329,9 @@ export function PuzzleView({
       },
       [],
     ),
+    onPuzzleSolved: useCallback(() => {
+      setSolvedOpen(true);
+    }, []),
     onCursorLeft: useCallback((color: string) => {
       setRemoteCursors((prev) => {
         if (!prev.has(color)) return prev;
@@ -564,6 +575,10 @@ export function PuzzleView({
       if (helpOpenRef.current) return;
       // Same story for the number-jump popup: it owns its own input.
       if (numberJumpOpenRef.current) return;
+      // Solved dialog owns the moment — its own Esc handler closes it,
+      // and the Enter on its primary button reaches the focused
+      // element via React, not our window listener.
+      if (solvedOpenRef.current) return;
       // When the title menu is open, its buttons own keyboard focus
       // and the Menu's own keydown listener handles ArrowUp/Down/
       // Home/End navigation. We must stay out of the way — otherwise
@@ -1029,6 +1044,15 @@ export function PuzzleView({
             return true;
           }}
           onClose={() => setNumberJumpOpen(false)}
+        />
+      )}
+      {solvedOpen && (
+        <SolvedDialog
+          onClose={() => setSolvedOpen(false)}
+          onNewGame={() => {
+            setSolvedOpen(false);
+            onNewGame?.();
+          }}
         />
       )}
     </div>

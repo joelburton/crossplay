@@ -25,6 +25,7 @@ type Handlers = {
   onFeedback?: (feedback: Feedback) => void;
   onCursorMoved?: (row: number, col: number, color: string, name: string) => void;
   onCursorLeft?: (color: string) => void;
+  onPuzzleSolved?: () => void;
   onOpen?: () => void;
 };
 
@@ -146,6 +147,8 @@ export function useBoardSocket(boardId: string, handlers: Handlers) {
           handlersRef.current.onCursorMoved?.(msg.row, msg.col, msg.color, msg.name);
         } else if (msg.type === "cursorLeft") {
           handlersRef.current.onCursorLeft?.(msg.color);
+        } else if (msg.type === "puzzleSolved") {
+          handlersRef.current.onPuzzleSolved?.();
         }
       });
     }

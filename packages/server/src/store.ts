@@ -58,6 +58,13 @@ export type StoredBoard = {
   cursorBySocket: Map<WebSocket, { color: string; name: string }>;
   // Per-room counter feeding `feedback.id` (see ws.ts `nextFeedbackId`).
   feedbackCounter: number;
+  /** In-memory: is the board currently in a "solved" state (every
+   *  fillable cell matches a solution under `fillMatchesSolution`)?
+   *  ws.ts watches the false → true transition after each successful
+   *  fill / reveal and broadcasts `puzzleSolved` on that edge. Not
+   *  persisted — players reconnecting to an already-solved board
+   *  don't get a stale celebration. */
+  solved: boolean;
   /** True when the entry has unsaved snapshot/chat mutations. The flush
    *  scheduler reads and clears this. */
   dirty: boolean;
@@ -91,6 +98,11 @@ export function getOrLoadBoard(db: DatabaseSync, boardId: string): StoredBoard |
     recentHellos: new Map(),
     cursorBySocket: new Map(),
     feedbackCounter: 0,
+    // Start at `false`; ws.ts updates after each fill/reveal. If the
+    // board lazy-loads in an already-solved state, the first mutation
+    // (which usually breaks it) will see "still not solved" and
+    // re-celebration won't fire spuriously on reconnect.
+    solved: false,
     dirty: false,
   };
   cache.set(boardId, entry);

@@ -253,6 +253,7 @@ export function App() {
             onActivity={dismissFeedback}
             feedbackVisible={feedback != null}
             onToggleMenu={() => setMenuOpen((o) => !o)}
+            onNewGame={onNewGame}
           />
         )}
         {load.kind === "idle" && <HomePage onUploaded={onUploaded} />}

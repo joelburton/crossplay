@@ -9,6 +9,7 @@ import {
   applyReveal,
   checkScopeHasPencil,
   fillMatchesSolution,
+  isPuzzleSolved,
   parseMessage,
   pruneRecentHellos,
   sanitizeName,
@@ -73,6 +74,7 @@ function entry(): StoredBoard {
     recentHellos: new Map(),
     cursorBySocket: new Map(),
     feedbackCounter: 0,
+    solved: false,
     dirty: false,
   };
 }
@@ -786,6 +788,74 @@ describe("applyMark", () => {
     const b = e.state.snapshot.cells[0]![1]!;
     if (a.kind === "cell") expect(a.markRight).toBeUndefined();
     if (b.kind === "cell") expect(b.markBottom).toBeUndefined();
+  });
+});
+
+describe("isPuzzleSolved", () => {
+  function fillAll(e: ReturnType<typeof entry>, letters: string[][]) {
+    for (let r = 0; r < letters.length; r++) {
+      for (let c = 0; c < letters[r]!.length; c++) {
+        const cell = e.state.snapshot.cells[r]![c]!;
+        if (cell.kind !== "cell") continue;
+        cell.fill = letters[r]![c]!;
+      }
+    }
+  }
+
+  it("is false on an empty grid", () => {
+    expect(isPuzzleSolved(entry())).toBe(false);
+  });
+
+  it("is true when every open cell matches the solution", () => {
+    const e = entry();
+    fillAll(e, [
+      ["A", "B", "", "C", "D"],
+      ["E", "F", "G", "H", "I"],
+      ["", "", "J", "", ""],
+    ]);
+    expect(isPuzzleSolved(e)).toBe(true);
+  });
+
+  it("is false if any open cell is wrong", () => {
+    const e = entry();
+    fillAll(e, [
+      ["A", "B", "", "C", "D"],
+      ["E", "F", "G", "H", "I"],
+      ["", "", "X", "", ""], // J → X
+    ]);
+    expect(isPuzzleSolved(e)).toBe(false);
+  });
+
+  it("is false if any open cell is empty", () => {
+    const e = entry();
+    fillAll(e, [
+      ["A", "B", "", "C", "D"],
+      ["E", "F", "G", "H", "I"],
+      ["", "", "", "", ""], // J unfilled
+    ]);
+    expect(isPuzzleSolved(e)).toBe(false);
+  });
+
+  it("treats the rebus first-letter rule as solved", () => {
+    const e = entry();
+    e.solution[1]![2] = ["GROW"]; // multi-letter sol at (1,2)
+    fillAll(e, [
+      ["A", "B", "", "C", "D"],
+      ["E", "F", "G", "H", "I"], // typed just "G" against "GROW"
+      ["", "", "J", "", ""],
+    ]);
+    expect(isPuzzleSolved(e)).toBe(true);
+  });
+
+  it("treats any Schrödinger alternate as solved", () => {
+    const e = entry();
+    e.solution[0]![0] = ["A", "E"];
+    fillAll(e, [
+      ["E", "B", "", "C", "D"], // alternate at (0,0)
+      ["E", "F", "G", "H", "I"],
+      ["", "", "J", "", ""],
+    ]);
+    expect(isPuzzleSolved(e)).toBe(true);
   });
 });
 

@@ -66,6 +66,7 @@ function buildBoard(id: string): StoredBoard {
     recentHellos: new Map(),
     cursorBySocket: new Map(),
     feedbackCounter: 0,
+    solved: false,
     dirty: false,
   };
 }
