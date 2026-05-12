@@ -343,10 +343,12 @@ export function PuzzleView({
     ),
     onCursorMoved: useCallback(
       (row: number, col: number, color: string, name: string) => {
-        // Skip our own cursor — we already render the local one. (The
-        // server doesn't echo, but be defensive against future fan-out
-        // changes.)
-        if (color === identityRef.current.color) return;
+        // No client-side identity filter: the server already doesn't
+        // echo cursorMoved to the sender. Filtering by `color === me`
+        // was actively harmful — two browsers with the same chat name
+        // (e.g. one account in two tabs for multiplayer testing, or
+        // an honest name collision) hash to the same palette color
+        // and would silently swallow each other's presence.
         setRemoteCursors((prev) => {
           const next = new Map(prev);
           next.set(color, { row, col, name });
