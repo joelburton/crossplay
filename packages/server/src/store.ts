@@ -52,10 +52,13 @@ export type StoredBoard = {
   // name -> last hello timestamp; used to debounce "Alice joined" on
   // reconnect blips (a hello within the window is not re-announced).
   recentHellos: Map<string, number>;
-  // Per-socket: the player's color + name as last reported by a
-  // `cursorMoved` from that socket. Used on socket close to broadcast a
-  // `cursorLeft` so peers can drop the cursor frame. Not persisted.
-  cursorBySocket: Map<WebSocket, { color: string; name: string }>;
+  // Per-socket: the player's color + name + last cursor position as
+  // reported by the most recent `cursorMoved` from that socket. Used
+  // on socket close to broadcast a `cursorLeft` (color/name) AND on
+  // new socket open to replay each existing peer's presence to the
+  // newcomer (so latecomers see still-cursor peers without waiting
+  // for those peers to move). Not persisted.
+  cursorBySocket: Map<WebSocket, { color: string; name: string; row: number; col: number }>;
   // Per-room counter feeding `feedback.id` (see ws.ts `nextFeedbackId`).
   feedbackCounter: number;
   /** In-memory: is the board currently in a "solved" state (every

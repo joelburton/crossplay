@@ -301,6 +301,39 @@ describe("ws integration", () => {
     await Promise.all([waitClose(a), waitClose(b)]);
   });
 
+  it("replays existing peers' cursors to a newly-connected socket", async () => {
+    // Fresh room so cursorBySocket starts empty.
+    const id = "int-replay";
+    _putBoardForTest(buildBoard(id));
+
+    // Alice connects and announces a cursor; nobody else is there yet.
+    const alice = open(port, id);
+    await next(alice, "snapshot");
+    send(alice, {
+      type: "cursorMoved",
+      row: 1,
+      col: 2,
+      color: "#1f77b4",
+      name: "Alice",
+    });
+    // Give the server a moment to record cursorBySocket.
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Bob connects later. He should receive Alice's cursor as a replay
+    // right after the snapshot — without Alice having to move again.
+    const bob = open(port, id);
+    await next(bob, "snapshot");
+    const replay = await next(bob, "cursorMoved");
+    expect(replay.color).toBe("#1f77b4");
+    expect(replay.name).toBe("Alice");
+    expect(replay.row).toBe(1);
+    expect(replay.col).toBe(2);
+
+    alice.ws.close();
+    bob.ws.close();
+    await Promise.all([waitClose(alice), waitClose(bob)]);
+  });
+
   it("broadcasts notesShown to all clients", async () => {
     const a = open(port, puzzleId);
     const b = open(port, puzzleId);

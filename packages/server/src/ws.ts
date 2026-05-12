@@ -786,10 +786,17 @@ function handleCursorMoved(
   { entry, socket }: DispatchContext,
   msg: Extract<ClientMessage, { type: "cursorMoved" }>,
 ): void {
-  // Remember this socket's color/name so we can send a `cursorLeft` on
-  // disconnect. Last write wins (a player can change their name in
-  // chat; the latest cursorMoved reflects that).
-  entry.cursorBySocket.set(socket, { color: msg.color, name: msg.name });
+  // Remember this socket's color/name + position so we can send a
+  // `cursorLeft` on disconnect AND replay it to any future joiner (so
+  // a still-cursor peer is still visible in the new socket's presence
+  // map). Last write wins on rename — chat-side name changes flow
+  // through the latest cursorMoved.
+  entry.cursorBySocket.set(socket, {
+    color: msg.color,
+    name: msg.name,
+    row: msg.row,
+    col: msg.col,
+  });
   // Broadcast to peers only — sender doesn't need to see its own
   // cursor (it owns the local one).
   const payload = JSON.stringify({
@@ -898,6 +905,22 @@ export function registerWsRoutes(
 
       entry.sockets.add(socket);
       send(socket, { type: "snapshot", snapshot: entry.state.snapshot });
+      // Replay each existing peer's last-known cursor to the new
+      // socket. Without this, a peer whose cursor hasn't moved since
+      // they connected is invisible to the joiner — their original
+      // cursorMoved was broadcast before this socket joined the room
+      // and isn't kept around as a stream. The replay populates the
+      // joiner's remoteCursors / presence map immediately.
+      for (const [peer, cur] of entry.cursorBySocket) {
+        if (peer === socket) continue; // new socket isn't in the map yet, but defensive
+        send(socket, {
+          type: "cursorMoved",
+          row: cur.row,
+          col: cur.col,
+          color: cur.color,
+          name: cur.name,
+        });
+      }
       const openedAt = Date.now();
       req.log.info({ boardId: id, peers: entry.sockets.size }, "ws open");
 
