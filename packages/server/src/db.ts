@@ -204,6 +204,41 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    // Phase 3 of the users feature: board membership as an M2M
+    // (`boards_users`). A user sees a board in their "My Games" iff
+    // they have a row in this table; sharing = inserting a row;
+    // "remove from My Games" = deleting your own row; if the last row
+    // for a board is removed, the board itself is deleted (handled at
+    // the route layer so the WS / cache cleanup runs).
+    //
+    // The "at most one board per library puzzle per user" invariant
+    // lives in application code: findOrCreateBoard and the share route
+    // both SELECT-then-INSERT under a single chokepoint. The puzzle id
+    // for that check comes from `boards.puzzle_id` via a join — we
+    // intentionally don't denormalize it here. Anon-era boards
+    // (owner_id IS NULL) intentionally get NO membership row, so
+    // they're URL-accessible but invisible to every user's My Games.
+    version: 6,
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE boards_users (
+          board_id    TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+          user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_at  TEXT NOT NULL,
+          PRIMARY KEY (board_id, user_id)
+        );
+        CREATE INDEX boards_users_user_id ON boards_users (user_id);
+      `);
+      const now = new Date().toISOString();
+      db.prepare(
+        `INSERT INTO boards_users (board_id, user_id, created_at)
+         SELECT id, owner_id, ?
+           FROM boards
+          WHERE owner_id IS NOT NULL`,
+      ).run(now);
+    },
+  },
 ];
 
 export function openDb(path: string = process.env.DB_PATH ?? DEFAULT_DB_PATH): DatabaseSync {

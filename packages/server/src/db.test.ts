@@ -285,6 +285,114 @@ describe("db", () => {
     });
   });
 
+  it("v6 creates boards_users with cascade FKs and a composite PK", () => {
+    const db = openDb(":memory:");
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+      .all() as Array<{ name: string }>;
+    expect(tables.map((t) => t.name)).toContain("boards_users");
+
+    type ColInfo = { name: string; type: string; notnull: number; pk: number };
+    const cols = db.prepare("PRAGMA table_info(boards_users)").all() as ColInfo[];
+    expect(cols.map((c) => c.name).sort()).toEqual(["board_id", "created_at", "user_id"]);
+    // Composite PK: board_id + user_id are both pk-flagged.
+    expect(cols.find((c) => c.name === "board_id")!.pk).toBeGreaterThan(0);
+    expect(cols.find((c) => c.name === "user_id")!.pk).toBeGreaterThan(0);
+
+    // Seed a user + a board to exercise the cascades.
+    db.prepare(
+      "INSERT INTO users (handle, handle_lower, password_hash, created_at) VALUES (?, ?, ?, ?)",
+    ).run("Moth", "moth", "x", "2026-05-12");
+    const userId = (
+      db.prepare("SELECT id FROM users WHERE handle_lower = ?").get("moth") as { id: number }
+    ).id;
+    db.prepare(
+      "INSERT INTO boards (id, puzzle_id, ipuz, title, snapshot, owner_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    ).run("b1", "p1", "{}", "T", "{}", userId, "2026-05-12", "2026-05-12");
+    db.prepare(
+      "INSERT INTO boards_users (board_id, user_id, created_at) VALUES (?, ?, ?)",
+    ).run("b1", userId, "2026-05-12");
+
+    // PK enforces one row per (board, user).
+    expect(() =>
+      db
+        .prepare(
+          "INSERT INTO boards_users (board_id, user_id, created_at) VALUES (?, ?, ?)",
+        )
+        .run("b1", userId, "2026-05-12"),
+    ).toThrow();
+
+    // Board delete cascades the join row.
+    db.prepare("DELETE FROM boards WHERE id = ?").run("b1");
+    expect(
+      db.prepare("SELECT COUNT(*) AS c FROM boards_users WHERE board_id = ?").get("b1"),
+    ).toEqual({ c: 0 });
+
+    // User delete cascades all their join rows. (boards.owner_id goes
+    // to NULL via the v5 FK; verified elsewhere.)
+    db.prepare(
+      "INSERT INTO boards (id, puzzle_id, ipuz, title, snapshot, owner_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    ).run("b2", "p2", "{}", "T", "{}", userId, "2026-05-12", "2026-05-12");
+    db.prepare(
+      "INSERT INTO boards_users (board_id, user_id, created_at) VALUES (?, ?, ?)",
+    ).run("b2", userId, "2026-05-12");
+    db.prepare("DELETE FROM users WHERE id = ?").run(userId);
+    const remaining = db
+      .prepare("SELECT COUNT(*) AS c FROM boards_users WHERE user_id = ?")
+      .get(userId) as { c: number };
+    expect(remaining.c).toBe(0);
+
+    db.close();
+  });
+
+  it("v6 backfill: existing owner_id rows get a boards_users entry; anon-era rows don't", async () => {
+    const realV6 = migrations.find((m) => m.version === 6);
+    expect(realV6).toBeDefined();
+    const upToV5 = migrations.filter((m) => m.version <= 5);
+
+    withMigrations(upToV5, () => {
+      const db = openDb(":memory:");
+      expect(userVersion(db)).toBe(5);
+
+      // Two users, three boards: one owned by each user against the
+      // same library puzzle, and one anon-era board with no owner_id.
+      db.prepare(
+        "INSERT INTO users (handle, handle_lower, password_hash, created_at) VALUES (?, ?, ?, ?)",
+      ).run("Alice", "alice", "x", "2026-05-12");
+      db.prepare(
+        "INSERT INTO users (handle, handle_lower, password_hash, created_at) VALUES (?, ?, ?, ?)",
+      ).run("Bob", "bob", "x", "2026-05-12");
+      const alice = (
+        db.prepare("SELECT id FROM users WHERE handle_lower = ?").get("alice") as { id: number }
+      ).id;
+      const bob = (
+        db.prepare("SELECT id FROM users WHERE handle_lower = ?").get("bob") as { id: number }
+      ).id;
+
+      const ins = db.prepare(
+        "INSERT INTO boards (id, puzzle_id, ipuz, title, snapshot, owner_id, created_at, updated_at) VALUES (?, ?, ?, 'T', '{}', ?, ?, ?)",
+      );
+      ins.run("ba", "p1", "{}", alice, "2026-05-12", "2026-05-12");
+      ins.run("bb", "p1", "{}", bob, "2026-05-12", "2026-05-12");
+      ins.run("bz", null, "{}", null, "2026-05-12", "2026-05-12");
+
+      db.exec("BEGIN");
+      realV6!.up(db);
+      db.exec("PRAGMA user_version = 6");
+      db.exec("COMMIT");
+
+      const rows = db
+        .prepare("SELECT board_id, user_id FROM boards_users ORDER BY board_id")
+        .all() as Array<{ board_id: string; user_id: number }>;
+      expect(rows).toEqual([
+        { board_id: "ba", user_id: alice },
+        { board_id: "bb", user_id: bob },
+      ]);
+      // Anon-era board is intentionally NOT in the join.
+      db.close();
+    });
+  });
+
   it("rolls back a failing migration and leaves user_version untouched", () => {
     withMigrations(
       [
