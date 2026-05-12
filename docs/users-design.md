@@ -149,9 +149,14 @@ can add when sharing is otherwise working.
 
 ## Logged-in play
 
-- Click library puzzle P1: dedup. If the user already has a board for
-  P1, navigate there. Otherwise create a new board with
-  `owner_id = me`, member = me.
+- Click library puzzle P1: soft dedup. If the user is already a
+  member of any P1 board, navigate to the most-recently-updated one.
+  Otherwise create a new board with `owner_id = me`, member = me.
+- The dedup is intentionally a default, not an invariant — a user
+  *can* have multiple boards for the same puzzle (e.g. "the solo
+  one I started, and the one I'm playing with Moth"). A future
+  FE affordance ("you already have a board for this — keep it, or
+  start fresh?") makes the second-board case a deliberate click.
 - Upload a file: creates a new board (no `puzzle_id`), member = me.
 - Boards are still URL-accessible to anyone; sharing only affects
   discoverability on the home page.
@@ -183,6 +188,11 @@ can add when sharing is otherwise working.
   /api/boards/:id` route uses.)
 - Sharing is idempotent: re-sharing with an existing member is a
   no-op. Sharing with yourself is a no-op.
+- **No share-collision handling.** A user may end up a member of two
+  boards for the same puzzle (e.g. their own solo board plus one
+  Joel shared with them). That's allowed. The home-page list sorts
+  by `updated_at` so the active one rises naturally; co-player
+  handles distinguish the rows visually.
 
 ## "Your games" row contents
 
@@ -204,35 +214,21 @@ opens her home page, sees the cryptic she's a member of with a live
 badge, clicks. For v1, "live as of when you loaded the home page" is
 enough — adding real-time updates is a later concern.
 
-## The two uniqueness invariants
+## Uniqueness
 
-1. **`UNIQUE(boards_users.user_id, board_id)`** — standard M2M
-   uniqueness. Trivial; comes free with the schema.
-2. **"At most one board per library puzzle per user"** — enforced by
-   denormalizing `puzzle_id` into `boards_users` and adding a partial
-   unique index `WHERE puzzle_id IS NOT NULL`. (Uploads have null
-   puzzle_id, so multiple uploads of the same file create separate
-   boards.)
+The schema has exactly one uniqueness rule: the composite primary key
+`(boards_users.board_id, user_id)` — i.e. a user is a member of a
+board at most once. That's it.
 
-This is what makes "click library puzzle P1" idempotent — it lands
-the user on their existing board if they have one.
-
-## Share-collision handling
-
-If Joel formally shares his B1 (puzzle P1) with Moth, and Moth already
-has a board B2 for P1:
-
-- **Solo case** (Moth was the only member of B2): "Joining this share
-  will replace your existing P1 board. The old one will be deleted.
-  Continue?" → drop `(moth, B2)`; cascade deletes B2; insert
-  `(moth, B1)`.
-- **Multi-user case** (Moth was playing B2 with Sue): "You're already
-  playing P1 with sue. Joining this share will remove you from that
-  board (sue can keep playing it). Continue?" → drop `(moth, B2)`;
-  insert `(moth, B1)`. B2 lives on with Sue.
-
-Both end in the same mechanical operation. The wording difference is
-worth it because the emotional weight is different.
+Earlier drafts of this doc also enforced "at most one board per
+library puzzle per user" via a denormalized `puzzle_id` column and a
+partial unique index, with a share-collision dance to handle Moth
+already having a P1 board when Joel shared his with her. That's been
+dropped: multiple boards per (user, puzzle) are allowed. The library
+click defaults to the most-recently-updated existing board (soft
+dedup), and a future FE affordance ("start fresh?") makes a second
+board on a deliberate click. The share route becomes a plain
+idempotent insert with no collision branch.
 
 ## What URL-followers see
 
@@ -324,20 +320,15 @@ them via SQL.
 ```
 board_id        TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE
 user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE
-puzzle_id       TEXT                                  -- denormalized from boards.puzzle_id, nullable for uploads
 created_at      TEXT NOT NULL
 PRIMARY KEY (board_id, user_id)
 ```
 
-```
-CREATE UNIQUE INDEX boards_users_user_puzzle
-  ON boards_users(user_id, puzzle_id)
-  WHERE puzzle_id IS NOT NULL;
-```
-
-The partial unique index enforces "at most one board per library
-puzzle per user." Uploads (`puzzle_id IS NULL`) are exempt — multiple
-uploads of the same file are independent boards.
+Indexed on `user_id` for the per-user list query. No denormalized
+`puzzle_id`, no partial unique index — the "click a library puzzle"
+flow does a soft dedup against `boards.puzzle_id` via the join (see
+the Uniqueness section), and multiple boards per (user, puzzle) are
+allowed by design.
 
 ### Cascade behaviors
 
@@ -416,11 +407,11 @@ worth it at this scale; scrypt is fine.
   deletes the board (cascades the rest, force-closes WS sockets,
   evicts cache).
 - `POST /api/boards/:id/share` — `{ handle }`. Resolves handle
-  (case-insensitive), validates the user exists and isn't already a
-  member, inserts the join row. Idempotent (already-member is OK).
-  Sharing-with-self is a no-op. Returns the share status; client
-  surfaces the collision-warning copy if needed (the server returns
-  enough info for the client to decide).
+  (case-insensitive), validates the user exists, inserts the join
+  row. Idempotent: already-a-member and share-with-self are both
+  silent no-ops. No collision handling — the new member is now a
+  member of *this* board; whatever other boards they may already
+  have for the same puzzle stay theirs.
 
 ### Admin (future)
 
@@ -448,7 +439,7 @@ null. A small decorator keeps the route declarations clean.
 - `LoginForm.tsx`, `RegisterForm.tsx` — submit to the auth routes,
   redirect on success (honoring `?return=`).
 - `ShareDialog.tsx` — opens from the board menu, takes a handle,
-  surfaces share-collision warnings.
+  reports success / unknown-handle / already-a-member.
 
 ### Modified components
 
@@ -484,14 +475,15 @@ Each phase ships independently.
 - Home page's "My Games" reflects the filter.
 
 **Phase 3 — Sharing** (the M2M layer)
-- Add `boards_users` table with denormalized `puzzle_id` + partial
-  unique index.
+- Add `boards_users` table (composite PK only — no denormalized
+  puzzle_id, no partial unique index).
 - Owner is auto-inserted into the join on board creation.
-- `POST /api/boards/:id/share`.
+- `POST /api/boards/:id/share` (idempotent, no collision branch).
 - `DELETE /api/boards/:id` rewired to "leave + cascade-on-empty."
-- Library-click and find-or-create dedup against the join.
+- Library-click does a soft dedup against the join: returns the
+  most-recently-updated existing board, or creates a new one.
 - Boards-list returns `members` + `isLive`.
-- `ShareDialog` UI; share-collision warnings.
+- `ShareDialog` UI.
 
 **Phase 4 — Ergonomics** (after the core works)
 - "Play another with X" button on `SolvedDialog`.

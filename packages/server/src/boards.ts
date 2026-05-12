@@ -5,10 +5,14 @@
  * temporary in-memory cache.
  *
  * Two main entry points:
- *   - findOrCreateBoard: enforces "one board per (user, library
- *     puzzle)" — looks up via the `boards_users` join (so a board
- *     someone shared with me also dedups my library-click), and on
- *     creation auto-inserts the owner into the membership table.
+ *   - findOrCreateBoard: a soft library-click dedup. If the user is
+ *     already a member of *any* board for this puzzle, return the
+ *     most-recently-updated one. Otherwise create a fresh board and
+ *     auto-insert the owner as a member. Multiple boards per
+ *     (user, puzzle) are explicitly allowed (e.g. one solo + one
+ *     shared) — this is the path that picks the ergonomic default
+ *     for a library click; a future "start fresh" UI affordance
+ *     creates a second board on demand.
  *   - getBoardState: hydrates a board into the same PuzzleState shape
  *     the play layer expects (meta from the immutable ipuz blob;
  *     snapshot from the live boards.snapshot column). Solution stays
@@ -91,12 +95,15 @@ export function addBoardMembership(
   return result.changes > 0;
 }
 
-/** Find-or-create a board for `(puzzleId, userId)`. The dedup is
- *  membership-based: if the user is a member of any board for this
- *  puzzle (whether they created it or someone shared it with them),
- *  that's what we return. On creation, the owner is auto-inserted
- *  into `boards_users`. Ad-hoc upload boards (`puzzleId IS NULL`) are
- *  intentionally invisible to this lookup — they're separate
+/** Find-or-create a board for `(puzzleId, userId)`. The lookup is
+ *  membership-based AND soft: if the user is already a member of one
+ *  or more boards for this puzzle, return the most-recently-updated
+ *  one. Otherwise create a fresh board and auto-insert the owner as a
+ *  member. Multiple boards per (user, puzzle) are explicitly allowed
+ *  (e.g. one solo + one shared); the database doesn't enforce
+ *  uniqueness and the FE can offer a "start fresh" affordance when a
+ *  duplicate would help. Ad-hoc upload boards (`puzzleId IS NULL`)
+ *  are intentionally invisible to this lookup — they're separate
  *  playthroughs created by `POST /api/boards/upload`.
  *  Throws PuzzleNotFoundError if the puzzle row doesn't exist. */
 export function findOrCreateBoard(
@@ -115,6 +122,7 @@ export function findOrCreateBoard(
          FROM boards b
          JOIN boards_users bu ON bu.board_id = b.id
         WHERE b.puzzle_id = ? AND bu.user_id = ?
+        ORDER BY b.updated_at DESC
         LIMIT 1`,
     )
     .get(puzzleId, ownerId) as { id: string } | undefined;

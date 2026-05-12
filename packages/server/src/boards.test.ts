@@ -78,7 +78,7 @@ describe("findOrCreateBoard", () => {
     db.close();
   });
 
-  it("returns the existing board on the second call (one-per-(user, puzzle))", () => {
+  it("returns the existing board on the second call (soft dedup, single-board case)", () => {
     const db = freshDb();
     const userId = seedUser(db);
     importPuzzle({ db, path: SUNDAY_PUZ, force: false });
@@ -90,6 +90,39 @@ describe("findOrCreateBoard", () => {
 
     const count = db.prepare("SELECT COUNT(*) AS c FROM boards").get() as { c: number };
     expect(count.c).toBe(1);
+    db.close();
+  });
+
+  it("when the user already has multiple boards for the same puzzle, returns the most-recently-updated", () => {
+    // Two boards for one user against one puzzle is allowed (the FE
+    // will offer a "start fresh" affordance; the share route also
+    // doesn't dedup). The library-click default picks the most recent
+    // one so the user lands on what they probably want.
+    const db = freshDb();
+    const userId = seedUser(db);
+    importPuzzle({ db, path: SUNDAY_PUZ, force: false });
+    const older = findOrCreateBoard(db, "sunday-sample", userId).boardId;
+
+    // Force a second board for the same (user, puzzle) by inserting
+    // directly. This sidesteps findOrCreateBoard so we can simulate
+    // the future "start fresh" code path without it being built yet.
+    const newer = "newer-board";
+    const now = new Date().toISOString();
+    const later = new Date(Date.now() + 1000).toISOString();
+    db.prepare(
+      "INSERT INTO boards (id, puzzle_id, ipuz, title, author, snapshot, chat, owner_id, created_at, updated_at) VALUES (?, ?, '{}', 'T', '', '{}', '[]', ?, ?, ?)",
+    ).run(newer, "sunday-sample", userId, now, later);
+    addBoardMembership(db, newer, userId);
+    // Nudge the older board's updated_at backwards so the ORDER BY is
+    // unambiguous.
+    db.prepare("UPDATE boards SET updated_at = ? WHERE id = ?").run(
+      new Date(Date.now() - 1000).toISOString(),
+      older,
+    );
+
+    const result = findOrCreateBoard(db, "sunday-sample", userId);
+    expect(result.boardId).toBe(newer);
+    expect(result.newlyCreated).toBe(false);
     db.close();
   });
 
