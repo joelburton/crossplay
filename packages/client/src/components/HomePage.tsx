@@ -155,11 +155,10 @@ export function HomePage({ onUploaded, user, onLogout }: Props) {
   return (
     <div className={styles.outer}>
       {/* Top-right dropdown — same `UserMenu` used on the board page.
+          Fixed-positioned by its own CSS, so no wrapper needed.
           Today the only item is "Log out"; future account actions
           (Preferences, Change password, …) slot in here. */}
-      <div className={styles.userBar}>
-        <UserMenu handle={user.handle} onLogout={onLogout} />
-      </div>
+      <UserMenu handle={user.handle} onLogout={onLogout} />
       <div className={styles.hero}>
         <SiteIcon className={styles.heroIcon} />
         <h1 className={styles.heroTitle}>Crossplay</h1>

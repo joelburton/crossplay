@@ -267,8 +267,18 @@ export function App() {
     return <HomePage onUploaded={onUploaded} user={auth.user} onLogout={onLogout} />;
   }
 
+  // When authed, reserve horizontal space at the top-right for the
+  // fixed-position `UserMenu` tab. `ChatIndicator` and `ChatPreview`
+  // both add `--user-menu-offset` into their `right` so the chat
+  // bubble doesn't sit underneath the tab. Anons don't render the
+  // tab, so the offset stays at 0.
+  const appStyle: React.CSSProperties | undefined =
+    auth.kind === "user"
+      ? ({ ["--user-menu-offset" as never]: "9.5rem" } as React.CSSProperties)
+      : undefined;
+
   return (
-    <div className={styles.app}>
+    <div className={styles.app} style={appStyle}>
       {showHeader && (
         <header className={styles.header}>
           <div className={styles.titleWrap}>
@@ -318,12 +328,13 @@ export function App() {
               <span>&nbsp;</span>
             )}
           </div>
-          {auth.kind === "user" && (
-            <div className={styles.userBar}>
-              <UserMenu handle={auth.user.handle} onLogout={onLogout} />
-            </div>
-          )}
         </header>
+      )}
+      {auth.kind === "user" && (
+        // Rendered at the App level, not inside the header, because
+        // it's fixed-positioned anyway (a tab stuck to the top-right
+        // of the viewport). Same component on the home page.
+        <UserMenu handle={auth.user.handle} onLogout={onLogout} />
       )}
       <main className={styles.main}>
         {load.kind === "loading" && <p>Loading…</p>}

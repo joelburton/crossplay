@@ -1,31 +1,37 @@
+/* Fixed-position so the same component appears in the exact same
+   place on every page (board + home). Styled like a small tab
+   hanging from the top edge of the viewport: bottom-corner-rounded,
+   dark background, white text. Anchored to the right of the chat
+   indicator on the board page via `--user-menu-offset` (see App). */
 .wrap {
-  position: relative;
-  flex-shrink: 0;
+  position: fixed;
+  top: 0;
+  right: 0.5rem;
+  z-index: 60;
 }
 
 .trigger {
   font: inherit;
   font-size: 0.85rem;
-  padding: 0.2rem 0.5rem;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 0.25rem;
+  padding: 0.3rem 0.7rem 0.4rem;
+  background: #1f2937; /* slate-800 */
+  color: #fff;
+  border: none;
+  border-radius: 0 0 0.5rem 0.5rem;
   cursor: pointer;
   display: inline-flex;
-  align-items: baseline;
-  gap: 0.25rem;
-  color: var(--c-text, #111);
-  max-width: 10rem;
+  align-items: center;
+  gap: 0.4rem;
+  /* Keep the tab visually consistent across handle lengths: short
+     handles still feel like a real tab, long ones ellipsize before
+     the layout sprawls. */
+  min-width: 4.5rem;
+  max-width: 9rem;
 }
 
-.trigger:hover {
-  border-color: var(--c-card-border, #ccc);
-  background: var(--c-card-bg-soft, #fafafa);
-}
-
+.trigger:hover,
 .trigger[aria-expanded="true"] {
-  border-color: var(--c-card-border, #ccc);
-  background: var(--c-card-bg-soft, #fafafa);
+  background: #111827; /* slate-900 */
 }
 
 .handle {
@@ -34,11 +40,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+  flex: 1;
 }
 
 .caret {
   font-size: 0.7em;
-  color: var(--c-text-mute, #555);
+  color: #cbd5e1; /* slate-300 — subdued against the dark background */
   flex-shrink: 0;
 }
 

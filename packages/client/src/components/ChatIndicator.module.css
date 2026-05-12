@@ -1,9 +1,11 @@
 /* `--chat-right` is set by PuzzleView in narrow viewports so the indicator
-   aligns to the board's right edge. Default 0.5rem matches the .main padding. */
+   aligns to the board's right edge. Default 0.5rem matches the .main padding.
+   `--user-menu-offset` is set by App when authed so the indicator slides
+   leftward past the fixed `UserMenu` tab (defaults to 0 for anons). */
 .button {
   position: fixed;
   top: 0.4rem;
-  right: var(--chat-right, 0.5rem);
+  right: calc(var(--chat-right, 0.5rem) + var(--user-menu-offset, 0px));
   width: 2.2rem;
   height: 2.2rem;
   border-radius: 50%;

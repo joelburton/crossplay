@@ -74,18 +74,10 @@
   min-width: 0;
 }
 
-/* Top-right slot when authed. Wraps `UserMenu` (a dropdown with
-   "Log out" + room for future Preferences / Change password / …
-   entries). Inside the header flex; the chat indicator floats over
-   via `position: fixed` and the right padding here reserves space
-   so the dropdown's trigger doesn't collide with it. */
-.userBar {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  margin-left: 0.4rem;
-  padding-right: 3rem;
-}
+/* The authed `UserMenu` is fixed-positioned (a dark tab hanging
+   from the top-right corner — see UserMenu.module.css). App sets
+   `--user-menu-offset` here so `ChatIndicator` and `ChatPreview`
+   slide leftward by that amount and don't collide with the tab. */
 
 .titleWrap {
   position: relative;
@@ -117,13 +109,6 @@
 @media (max-width: 1024px) {
   .titleText {
     display: none;
-  }
-  /* On narrow viewports the chat indicator floats flush with the
-     board's right edge (PuzzleView sets `--chat-right` from a
-     ResizeObserver), so userBar's reserved chat-indicator gap shrinks
-     to match. */
-  .userBar {
-    padding-right: 2.5rem;
   }
 }
 

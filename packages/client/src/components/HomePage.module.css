@@ -55,19 +55,6 @@
   flex: 0 0 auto;
 }
 
-/* Positioning wrapper for the top-right `UserMenu` dropdown.
-   Fixed-position so it stays in the corner even when the home page
-   scrolls on narrow viewports. A faint background keeps the menu's
-   trigger legible if it overlaps a list row underneath. */
-.userBar {
-  position: fixed;
-  top: 0.4rem;
-  right: 0.8rem;
-  z-index: 50;
-  background: rgba(255, 255, 255, 0.85);
-  border-radius: 0.3rem;
-}
-
 /* Help text below the drop zone — explains that uploads are private
    to "Your games" and don't grow the curated library. Smaller +
    muted so it reads as guidance, not a section heading. The
