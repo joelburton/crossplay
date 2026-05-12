@@ -18,7 +18,7 @@ import { type ChatLine, useBoardSocket } from "../useBoardSocket";
 import { type ChatIdentity, makeIdentity, persistName, readChatIdentity } from "../chatIdentity";
 import type { Feedback } from "../feedback";
 import type { PuzzleActions } from "../puzzleActions";
-import { Board, NARROW_QUERY } from "./Board";
+import { Board } from "./Board";
 import { ChatIndicator } from "./ChatIndicator";
 import { ChatPanel } from "./ChatPanel";
 import { ChatPreview } from "./ChatPreview";
@@ -255,38 +255,6 @@ export function PuzzleView({
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
-  const [chatRightPx, setChatRightPx] = useState<number | null>(null);
-
-  // When the clues are hidden (narrow viewport), align the chat indicator
-  // and preview to the board's right edge instead of the viewport's, so
-  // they don't waste horizontal space outside the board. We expose this
-  // as the CSS custom property `--chat-right` (px from the right viewport
-  // edge); ChatIndicator.module.css and ChatPreview.module.css both read
-  // it via `right: var(--chat-right, ...)`. When the variable is unset
-  // (wide viewport) the modules fall back to their default offsets.
-  useEffect(() => {
-    const el = boardRef.current;
-    if (!el) return;
-    const mq = window.matchMedia(NARROW_QUERY);
-    const update = () => {
-      if (!mq.matches) {
-        setChatRightPx(null);
-        return;
-      }
-      const r = el.getBoundingClientRect();
-      setChatRightPx(Math.max(0, Math.round(window.innerWidth - r.right)));
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    window.addEventListener("resize", update);
-    mq.addEventListener("change", update);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", update);
-      mq.removeEventListener("change", update);
-    };
-  }, []);
 
   useEffect(() => {
     return () => {
@@ -943,11 +911,6 @@ export function PuzzleView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presenceKey, onPresenceChange]);
 
-  const wrapStyle =
-    chatRightPx != null
-      ? ({ ["--chat-right" as never]: `${chatRightPx}px` } as React.CSSProperties)
-      : undefined;
-
   const onRebusCommit = useCallback(
     (raw: string, post: "advance" | "jumpNext" | "jumpPrev") => {
       const value = raw.toUpperCase().replace(/[^A-Z]/g, "").slice(0, MAX_REBUS_LEN);
@@ -1003,7 +966,7 @@ export function PuzzleView({
   })();
 
   return (
-    <div className={styles.wrap} style={wrapStyle}>
+    <div className={styles.wrap}>
       {connState !== "open" && (
         <div className={styles.conn}>
           {connState === "connecting" ? "connecting…" : "disconnected"}

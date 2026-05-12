@@ -1,11 +1,11 @@
-/* `--chat-right` is set by PuzzleView in narrow viewports (see ChatIndicator).
-   The +2.7rem offset clears the round indicator button.
-   `--user-menu-offset` is set by App when authed so the preview rides
-   to the left of the `UserMenu` tab (defaults to 0 for anons). */
+/* `--user-menu-offset` is set by UserMenu (via ResizeObserver) when
+   authed so the preview rides to the left of the `UserMenu` tab.
+   Defaults to 0 for anons. The +2.7rem clears the round chat
+   indicator button itself, which sits at the same right anchor. */
 .preview {
   position: fixed;
   top: 0.85rem;
-  right: calc(var(--chat-right, 0.5rem) + var(--user-menu-offset, 0px) + 2.7rem);
+  right: calc(0.5rem + var(--user-menu-offset, 0px) + 2.7rem);
   max-width: 40vw;
   display: flex;
   align-items: baseline;
