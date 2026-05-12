@@ -117,8 +117,11 @@
     /* Single column on narrow. min-content sizes to the board's
        intrinsic width; the strip wraps inside that. */
     grid-template-columns: min-content;
-    /* Pack rows to the top so the active-clue strip sits flush under
-       the board instead of floating in extra below-grid space. */
+    /* Two auto rows + `align-content: start` packs the strip flush
+       under the board. Without this the wide-mode `1fr auto` rows
+       carry through, the board's row stretches to fill the viewport,
+       and the strip floats at the bottom of the page. */
+    grid-template-rows: auto auto;
     align-content: start;
   }
   /* On narrow the board doesn't need to span both rows — there's
