@@ -92,7 +92,36 @@ process.on("SIGINT", () => void shutdown("SIGINT"));
 
 const port = Number(process.env.PORT ?? 3001);
 const host = process.env.HOST ?? "127.0.0.1";
-app.listen({ port, host }).catch((err) => {
-  app.log.error(err);
+app.listen({ port, host }).catch((err: unknown) => {
+  // EADDRINUSE in dev almost always means a previous `npm run
+  // dev:server` is still alive (it was started in another terminal or
+  // detached and didn't get a SIGINT). The Pino-formatted error scrolls
+  // past in the startup output and is easy to miss, leading to the
+  // confusing state where edits don't seem to take effect because the
+  // browser is still talking to the *old* server. Loud red banner on
+  // stderr so this can't be missed.
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: unknown }).code === "EADDRINUSE"
+  ) {
+    const RED = "\x1b[31m";
+    const BOLD = "\x1b[1m";
+    const RESET = "\x1b[0m";
+    process.stderr.write(
+      `\n${RED}${BOLD}` +
+        `══════════════════════════════════════════════════════════\n` +
+        `  ERROR: Port ${port} is already in use.\n` +
+        `  Another dev server is probably still running.\n` +
+        `\n` +
+        `  Find it:  lsof -iTCP:${port} -sTCP:LISTEN\n` +
+        `  Kill it:  kill <pid>\n` +
+        `══════════════════════════════════════════════════════════\n` +
+        `${RESET}\n`,
+    );
+  } else {
+    app.log.error(err);
+  }
   process.exit(1);
 });
