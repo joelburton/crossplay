@@ -12,6 +12,7 @@ import { boardPath, navigate } from "../routing";
 import { formatRelative } from "../relativeTime";
 import { SiteIcon } from "./SiteIcon";
 import { UploadForm } from "./UploadForm";
+import { UserMenu } from "./UserMenu";
 import styles from "./HomePage.module.css";
 
 type Props = {
@@ -153,15 +154,11 @@ export function HomePage({ onUploaded, user, onLogout }: Props) {
 
   return (
     <div className={styles.outer}>
-      {/* Small top-right strip showing the logged-in handle + a log
-          out button. Functional (lets Joel tell tabs apart during
-          multi-user testing) more than designed; lay it out properly
-          when the rest of the user UX is built. */}
+      {/* Top-right dropdown — same `UserMenu` used on the board page.
+          Today the only item is "Log out"; future account actions
+          (Preferences, Change password, …) slot in here. */}
       <div className={styles.userBar}>
-        <span className={styles.userBarHandle}>Hi, {user.handle}</span>
-        <button type="button" className={styles.userBarLogout} onClick={onLogout}>
-          Log out
-        </button>
+        <UserMenu handle={user.handle} onLogout={onLogout} />
       </div>
       <div className={styles.hero}>
         <SiteIcon className={styles.heroIcon} />
