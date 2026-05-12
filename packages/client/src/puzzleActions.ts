@@ -29,4 +29,8 @@ export type PuzzleActions = {
   openRebus: () => void;
   showHelp: () => void;
   downloadIpuz: () => void;
+  /** Only present for authed users. The server's share route requires
+   *  membership, which anons can't have under Posture A — hiding the
+   *  menu item entirely is the right UX. */
+  openShare?: () => void;
 };

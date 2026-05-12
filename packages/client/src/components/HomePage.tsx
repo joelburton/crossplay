@@ -264,12 +264,30 @@ export function HomePage({ onUploaded, user, onLogout }: Props) {
                             {b.copyright && (
                               <span className={styles.gameCopyright}>{b.copyright}</span>
                             )}
+                            {b.members.length > 0 && (
+                              <span className={styles.gameMembers}>
+                                Playing with {b.members.join(", ")}
+                              </span>
+                            )}
                             <span className={styles.gameStatus}>
                               <span>{formatRelative(b.updatedAt)}</span>
                               <span className={styles.statusBullet} aria-hidden="true">
                                 •
                               </span>
                               <span>{formatFillPercent(b.fillPercent)}</span>
+                              {b.isLive && (
+                                <>
+                                  <span className={styles.statusBullet} aria-hidden="true">
+                                    •
+                                  </span>
+                                  <span className={styles.liveBadge}>
+                                    <span className={styles.liveDot} aria-hidden="true">
+                                      ●
+                                    </span>
+                                    live
+                                  </span>
+                                </>
+                              )}
                             </span>
                           </button>
                           {isConfirming ? (

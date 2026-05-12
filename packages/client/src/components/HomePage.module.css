@@ -277,6 +277,34 @@
   color: #bbb;
 }
 
+/* "● live" badge. Green dot + label, only rendered when isLive is
+ * true. The dot intentionally uses the same em-sized glyph as
+ * statusBullet so vertical rhythm matches the rest of the status line. */
+.liveBadge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.2rem;
+  color: #2a7;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.liveDot {
+  color: #2a7;
+}
+
+/* "Playing with moth, sue" subline. Sits between the copyright line
+ * and the status line so the date / fill % stay at the bottom. Muted
+ * so it doesn't compete with the title. */
+.gameMembers {
+  margin-top: 0.1rem;
+  font-size: 0.82rem;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .gameCopyright {
   font-size: 0.85rem;
   color: #666;

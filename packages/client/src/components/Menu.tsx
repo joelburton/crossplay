@@ -156,6 +156,11 @@ export function Menu({ actions, triggerRef, onNewGame, onLogout, onClose }: Prop
           <span className={styles.shortcut}>⇧↵</span>
         </button>
       )}
+      {actions && actions.openShare && (
+        <button type="button" className={styles.item} onClick={run(actions.openShare)}>
+          <span>Share with…</span>
+        </button>
+      )}
       {actions && (
         <button type="button" className={styles.item} onClick={run(actions.showHelp)}>
           <span>Help</span>

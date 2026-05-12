@@ -105,11 +105,32 @@ export async function fetchBoards(): Promise<BoardSummary[]> {
   return res.json();
 }
 
-/** Hard-delete a board. The server force-closes any active ws sockets
- *  on the board before removing the row. */
-export async function deleteBoard(id: string): Promise<void> {
+/** "Leave this board": removes the caller's membership. If they were
+ *  the last member, the server hard-deletes the board (force-closes
+ *  any active ws sockets first). Returns `{ deleted }` so the caller
+ *  can soften copy when the last collaborator left. */
+export async function deleteBoard(id: string): Promise<{ deleted: boolean }> {
   const res = await fetch(`/api/boards/${id}`, { method: "DELETE" });
   if (!res.ok) throw new HttpError(res.status, `delete failed: ${res.status}`);
+  const body = (await res.json()) as { deleted?: boolean };
+  return { deleted: Boolean(body.deleted) };
+}
+
+/** Add a member to a board by handle. Resolves the canonical
+ *  display-cased handle from the server (so a "moth" input comes
+ *  back "Moth"). `alreadyMember: true` covers both "they were
+ *  already on it" and "you typed your own handle." */
+export async function shareBoard(
+  boardId: string,
+  handle: string,
+): Promise<{ handle: string; alreadyMember: boolean }> {
+  const res = await fetch(`/api/boards/${boardId}/share`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ handle }),
+  });
+  if (!res.ok) throw new HttpError(res.status, await readErrorMessage(res));
+  return (await res.json()) as { handle: string; alreadyMember: boolean };
 }
 
 // -----------------------------------------------------------------

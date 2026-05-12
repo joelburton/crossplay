@@ -93,7 +93,7 @@ describe("HomePage", () => {
 
   it("two-step delete: × shows Delete?, confirm calls deleteBoard and removes the row", async () => {
     stubLists([], [board("b1", "Doomed")]);
-    const del = vi.spyOn(api, "deleteBoard").mockResolvedValue(undefined);
+    const del = vi.spyOn(api, "deleteBoard").mockResolvedValue({ deleted: true });
     render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
     await flushPromises();
 
@@ -115,7 +115,7 @@ describe("HomePage", () => {
 
   it("Esc dismisses the delete confirm without calling deleteBoard", async () => {
     stubLists([], [board("b1", "Survives")]);
-    const del = vi.spyOn(api, "deleteBoard").mockResolvedValue(undefined);
+    const del = vi.spyOn(api, "deleteBoard").mockResolvedValue({ deleted: true });
     render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
     await flushPromises();
 
@@ -146,8 +146,8 @@ describe("HomePage", () => {
     stubLists([], [board("b1", "InFlight")]);
     // Slow delete: leave the promise pending so we can inspect the
     // intermediate state.
-    let resolveDel: () => void;
-    const delPromise = new Promise<void>((r) => {
+    let resolveDel: (v: { deleted: boolean }) => void;
+    const delPromise = new Promise<{ deleted: boolean }>((r) => {
       resolveDel = r;
     });
     vi.spyOn(api, "deleteBoard").mockReturnValue(delPromise);
@@ -165,7 +165,7 @@ describe("HomePage", () => {
     // Empty-state copy appears (the only board was hidden).
     expect(screen.getByText(/no games yet/i)).toBeTruthy();
 
-    resolveDel!();
+    resolveDel!({ deleted: true });
     await flushPromises();
     // Still gone after success.
     expect(screen.queryByText("InFlight")).toBeNull();
@@ -223,6 +223,34 @@ describe("HomePage", () => {
     render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
     await flushPromises();
     expect(screen.getByText("100%")).toBeTruthy();
+  });
+
+  it("renders the 'Playing with …' subline when members[] is non-empty", async () => {
+    stubLists([], [board("b1", "Shared", { members: ["moth", "sue"] })]);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    await flushPromises();
+    expect(screen.getByText(/Playing with moth, sue/)).toBeTruthy();
+  });
+
+  it("does NOT render the 'Playing with' subline for a solo board", async () => {
+    stubLists([], [board("b1", "Solo")]);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    await flushPromises();
+    expect(screen.queryByText(/Playing with/)).toBeNull();
+  });
+
+  it("renders the 'live' badge when isLive is true", async () => {
+    stubLists([], [board("b1", "Live", { isLive: true })]);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    await flushPromises();
+    expect(screen.getByText("live")).toBeTruthy();
+  });
+
+  it("does NOT render the 'live' badge for an idle board", async () => {
+    stubLists([], [board("b1", "Idle", { isLive: false })]);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    await flushPromises();
+    expect(screen.queryByText("live")).toBeNull();
   });
 
   it("filters the puzzle library by title (case-insensitive substring)", async () => {

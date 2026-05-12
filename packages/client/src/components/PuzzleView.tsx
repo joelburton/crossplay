@@ -26,6 +26,7 @@ import { ClueList } from "./ClueList";
 import { HelpDialog } from "./HelpDialog";
 import { NoteDialog } from "./NoteDialog";
 import { NumberJumpDialog } from "./NumberJumpDialog";
+import { ShareDialog } from "./ShareDialog";
 import { SolvedDialog } from "./SolvedDialog";
 import styles from "./PuzzleView.module.css";
 
@@ -211,6 +212,7 @@ export function PuzzleView({
   const [rebusOpen, setRebusOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [numberJumpOpen, setNumberJumpOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [solvedOpen, setSolvedOpen] = useState(false);
   // SPACE on a multi-char fill shows a read-only zoom-peek of the
   // full string (useful when collapse-rebuses is on, or when the
@@ -230,6 +232,8 @@ export function PuzzleView({
   helpOpenRef.current = helpOpen;
   const numberJumpOpenRef = useRef(numberJumpOpen);
   numberJumpOpenRef.current = numberJumpOpen;
+  const shareOpenRef = useRef(shareOpen);
+  shareOpenRef.current = shareOpen;
   const solvedOpenRef = useRef(solvedOpen);
   solvedOpenRef.current = solvedOpen;
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -552,6 +556,11 @@ export function PuzzleView({
         a.click();
         a.remove();
       },
+      // Only authed users can share — the server enforces it, and
+      // showing the menu item to anons just to have it 401 would be
+      // a worse UX than hiding it. PuzzleActions.openShare is
+      // optional; Menu shows the item iff it's defined.
+      openShare: authedHandle ? () => setShareOpen(true) : undefined,
     };
     return () => {
       if (actionsRef.current?.meta.id === meta.id) {
@@ -571,6 +580,7 @@ export function PuzzleView({
     onToggleMode,
     onToggleCollapseRebus,
     triggerShowNotes,
+    authedHandle,
   ]);
 
   useEffect(() => {
@@ -581,6 +591,9 @@ export function PuzzleView({
       if (helpOpenRef.current) return;
       // Same story for the number-jump popup: it owns its own input.
       if (numberJumpOpenRef.current) return;
+      // Share dialog owns its own input + Tab navigation inside the
+      // form (Tab between handle field and Share button).
+      if (shareOpenRef.current) return;
       // Solved dialog owns the moment — its own Esc handler closes it,
       // and the Enter on its primary button reaches the focused
       // element via React, not our window listener.
@@ -1039,6 +1052,9 @@ export function PuzzleView({
         />
       )}
       {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} />}
+      {shareOpen && (
+        <ShareDialog boardId={meta.id} onClose={() => setShareOpen(false)} />
+      )}
       {numberJumpOpen && (
         <NumberJumpDialog
           onSubmit={(n) => {
