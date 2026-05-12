@@ -27,7 +27,7 @@ type Props = {
  *
  * Action handlers are pulled from `actions` (a `PuzzleActions` ref —
  * see `puzzleActions.ts` for why it's a ref). When `actions` is null
- * (home page, no puzzle loaded) only "New game" is shown. Disabled
+ * (home page, no puzzle loaded) only "Return to main page" is shown. Disabled
  * states: "Show notes" greys out when the puzzle has no note text.
  */
 export function Menu({ actions, triggerRef, onNewGame, onClose }: Props) {
@@ -114,7 +114,7 @@ export function Menu({ actions, triggerRef, onNewGame, onClose }: Props) {
         </div>
       )}
       <button type="button" className={styles.item} onClick={run(onNewGame)}>
-        New game
+        Return to main page
       </button>
       {actions && (
         <button type="button" className={styles.item} onClick={run(actions.clearBoard)}>
