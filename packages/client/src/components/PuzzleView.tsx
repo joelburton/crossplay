@@ -112,6 +112,40 @@ function replaceCell(
   return next;
 }
 
+/** Cycle a mark on one edge of a cell through (break → hyphen → none).
+ *  Returns the next state; null means clear the mark. Pure; exported
+ *  for direct unit testing. */
+export function nextMarkState(
+  current: "break" | "hyphen" | undefined,
+): "break" | "hyphen" | null {
+  if (current === undefined) return "break";
+  if (current === "break") return "hyphen";
+  return null;
+}
+
+/** Optimistically apply a mark change locally; cells passed in stays
+ *  immutable. Mirrors `setCellFill` for fills. */
+function setCellMark(
+  cells: Cell[][],
+  row: number,
+  col: number,
+  side: "right" | "bottom",
+  type: "break" | "hyphen" | null,
+): Cell[][] {
+  const cell = cells[row]?.[col];
+  if (!cell || cell.kind !== "cell") return cells;
+  const key = side === "right" ? "markRight" : "markBottom";
+  if ((cell[key] ?? null) === type) return cells;
+  const next = cells.slice();
+  const nextRow = next[row]!.slice();
+  const updated: Cell = { ...cell };
+  if (type === null) delete updated[key];
+  else updated[key] = type;
+  nextRow[col] = updated;
+  next[row] = nextRow;
+  return next;
+}
+
 /**
  * The central play surface. Owns:
  *  - the cursor (row/col + direction);
@@ -710,6 +744,28 @@ export function PuzzleView({
           ...(isPencil ? { pencil: true } : {}),
         });
         setCursor((cur) => advanceAfterFill(cells, cur));
+        return;
+      }
+      // Cryptic-style word-break / hyphen marks.
+      //   `|` cycles the right-edge mark: none → break → hyphen → none
+      //   `_` cycles the bottom-edge mark, same cycle
+      // Marks are shared across all collaborators (same model as
+      // fills). Open cells only; on a block/null the keystroke is a
+      // no-op.
+      if (e.key === "|" || e.key === "_") {
+        e.preventDefault();
+        onActivity?.();
+        const { row, col } = cursor;
+        const cell = cells[row]?.[col];
+        if (!cell || cell.kind !== "cell") return;
+        const side = e.key === "|" ? "right" : "bottom";
+        const key = side === "right" ? "markRight" : "markBottom";
+        const nextType = nextMarkState(cell[key]);
+        setSnapshot((prev) => ({
+          version: prev.version,
+          cells: setCellMark(prev.cells, row, col, side, nextType),
+        }));
+        send({ type: "mark", row, col, side, markType: nextType });
         return;
       }
       if (e.key === "Backspace") {

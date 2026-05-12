@@ -162,3 +162,57 @@
 .wrong {
   border-color: transparent #d33 transparent transparent;
 }
+
+/* Player-drawn word-break / hyphen marks on cell edges. Used to
+   annotate where a multi-word answer breaks (cryptic convention).
+   Em-sized so they scale with the cell; pointer-events:none so they
+   never absorb clicks meant for the cell. */
+
+/* Word break on the right edge: a thicker bar centered on the
+   boundary between this cell and its right neighbor. Width is small
+   relative to the cell so it reads as "added on top" of the normal
+   1px grid line rather than as a different border style. */
+.markRightBreak {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -0.07em;
+  width: 0.14em;
+  background: #000;
+  pointer-events: none;
+}
+
+.markBottomBreak {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.07em;
+  height: 0.14em;
+  background: #000;
+  pointer-events: none;
+}
+
+/* Hyphen marks: a short dash perpendicular to the edge, centered on
+   the boundary. Smaller than the break so the two are at a glance
+   distinguishable. */
+.markRightHyphen {
+  position: absolute;
+  top: 50%;
+  right: -0.18em;
+  width: 0.36em;
+  height: 0.08em;
+  background: #000;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.markBottomHyphen {
+  position: absolute;
+  left: 50%;
+  bottom: -0.18em;
+  width: 0.08em;
+  height: 0.36em;
+  background: #000;
+  transform: translateX(-50%);
+  pointer-events: none;
+}

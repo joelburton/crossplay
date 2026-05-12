@@ -48,6 +48,16 @@ export type Cell =
        *  mutate it, fill_percent excludes it from both numerator and
        *  denominator, and the client renders the letter underlined. */
       given?: boolean;
+      /** Player-drawn word-break / hyphen mark on the right edge of
+       *  this cell (the boundary shared with the cell to the right).
+       *  "break" renders as a thick line, "hyphen" as a small dash
+       *  across the edge. Used in cryptics to annotate where a single
+       *  grid entry breaks into multiple lexical words. Shared across
+       *  collaborators (no per-player marks). */
+      markRight?: "break" | "hyphen";
+      /** Same as `markRight` but for the bottom edge (boundary with
+       *  the cell below). */
+      markBottom?: "break" | "hyphen";
     };
 
 export type Clue = {
@@ -81,6 +91,9 @@ export type PuzzleState = {
 
 export type Scope = "letter" | "word" | "puzzle";
 
+export type MarkSide = "right" | "bottom";
+export type MarkType = "break" | "hyphen";
+
 export type ClientMessage =
   | {
       type: "fill";
@@ -111,6 +124,16 @@ export type ClientMessage =
       dir?: Direction;
     }
   | { type: "clear" }
+  | {
+      /** Set or clear a word-break / hyphen mark on one edge of a
+       *  cell. `markType: null` clears. Mark state is shared across
+       *  all collaborators (same model as fills, not per-player). */
+      type: "mark";
+      row: number;
+      col: number;
+      side: MarkSide;
+      markType: MarkType | null;
+    }
   | { type: "chat"; name: string; color: string; text: string }
   | { type: "showNotes" }
   | { type: "hello"; name: string; color: string }

@@ -69,6 +69,8 @@ function cellsEqual(a: GridSnapshot["cells"][number][number], b: GridSnapshot["c
     !!a.pencil === !!b.pencil &&
     !!a.circled === !!b.circled &&
     !!a.shaded === !!b.shaded &&
-    !!a.given === !!b.given
+    !!a.given === !!b.given &&
+    (a.markRight ?? null) === (b.markRight ?? null) &&
+    (a.markBottom ?? null) === (b.markBottom ?? null)
   );
 }

@@ -22,6 +22,8 @@ import type {
   Cell,
   ClientMessage,
   Direction,
+  MarkSide,
+  MarkType,
   Scope,
   ServerMessage,
 } from "@crossplay/shared";
@@ -94,6 +96,21 @@ export function parseMessage(raw: unknown): ClientMessage | null {
   }
 
   if (m.type === "clear") return { type: "clear" };
+
+  if (m.type === "mark") {
+    if (typeof m.row !== "number" || typeof m.col !== "number") return null;
+    if (!Number.isInteger(m.row) || !Number.isInteger(m.col)) return null;
+    if (m.row < 0 || m.col < 0) return null;
+    if (m.side !== "right" && m.side !== "bottom") return null;
+    if (m.markType !== null && m.markType !== "break" && m.markType !== "hyphen") return null;
+    return {
+      type: "mark",
+      row: m.row,
+      col: m.col,
+      side: m.side as MarkSide,
+      markType: m.markType as MarkType | null,
+    };
+  }
 
   if (m.type === "showNotes") return { type: "showNotes" };
 
@@ -276,6 +293,37 @@ export function applyFill(
   };
 }
 
+/**
+ * Apply a mark set/clear on one edge of a cell.
+ *
+ * Bumps the snapshot version once and returns a `CellChange` carrying
+ * the full updated cell — same pattern as `applyFill`. `markType: null`
+ * clears the mark. Returns null if the target isn't an open cell or if
+ * the request is a no-op (same mark already in place, or clearing an
+ * already-empty side).
+ */
+export function applyMark(
+  entry: StoredBoard,
+  msg: Extract<ClientMessage, { type: "mark" }>,
+): CellChange | null {
+  const { meta, snapshot } = entry.state;
+  if (msg.row < 0 || msg.row >= meta.height) return null;
+  if (msg.col < 0 || msg.col >= meta.width) return null;
+  const cell = snapshot.cells[msg.row]![msg.col]!;
+  if (cell.kind !== "cell") return null;
+  const key = msg.side === "right" ? "markRight" : "markBottom";
+  const current = cell[key];
+  if (msg.markType === null) {
+    if (current === undefined) return null;
+    delete cell[key];
+  } else {
+    if (current === msg.markType) return null;
+    cell[key] = msg.markType;
+  }
+  snapshot.version += 1;
+  return { row: msg.row, col: msg.col, cell };
+}
+
 /** Reveal the solution letter at one cell. Sets `revealed: true`, clears
  *  `wrong` and `pencil`. Returns `null` if the cell is a block, has no
  *  solution, or is already in the post-reveal state (consistent with
@@ -437,6 +485,12 @@ export function applyClear(entry: StoredBoard): CellChange[] {
         else delete live.shaded;
         if (init.given) live.given = true;
         else delete live.given;
+        // Marks are player annotations — Clear wipes them along with
+        // fills, restoring the initial (markless) state.
+        if (init.markRight) live.markRight = init.markRight;
+        else delete live.markRight;
+        if (init.markBottom) live.markBottom = init.markBottom;
+        else delete live.markBottom;
         snapshot.version += 1;
         changes.push({ row: r, col: c, cell: live });
       } else {
@@ -469,7 +523,9 @@ function cellsEqual(a: Cell, b: Cell): boolean {
     !!a.pencil === !!bb.pencil &&
     !!a.circled === !!bb.circled &&
     !!a.shaded === !!bb.shaded &&
-    !!a.given === !!bb.given
+    !!a.given === !!bb.given &&
+    (a.markRight ?? null) === (bb.markRight ?? null) &&
+    (a.markBottom ?? null) === (bb.markBottom ?? null)
   );
 }
 
@@ -654,6 +710,14 @@ function handleClear({ db, entry }: DispatchContext): void {
   if (changes.length > 0) markDirty(db, entry.id);
 }
 
+function handleMark({ db, entry }: DispatchContext, msg: Extract<ClientMessage, { type: "mark" }>): void {
+  const change = applyMark(entry, msg);
+  if (change) {
+    broadcastChanges(entry, [change]);
+    markDirty(db, entry.id);
+  }
+}
+
 function handleChat({ db, entry }: DispatchContext, msg: Extract<ClientMessage, { type: "chat" }>): void {
   const ts = Date.now();
   entry.chat.push({ name: msg.name, color: msg.color, text: msg.text, ts });
@@ -716,6 +780,7 @@ const handlers: { [K in ClientMessage["type"]]: HandlerFor<K> } = {
   reveal: handleReveal,
   check: handleCheck,
   clear: handleClear,
+  mark: handleMark,
   chat: handleChat,
   showNotes: handleShowNotes,
   hello: handleHello,

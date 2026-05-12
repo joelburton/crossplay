@@ -12,6 +12,8 @@ const SHORTCUTS: Array<[string, string]> = [
   ["Backspace", "Erase and step back (clears a whole rebus in one press)"],
   ["⇧Enter", "Open the rebus overlay over the focused cell"],
   ["Space", "Zoom-peek a multi-letter cell (read-only)"],
+  ["|", "Cycle right-edge mark: break → hyphen → none"],
+  ["_", "Cycle bottom-edge mark: break → hyphen → none"],
   ["/", "Open chat (or focus its input if already open)"],
   ["Esc", "Close chat"],
   ["⌥M", "Open the menu (arrows to navigate, Enter to choose)"],
@@ -95,6 +97,19 @@ export function HelpDialog({ onClose }: Props) {
               cancels). Use <strong>Space</strong> on a rebus cell to zoom in if it's
               hard to read. The menu's <em>Collapse rebuses</em> toggle shrinks them
               to their first letter while keeping the full answer underneath.
+            </p>
+          </section>
+          <section>
+            <h3>Word-break and hyphen marks</h3>
+            <p>
+              For cryptics whose enumerations specify multiple words or hyphens
+              within a single grid entry (e.g. <em>(4,5)</em> or <em>(4-5)</em>), you
+              can annotate the breaks on the grid. With the cursor on a cell, press{" "}
+              <strong>|</strong> to cycle the right edge (none → break → hyphen →
+              none) or <strong>_</strong> to cycle the bottom edge. A break is a
+              thick line on the boundary; a hyphen is a short dash across it. Marks
+              are shared with everyone solving the puzzle, and{" "}
+              <em>Clear board</em> wipes them.
             </p>
           </section>
           <section>

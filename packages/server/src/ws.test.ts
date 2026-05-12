@@ -5,6 +5,7 @@ import {
   applyCheck,
   applyClear,
   applyFill,
+  applyMark,
   applyReveal,
   checkScopeHasPencil,
   fillMatchesSolution,
@@ -724,6 +725,101 @@ describe("applyFill against given cells", () => {
     expect(change).toBeNull();
     const cell = e.state.snapshot.cells[0]![0]!;
     expect(cell.kind === "cell" && cell.fill).toBe("A");
+  });
+});
+
+describe("applyMark", () => {
+  it("sets a break mark on the right edge", () => {
+    const e = entry();
+    const change = applyMark(e, { type: "mark", row: 0, col: 0, side: "right", markType: "break" });
+    expect(change).not.toBeNull();
+    const cell = e.state.snapshot.cells[0]![0]!;
+    expect(cell.kind === "cell" && cell.markRight).toBe("break");
+  });
+
+  it("cycles to hyphen on the same side without clearing the other", () => {
+    const e = entry();
+    applyMark(e, { type: "mark", row: 0, col: 0, side: "right", markType: "break" });
+    applyMark(e, { type: "mark", row: 0, col: 0, side: "bottom", markType: "break" });
+    applyMark(e, { type: "mark", row: 0, col: 0, side: "right", markType: "hyphen" });
+    const cell = e.state.snapshot.cells[0]![0]!;
+    if (cell.kind === "cell") {
+      expect(cell.markRight).toBe("hyphen");
+      expect(cell.markBottom).toBe("break");
+    }
+  });
+
+  it("clears a mark when markType is null", () => {
+    const e = entry();
+    applyMark(e, { type: "mark", row: 0, col: 0, side: "right", markType: "break" });
+    const change = applyMark(e, { type: "mark", row: 0, col: 0, side: "right", markType: null });
+    expect(change).not.toBeNull();
+    const cell = e.state.snapshot.cells[0]![0]!;
+    expect(cell.kind === "cell" && cell.markRight).toBeUndefined();
+  });
+
+  it("returns null on a no-op (same mark already there, or clearing empty side)", () => {
+    const e = entry();
+    applyMark(e, { type: "mark", row: 0, col: 0, side: "right", markType: "break" });
+    expect(
+      applyMark(e, { type: "mark", row: 0, col: 0, side: "right", markType: "break" }),
+    ).toBeNull();
+    expect(
+      applyMark(e, { type: "mark", row: 0, col: 0, side: "bottom", markType: null }),
+    ).toBeNull();
+  });
+
+  it("refuses to mark a block", () => {
+    const e = entry();
+    expect(
+      applyMark(e, { type: "mark", row: 0, col: 2, side: "right", markType: "break" }),
+    ).toBeNull();
+  });
+
+  it("Clear board wipes any marks the player added", () => {
+    const e = entry();
+    applyMark(e, { type: "mark", row: 0, col: 0, side: "right", markType: "break" });
+    applyMark(e, { type: "mark", row: 0, col: 1, side: "bottom", markType: "hyphen" });
+    const changes = applyClear(e);
+    expect(changes.length).toBeGreaterThanOrEqual(2);
+    const a = e.state.snapshot.cells[0]![0]!;
+    const b = e.state.snapshot.cells[0]![1]!;
+    if (a.kind === "cell") expect(a.markRight).toBeUndefined();
+    if (b.kind === "cell") expect(b.markBottom).toBeUndefined();
+  });
+});
+
+describe("parseMessage mark", () => {
+  it("accepts a valid mark", () => {
+    expect(
+      parseMessage(
+        JSON.stringify({ type: "mark", row: 1, col: 2, side: "right", markType: "break" }),
+      ),
+    ).toEqual({ type: "mark", row: 1, col: 2, side: "right", markType: "break" });
+  });
+
+  it("accepts markType: null (clear)", () => {
+    expect(
+      parseMessage(
+        JSON.stringify({ type: "mark", row: 0, col: 0, side: "bottom", markType: null }),
+      ),
+    ).toEqual({ type: "mark", row: 0, col: 0, side: "bottom", markType: null });
+  });
+
+  it("rejects an unknown side", () => {
+    expect(
+      parseMessage(
+        JSON.stringify({ type: "mark", row: 0, col: 0, side: "top", markType: "break" }),
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects an unknown markType", () => {
+    expect(
+      parseMessage(
+        JSON.stringify({ type: "mark", row: 0, col: 0, side: "right", markType: "splat" }),
+      ),
+    ).toBeNull();
   });
 });
 

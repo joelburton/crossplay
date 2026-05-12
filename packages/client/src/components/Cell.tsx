@@ -95,6 +95,11 @@ function CellImpl({
   const cls = [styles.cell, borderClasses(borderMask)];
   if (isCursor) cls.push(styles.cursor);
   else if (isInWord) cls.push(styles.inWord);
+  // Mark overlays: rendered as absolutely-positioned spans further
+  // down so they sit over both the cell background and any cursor/
+  // in-word highlight tint, but underneath the clue number.
+  const markRight = cell.markRight;
+  const markBottom = cell.markBottom;
   // Display string: optionally collapse a rebus to its first letter
   // for legibility on small screens. Width math (font shrink) skips
   // the multi-char branch when the displayed string is one character.
@@ -104,6 +109,10 @@ function CellImpl({
     <div className={cls.join(" ")} onClick={() => onClick(row, col)}>
       {cell.shaded && <span className={styles.shade} aria-hidden />}
       {cell.circled && <span className={styles.circle} aria-hidden />}
+      {markRight === "break" && <span className={styles.markRightBreak} aria-hidden />}
+      {markRight === "hyphen" && <span className={styles.markRightHyphen} aria-hidden />}
+      {markBottom === "break" && <span className={styles.markBottomBreak} aria-hidden />}
+      {markBottom === "hyphen" && <span className={styles.markBottomHyphen} aria-hidden />}
       {remoteCursorColor && (
         // Absolutely-positioned overlay with a per-side border. We used
         // to do `box-shadow: inset 0 0 0 0.08em color` here, but
