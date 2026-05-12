@@ -9,7 +9,7 @@ import styles from "./Board.module.css";
 type RebusProps = {
   initial: string;
   maxLength: number;
-  onCommit: (value: string) => void;
+  onCommit: (value: string, post: "advance" | "jumpNext" | "jumpPrev") => void;
   onCancel: () => void;
 };
 

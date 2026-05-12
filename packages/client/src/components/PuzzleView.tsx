@@ -819,7 +819,7 @@ export function PuzzleView({
       : undefined;
 
   const onRebusCommit = useCallback(
-    (raw: string) => {
+    (raw: string, post: "advance" | "jumpNext" | "jumpPrev") => {
       const value = raw.toUpperCase().replace(/[^A-Z]/g, "").slice(0, MAX_REBUS_LEN);
       const { row, col } = cursor;
       const cell = cells[row]?.[col];
@@ -841,7 +841,14 @@ export function PuzzleView({
         senderColor: identity.color,
         ...(isPencil && letter ? { pencil: true } : {}),
       });
-      setCursor((cur) => advanceAfterFill(cellsRef.current, cur));
+      // After the commit, move the cursor per the action:
+      //   - advance (Enter): one cell forward, stopping at the word end
+      //   - jumpNext/Prev (Tab/⇧Tab): jump to the next/previous clue,
+      //     just like Tab on a regular cell
+      setCursor((cur) => {
+        if (post === "advance") return advanceAfterFill(cellsRef.current, cur);
+        return jumpClue(cellsRef.current, cur, post === "jumpNext" ? 1 : -1);
+      });
     },
     [cells, cursor, mode, send, snapshot.version, identity.color],
   );

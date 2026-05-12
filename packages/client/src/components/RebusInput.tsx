@@ -1,13 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import styles from "./Board.module.css";
 
+/** What the parent should do *after* writing the committed rebus
+ *  value. "advance" (the Enter case) moves one cell in the cursor's
+ *  current direction, stopping at word boundaries — same as typing a
+ *  letter. "jumpNext"/"jumpPrev" (Tab / Shift+Tab) jumps to the next
+ *  or previous clue, mirroring Tab's behavior elsewhere in the app.
+ *  Mirrored on the parent (`onRebusCommit` in PuzzleView). */
+export type RebusPostCommit = "advance" | "jumpNext" | "jumpPrev";
+
 type Props = {
   /** Pre-fill from the cell's current fill so editing an existing
    *  rebus doesn't force a re-type. */
   initial: string;
   /** Per-character cap; matches the server-side validator. */
   maxLength: number;
-  onCommit: (value: string) => void;
+  /** Commit the typed value. `post` tells the parent what to do with
+   *  the cursor afterward — Enter advances one cell, Tab/⇧Tab jumps
+   *  to the next/previous clue. */
+  onCommit: (value: string, post: RebusPostCommit) => void;
   onCancel: () => void;
 };
 
@@ -59,7 +70,16 @@ export function RebusInput({ initial, maxLength, onCommit, onCancel }: Props) {
         if (e.key === "Enter") {
           e.preventDefault();
           committedRef.current = true;
-          onCommit(value);
+          onCommit(value, "advance");
+        } else if (e.key === "Tab") {
+          // Tab commits the current value AND jumps to the next clue
+          // (Shift+Tab to the previous), mirroring Tab's behavior
+          // elsewhere on the board. preventDefault stops the browser's
+          // own focus-move; the parent will close the rebus and
+          // jumpClue, so focus naturally returns to the board.
+          e.preventDefault();
+          committedRef.current = true;
+          onCommit(value, e.shiftKey ? "jumpPrev" : "jumpNext");
         } else if (e.key === "Escape") {
           e.preventDefault();
           onCancel();

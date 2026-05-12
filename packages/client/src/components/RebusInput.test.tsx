@@ -36,12 +36,34 @@ describe("RebusInput", () => {
     expect(input.value).toBe("BLOC");
   });
 
-  it("commits the current value on Enter", () => {
+  it("commits the current value on Enter with 'advance' post-action", () => {
     const { input, onCommit, onCancel } = renderInput();
     fireEvent.change(input, { target: { value: "block" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(onCommit).toHaveBeenCalledExactlyOnceWith("BLOCK");
+    expect(onCommit).toHaveBeenCalledExactlyOnceWith("BLOCK", "advance");
     expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("commits + jumps to next clue on Tab", () => {
+    const { input, onCommit, onCancel } = renderInput();
+    fireEvent.change(input, { target: { value: "heart" } });
+    fireEvent.keyDown(input, { key: "Tab" });
+    expect(onCommit).toHaveBeenCalledExactlyOnceWith("HEART", "jumpNext");
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("commits + jumps to previous clue on Shift+Tab", () => {
+    const { input, onCommit, onCancel } = renderInput();
+    fireEvent.change(input, { target: { value: "heart" } });
+    fireEvent.keyDown(input, { key: "Tab", shiftKey: true });
+    expect(onCommit).toHaveBeenCalledExactlyOnceWith("HEART", "jumpPrev");
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("commits an empty value on Tab (same as Backspace + jump)", () => {
+    const { input, onCommit } = renderInput();
+    fireEvent.keyDown(input, { key: "Tab" });
+    expect(onCommit).toHaveBeenCalledExactlyOnceWith("", "jumpNext");
   });
 
   it("cancels on Escape without committing", () => {
