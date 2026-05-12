@@ -59,14 +59,17 @@ export const NARROW_QUERY = "(max-width: 1024px)";
 // In narrow mode the board fills the available width: viewport minus the
 // .main 0.5rem L/R padding (= 1rem total) minus the board's 2x2px border.
 const NARROW_HORIZ_RESERVE_CSS = "1rem + 4px";
-// The active clue sits below the board on every viewport (PuzzleView's
-// `.activeClue` strip). The cell-size height bound has to subtract
+// On narrow viewports the active clue sits below the board, sharing
+// vertical space (PuzzleView's `.activeClue` strip on row 2 of the
+// single-column grid). The cell-size height bound has to subtract
 // that strip, or the board would spill into it. Approximate height:
 // 3 lines at 1.35 × 1.05rem font-size + 0.3rem top padding ≈ 73px.
+// On wide the strip rides in the clues column instead, so it doesn't
+// steal from the board — the reserve is only applied in narrow mode.
 // Keep this loosely aligned with the `.activeClue` `min-height` in
 // PuzzleView.module.css so the fit-on-screen math is conservative
 // (better a few px short than to force an outer scrollbar).
-const ACTIVE_CLUE_RESERVE_PX = 76;
+const NARROW_CLUE_RESERVE_PX = 76;
 
 // Width of the rebus overlay, in cell-widths. Wider than one cell so
 // the player can see the whole rebus they're typing without text
@@ -146,7 +149,7 @@ export const Board = forwardRef<HTMLDivElement, Props>(function Board(
   const horiz = narrow
     ? `calc((100vw - (${NARROW_HORIZ_RESERVE_CSS})) / ${width})`
     : `calc(${targetWidthPercent(width)}vw / ${width})`;
-  const verticalReservePx = VERTICAL_OVERHEAD_PX + ACTIVE_CLUE_RESERVE_PX;
+  const verticalReservePx = VERTICAL_OVERHEAD_PX + (narrow ? NARROW_CLUE_RESERVE_PX : 0);
   // 100dvh, not 100vh — on iOS Safari the dynamic viewport excludes
   // the URL bar / bottom toolbar; `100vh` would size cells assuming
   // those bars weren't there and push the board off-screen.

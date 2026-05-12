@@ -1010,7 +1010,7 @@ export function PuzzleView({
         </div>
       )}
       <div className={styles.layout}>
-        <div className={styles.boardCol}>
+        <div className={styles.boardSlot}>
           <Board
             ref={boardRef}
             cells={cells}
@@ -1032,26 +1032,26 @@ export function PuzzleView({
             }
             zoom={zoomPeek ? zoomPeekValue : null}
           />
-          {/* Active clue, always below the board. The header used to
-              show the same text on wide viewports, but that doubled
-              the layout work and meant the clue lived in two places.
-              Now there's exactly one: this strip. Three-line clamp
-              keeps long cryptic clues legible; `min-height` reserves
-              all three lines unconditionally so the board doesn't
-              reflow as the cursor moves across short and long clues.
-              Coordinate the reserve height with
-              `ACTIVE_CLUE_RESERVE_PX` in Board.tsx. */}
-          <div className={styles.activeClue}>
-            {activeClue ? (
-              <>
-                <span className={styles.activeClueLabel}>
-                  {activeClue.number}
-                  {activeClue.direction === "across" ? "A" : "D"}
-                </span>
-                <span className={styles.activeClueText}>{activeClue.text}</span>
-              </>
-            ) : null}
-          </div>
+        </div>
+        {/* Active clue lives below the clue lists on wide (so the
+            board column gets the full vertical height) and below the
+            board on narrow (where the clue lists are hidden). Same
+            element either way — grid placement in PuzzleView.module.css
+            slots it into the right cell per viewport. The 3-line clamp
+            keeps long cryptic clues from reflowing the page; coordinate
+            the reserve height with `ACTIVE_CLUE_RESERVE_PX` in
+            Board.tsx (applied only on narrow, since on wide the strip
+            shares its column with the clue lists, not the board). */}
+        <div className={styles.activeClue}>
+          {activeClue ? (
+            <>
+              <span className={styles.activeClueLabel}>
+                {activeClue.number}
+                {activeClue.direction === "across" ? "A" : "D"}
+              </span>
+              <span className={styles.activeClueText}>{activeClue.text}</span>
+            </>
+          ) : null}
         </div>
         <div className={styles.clues}>
           <ClueList

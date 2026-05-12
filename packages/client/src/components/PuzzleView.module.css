@@ -1,10 +1,27 @@
 /*
- * `.layout` is a 2-column grid (board column, then clues column);
- * below the narrow breakpoint we hide the clues column. The board
- * column stacks the grid and the active-clue strip vertically. The
- * `min-height: 0` chain on `.wrap` / `.layout` / `.clues` is
- * load-bearing — it lets the columns claim the remaining viewport
- * height without overflow. Don't remove.
+ * `.layout` is a 2-column, 2-row grid on wide:
+ *
+ *   +----------+----------+
+ *   |          |  clues   |
+ *   |  board   +----------+
+ *   |          | active   |
+ *   +----------+----------+
+ *
+ * The board cell spans both rows, so it gets the full available
+ * vertical height (the grid is most important — see Joel's call,
+ * 2026-05-12). The active-clue strip rides in the clues column,
+ * below the across/down lists. On narrow we hide the clues column
+ * and stack the strip directly under the board:
+ *
+ *   +----------+
+ *   |  board   |
+ *   +----------+
+ *   |  active  |
+ *   +----------+
+ *
+ * The `min-height: 0` chain on `.wrap` / `.layout` / `.clues` /
+ * `.boardSlot` is load-bearing — it lets the columns claim the
+ * remaining viewport height without overflow. Don't remove.
  */
 
 .wrap {
@@ -24,31 +41,33 @@
 
 .layout {
   display: grid;
-  /* `min-content` (not `auto`) on the board column matters: with
-     `auto` the column sizes to its content's max-content width, and
-     a single long clue with no line breaks would expand the column
-     to one wide line (the 3-line clamp on `.activeClueText` can only
-     clamp if it has a bounded width). `min-content` sizes the column
-     to the larger of the board's intrinsic width (cell-size × cols)
-     and the longest single word in the clue — normal clue text wraps
-     to three lines within that. */
+  /* `min-content` (not `auto`) on the board column sizes it to the
+     board's intrinsic width (cell-size × cols), so a long clue with
+     no line break in the side column can't grow the board column
+     out from under the cell-size math. */
   grid-template-columns: min-content 1fr;
+  /* Row 1 fills the available height (board uses all of it; clues
+     fill the right column). Row 2 is auto = the strip's natural
+     height. */
+  grid-template-rows: 1fr auto;
   gap: 0.75rem;
   flex: 1;
   min-height: 0;
 }
 
-/* Wraps the board + active-clue strip into a single grid item, so the
-   strip sits flush under the board (not floating in extra space) and
-   the strip's height doesn't push the clues column around. */
-.boardCol {
-  display: flex;
-  flex-direction: column;
+.boardSlot {
+  grid-column: 1;
+  /* Span both rows so the board gets the full vertical height. The
+     strip lives in the clues column, not under the board. */
+  grid-row: 1 / 3;
   min-width: 0;
   min-height: 0;
+  display: flex;
 }
 
 .clues {
+  grid-column: 2;
+  grid-row: 1;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0;
@@ -56,13 +75,16 @@
   min-height: 0;
 }
 
-/* Active-clue strip below the board (both wide and narrow). The
- * three-line clamp keeps long cryptic clues legible; `min-height`
- * reserves all three lines unconditionally so the board doesn't
- * reflow as the cursor moves across short and long clues. Coordinate
- * the reserve with `ACTIVE_CLUE_RESERVE_PX` in Board.tsx — the
- * cell-size math subtracts that height. */
+/* Active-clue strip. Three-line clamp keeps long cryptic clues
+ * legible; `min-height` reserves all three lines unconditionally so
+ * the layout doesn't reflow as the cursor moves across short and
+ * long clues. Grid placement (see `.layout`) puts it in the clues
+ * column on wide and the board column on narrow. On narrow only,
+ * the strip steals from the available board height — coordinate
+ * with `ACTIVE_CLUE_RESERVE_PX` in Board.tsx. */
 .activeClue {
+  grid-column: 2;
+  grid-row: 2;
   display: flex;
   align-items: baseline;
   gap: 0.4rem;
@@ -71,6 +93,7 @@
   line-height: 1.35;
   color: #111;
   min-height: calc(3 * 1.35em + 0.3rem);
+  min-width: 0;
 }
 
 .activeClueLabel {
@@ -91,15 +114,26 @@
 /* Narrow viewport: keep in sync with NARROW_QUERY in Board.tsx (see index.css). */
 @media (max-width: 1024px) {
   .layout {
-    /* Single column on narrow. min-content for the same reason as
-       wide (see .layout above). */
+    /* Single column on narrow. min-content sizes to the board's
+       intrinsic width; the strip wraps inside that. */
     grid-template-columns: min-content;
     /* Pack rows to the top so the active-clue strip sits flush under
        the board instead of floating in extra below-grid space. */
     align-content: start;
   }
+  /* On narrow the board doesn't need to span both rows — there's
+     only one column. Reset to row 1. */
+  .boardSlot {
+    grid-row: 1;
+  }
   .clues {
     display: none;
+  }
+  /* Strip moves to row 2 of the single column, directly below the
+     board. */
+  .activeClue {
+    grid-column: 1;
+    grid-row: 2;
   }
 }
 
