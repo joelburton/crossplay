@@ -10,7 +10,14 @@
   width: 1em;
   height: 1em;
   background: #fff;
-  outline: 1px solid #000;
+  /* Baseline transparent border on every side so the content area
+     stays the same size whether or not a side is "on" — the colored
+     edges below just flip the border color on the requested sides.
+     With `box-sizing: border-box` (set globally in index.css) the
+     1em outer size is preserved; only the inner content shrinks by
+     2px in each axis, which is sub-pixel relative at all cell sizes
+     we render at. */
+  border: 1px solid transparent;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -18,8 +25,29 @@
   cursor: pointer;
 }
 
+/* Per-side border-color flags. Composed from a 4-bit mask computed
+   in Board (`computeBorderMask`). The convention is: a visible cell
+   always draws top+left, and draws bottom/right only where the
+   neighbor is hidden or off-grid — so each shared boundary is drawn
+   exactly once and the puzzle's outer edge follows whatever shape
+   the visible cells form. Hidden ("null") cells contribute no
+   borders; their neighbors close the gap from the visible side. */
+.borderTop    { border-top-color: #000; }
+.borderRight  { border-right-color: #000; }
+.borderBottom { border-bottom-color: #000; }
+.borderLeft   { border-left-color: #000; }
+
 .block {
   background: #000;
+  cursor: default;
+}
+
+/* Irregular-grid void cell — white background, no border (the
+   neighboring visible cells draw their own borders facing this
+   square, so the puzzle's edge still reads black on that side).
+   Named `voidCell` to avoid the JS reserved word `void`; referenced
+   as `styles.voidCell` in Cell.tsx. */
+.voidCell {
   cursor: default;
 }
 
@@ -78,6 +106,29 @@
   border: 0.025em solid #333;
   border-radius: 50%;
   pointer-events: none;
+}
+
+/* Author-defined shading (alternative theme marker). Semi-transparent
+   overlay rather than a background color, so it blends cleanly with
+   the cursor (.cursor) and in-word (.inWord) highlights — both remain
+   visible on a shaded cell. Sits below the number/fill/marks via
+   source order. `pointer-events: none` so clicks pass through. */
+.shade {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+
+/* Author-prefilled "given" letter. The cell isn't editable; the
+   underline signals that the letter is part of the template, not
+   something the player typed. Bottom-of-the-glyph underline keeps the
+   bold letter prominent without competing with the clue-number,
+   reveal/wrong corner marks, or the remote-cursor frame. */
+.fill.given {
+  text-decoration: underline;
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.06em;
 }
 
 .fill {

@@ -1,15 +1,16 @@
 /*
- * The board is a CSS grid with `gap: 0` over a black background, which
- * lets each cell's own `outline: 1px solid #000` (see Cell.module.css)
- * draw the inter-cell lines. The 2px outer border closes the frame.
+ * The board is a CSS grid with `gap: 0`. Grid lines and the outer
+ * frame are drawn by per-cell borders on the cells themselves (see
+ * `computeBorderMask` in cursor.ts and the .borderTop/.borderRight/
+ * .borderBottom/.borderLeft classes in Cell.module.css). That keeps
+ * the outline of an irregular-grid puzzle hugging its actual visible
+ * cells rather than always rendering a rectangular outer frame.
  */
 
 .board {
   position: relative;
   display: grid;
   gap: 0;
-  background: #000;
-  border: 2px solid #000;
   width: max-content;
   align-self: start;
 }

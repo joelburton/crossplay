@@ -98,6 +98,21 @@ export function HelpDialog({ onClose }: Props) {
             </p>
           </section>
           <section>
+            <h3>Cell markers</h3>
+            <p>
+              Some cells carry author-defined decoration. A{" "}
+              <strong>circle</strong> or a <strong>shaded</strong> background marks a
+              theme cell — both are visual only and don't affect solving. An{" "}
+              <strong>underlined</strong> letter is a <em>given</em>: the author put
+              it there and you can't change it. A handful of puzzles use{" "}
+              <strong>Schrödinger</strong> cells, where the same square accepts more
+              than one answer; Check will accept any of them, and Reveal writes the
+              canonical one. Empty space at the puzzle's edges (or in interior cutouts)
+              means the grid isn't rectangular — those squares aren't part of the
+              puzzle, so the cursor and arrows skip past them.
+            </p>
+          </section>
+          <section>
             <h3>Playing together</h3>
             <p>
               Anyone with the URL can play and chat — there are no accounts. Each

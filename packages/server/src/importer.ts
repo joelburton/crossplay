@@ -25,7 +25,7 @@ export function insertPuzzleRow(args: {
   db: DatabaseSync;
   id: string;
   state: PuzzleState;
-  solution: (string | null)[][];
+  solution: (string[] | null)[][];
   replaceIfExists: boolean;
 }): { replaced: boolean } {
   const { db, id, state, solution, replaceIfExists } = args;

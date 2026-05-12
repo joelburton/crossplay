@@ -21,6 +21,7 @@ function renderCell(cell: CellT, props: Partial<Parameters<typeof Cell>[0]> = {}
       recentColor={null}
       remoteCursorColor={null}
       collapseRebus={false}
+      borderMask={0}
       onClick={() => {}}
       {...props}
     />,

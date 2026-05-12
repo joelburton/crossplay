@@ -78,8 +78,14 @@ describe("parsePuzBuffer", () => {
       for (let c = 0; c < state.meta.width; c++) {
         const cell = state.snapshot.cells[r]![c]!;
         const sol = solution[r]![c];
-        if (cell.kind === "block") expect(sol).toBeNull();
-        else expect(sol).toMatch(/^[A-Z]$/);
+        if (cell.kind === "block") {
+          expect(sol).toBeNull();
+        } else {
+          // .puz has no Schrödinger concept, so each cell's answer
+          // array always has exactly one element.
+          expect(sol).toHaveLength(1);
+          expect(sol![0]).toMatch(/^[A-Z]+$/);
+        }
       }
     }
   });
@@ -110,7 +116,7 @@ describe("parsePuzBuffer — unsupported features", () => {
       clues: { across: {}, down: {} },
     });
     const { solution } = parsePuzBuffer("x", Buffer.alloc(0));
-    expect(solution[0]![1]).toBe("BLOCK");
+    expect(solution[0]![1]).toEqual(["BLOCK"]);
   });
 
   it("rejects rebus solutions over the cap", () => {
@@ -128,7 +134,7 @@ describe("parsePuzBuffer — unsupported features", () => {
     expect(() => parsePuzBuffer("x", Buffer.alloc(0))).toThrow(/rebus/);
   });
 
-  it("rejects shaded cells (we don't render shading)", () => {
+  it("sets shaded:true on cells whose flat index appears in decoded.shades", () => {
     stubDecode({
       grid: [
         ["A", "B"],
@@ -139,8 +145,13 @@ describe("parsePuzBuffer — unsupported features", () => {
       shades: [1],
       clues: { across: {}, down: {} },
     });
-    expect(() => parsePuzBuffer("x", Buffer.alloc(0))).toThrow(IpuzUnsupportedError);
-    expect(() => parsePuzBuffer("x", Buffer.alloc(0))).toThrow(/shaded/);
+    const { state } = parsePuzBuffer("x", Buffer.alloc(0));
+    const target = state.snapshot.cells[0]![1]!;
+    expect(target.kind).toBe("cell");
+    if (target.kind === "cell") expect(target.shaded).toBe(true);
+    // Cells outside the shades list stay unmarked.
+    const other = state.snapshot.cells[0]![0]!;
+    if (other.kind === "cell") expect(other.shaded).toBeUndefined();
   });
 
   it("sets circled:true on cells whose flat index appears in decoded.circles", () => {

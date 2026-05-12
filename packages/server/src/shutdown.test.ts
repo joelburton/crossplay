@@ -56,10 +56,21 @@ describe("shutdown", () => {
     // Lazy-load into cache, mutate, mark dirty (but don't wait the 15s).
     const entry = getOrLoadBoard(db, boardId)!;
     expect(entry).toBeTruthy();
+    // Find any fillable cell (the sunday fixture's top-left corner is
+    // a hidden block, so we can't hard-code (0, 0)).
+    let row0 = -1, col0 = -1;
+    outer: for (let r = 0; r < entry.state.meta.height; r++) {
+      for (let c = 0; c < entry.state.meta.width; c++) {
+        if (entry.state.snapshot.cells[r]![c]!.kind === "cell") {
+          row0 = r; col0 = c; break outer;
+        }
+      }
+    }
+    expect(row0).toBeGreaterThanOrEqual(0);
     applyFill(entry, {
       type: "fill",
-      row: 0,
-      col: 0,
+      row: row0,
+      col: col0,
       letter: "Z",
       clientVersion: 0,
     });
@@ -71,14 +82,14 @@ describe("shutdown", () => {
 
     expect(exit).toHaveBeenCalledExactlyOnceWith(0);
 
-    // The flushed row should reflect the Z fill in column 0 of row 0.
+    // The flushed row should reflect the Z fill at the cell we picked.
     const row = db
       .prepare("SELECT snapshot FROM boards WHERE id = ?")
       .get(boardId) as { snapshot: string };
     const snapshot = JSON.parse(row.snapshot) as {
       cells: Array<Array<{ kind: string; fill?: string | null }>>;
     };
-    expect(snapshot.cells[0]![0]!.fill).toBe("Z");
+    expect(snapshot.cells[row0]![col0]!.fill).toBe("Z");
   });
 
   it("is idempotent (second call is a no-op)", async () => {

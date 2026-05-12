@@ -136,8 +136,8 @@ describe("board lifecycle with no puzzle row", () => {
       for (let c = 0; c < entry.state.meta.width; c++) {
         const cell = entry.state.snapshot.cells[r]![c]!;
         const sol = entry.solution[r]?.[c];
-        if (cell.kind === "cell" && typeof sol === "string") {
-          target = { row: r, col: c, sol };
+        if (cell.kind === "cell" && Array.isArray(sol) && sol.length > 0) {
+          target = { row: r, col: c, sol: sol[0]! };
           break outer;
         }
       }

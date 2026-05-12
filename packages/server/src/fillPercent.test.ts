@@ -93,4 +93,42 @@ describe("computeFillPercent", () => {
     // empty fill itself doesn't count toward the numerator.
     expect(computeFillPercent(emptyGrid(), withFills("", null, null))).toBe(0);
   });
+
+  it("excludes given cells from both numerator and denominator", () => {
+    // Initial has a given at (0,0). Live: player has filled (0,1) but
+    // not (1,0). Of the *non-given* fillable cells (2 total), 1 is
+    // filled → 50%.
+    const initial: GridSnapshot = {
+      version: 0,
+      cells: [
+        [
+          { kind: "cell", number: 1, fill: "X", given: true },
+          { kind: "cell", number: 2, fill: null },
+        ],
+        [
+          { kind: "cell", number: 3, fill: null },
+          { kind: "block" },
+        ],
+      ],
+    };
+    const live: GridSnapshot = JSON.parse(JSON.stringify(initial)) as GridSnapshot;
+    (live.cells[0]![1] as { kind: "cell"; fill: string | null }).fill = "Y";
+    expect(computeFillPercent(initial, live)).toBe(50);
+  });
+
+  it("returns null when all fillable cells are givens (degenerate)", () => {
+    const grid: GridSnapshot = {
+      version: 0,
+      cells: [
+        [
+          { kind: "cell", number: 1, fill: "A", given: true },
+          { kind: "cell", number: 2, fill: "B", given: true },
+        ],
+      ],
+    };
+    // Make the live snapshot differ trivially so we get past the
+    // initial==current short-circuit.
+    const live: GridSnapshot = { ...grid, version: 7 };
+    expect(computeFillPercent(grid, live)).toBeNull();
+  });
 });

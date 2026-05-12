@@ -24,6 +24,11 @@ export function computeFillPercent(
   for (const row of current.cells) {
     for (const cell of row) {
       if (cell.kind !== "cell") continue;
+      // Givens are author-prefilled — not part of the player's work,
+      // so neither counted as fillable nor as filled. A puzzle made
+      // entirely of givens (degenerate, but possible) collapses to
+      // fillable = 0 → null below.
+      if (cell.given) continue;
       fillable++;
       if (cell.fill && cell.fill.length > 0) filled++;
     }
@@ -51,13 +56,19 @@ function snapshotsEqual(a: GridSnapshot, b: GridSnapshot): boolean {
 
 function cellsEqual(a: GridSnapshot["cells"][number][number], b: GridSnapshot["cells"][number][number]): boolean {
   if (a.kind !== b.kind) return false;
-  if (a.kind === "block") return true;
+  if (a.kind === "block") {
+    if (b.kind !== "block") return false;
+    return !!a.hidden === !!b.hidden;
+  }
   if (b.kind !== "cell") return false;
   return (
     a.number === b.number &&
     a.fill === b.fill &&
     !!a.revealed === !!b.revealed &&
     !!a.wrong === !!b.wrong &&
-    !!a.pencil === !!b.pencil
+    !!a.pencil === !!b.pencil &&
+    !!a.circled === !!b.circled &&
+    !!a.shaded === !!b.shaded &&
+    !!a.given === !!b.given
   );
 }

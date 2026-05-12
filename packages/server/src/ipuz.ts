@@ -6,18 +6,23 @@
  * (alongside .puz) and emit it for the future "download puzzle"
  * button.
  *
- * Scope today is the standard-crossword subset plus basic rebus and
- * circled cells: square grid, integer cell numbers, plain text clues,
- * solutions/saved values 1–MAX_REBUS_LEN uppercase letters, and
- * `style.shapebg === "circle"` as a per-cell decoration. Any ipuz
- * feature outside that subset (shaded cells, barred grids,
- * irregular/null cells, non-crossword `kind`, unknown style keys or
- * cell-object keys, named style references) causes `parseIpuzBuffer`
- * to throw `IpuzUnsupportedError` so we can see what real puzzles in
- * the wild are using before deciding which to support. Silent
+ * Scope today is the standard-crossword subset plus basic rebus,
+ * circled cells, shaded cells, author-prefilled givens, per-cell
+ * Schrödinger alternates, and irregular grids (null cells): square
+ * grid, integer cell numbers, plain text clues, solutions/saved
+ * values 1–MAX_REBUS_LEN uppercase letters, `style.shapebg ===
+ * "circle"` and `style.color` as per-cell decorations, `value` on
+ * the puzzle grid for givens, `{value, alternates}` on the solution
+ * grid for multi-answer cells, and `null` on the puzzle grid for
+ * cut-out cells (rendered transparent, otherwise behaves like a
+ * block). Any ipuz feature outside that subset (barred grids,
+ * non-crossword `kind`, unknown style keys or cell-object keys,
+ * named style references) causes `parseIpuzBuffer` to throw
+ * `IpuzUnsupportedError` so we can see what real puzzles in the
+ * wild are using before deciding which to support. Silent
  * degradation would hide that signal — checks are whitelists, not
- * blacklists, so a new unknown feature surfaces as a 400 rather than
- * a quietly-stripped puzzle.
+ * blacklists, so a new unknown feature surfaces as a 400 rather
+ * than a quietly-stripped puzzle.
  *
  * The pivot for both directions is the same `PuzzleState` + solution
  * grid that `parsePuzBuffer` produces, so anything downstream
@@ -31,7 +36,11 @@ export { MAX_REBUS_LEN };
 
 type ParseResult = {
   state: PuzzleState;
-  solution: (string | null)[][];
+  /** Per cell: null for a block, otherwise an array of accepted
+   *  answers. Length 1 for normal cells; length > 1 for Schrödinger
+   *  cells (multiple valid answers). `applyCheck` accepts any element;
+   *  `applyReveal` writes element 0 (the canonical answer). */
+  solution: (string[] | null)[][];
 };
 
 /** Thrown for both malformed ipuz JSON and ipuz features we don't yet
@@ -54,9 +63,13 @@ type IpuzCellObject = {
   cell?: unknown;
   style?: unknown;
   value?: unknown;
+  /** Schrödinger alternates: extra accepted answers, in addition to
+   *  `value` (or the bare string in the solution grid). Custom
+   *  extension — not in the ipuz spec proper, but a clear shape. */
+  alternates?: unknown;
 };
 
-const ALLOWED_CELL_OBJECT_KEYS = new Set(["cell", "style", "value"]);
+const ALLOWED_CELL_OBJECT_KEYS = new Set(["cell", "style", "value", "alternates"]);
 
 function isPlainObject(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null && !Array.isArray(x);
@@ -66,7 +79,7 @@ function isPlainObject(x: unknown): x is Record<string, unknown> {
  *  rejected so unknown features surface as 400s rather than silent
  *  drops — when a real puzzle hits one of these, that's the signal
  *  to decide whether to support it. */
-function parseStyle(style: unknown, where: string): { circled: boolean } {
+function parseStyle(style: unknown, where: string): { circled: boolean; shaded: boolean } {
   // Named styles (`style: "themeAccent"`) would need to be resolved
   // against the top-level `styles` table; we don't read that table, so
   // honoring the reference would be a silent drop.
@@ -75,6 +88,7 @@ function parseStyle(style: unknown, where: string): { circled: boolean } {
   }
   if (!isPlainObject(style)) fail(`${where}: style must be an object`);
   let circled = false;
+  let shaded = false;
   for (const [key, value] of Object.entries(style)) {
     if (key === "shapebg") {
       if (value === "circle") {
@@ -82,11 +96,22 @@ function parseStyle(style: unknown, where: string): { circled: boolean } {
       } else {
         fail(`${where}: style.shapebg=${JSON.stringify(value)} is not supported (only "circle")`);
       }
+    } else if (key === "color") {
+      // We treat any cell-background color as "shaded" (rendered with
+      // our standard light-grey overlay). The author's specific color
+      // is intentionally dropped — supporting per-cell color palettes
+      // would multiply the design surface for very little gain, and
+      // most real puzzles use shading only as a theme marker (same
+      // role as circles).
+      if (typeof value !== "string") {
+        fail(`${where}: style.color must be a string`);
+      }
+      shaded = true;
     } else {
       fail(`${where}: style.${key} is not supported`);
     }
   }
-  return { circled };
+  return { circled, shaded };
 }
 
 /** Reject any keys on a cell object beyond the ones we know how to
@@ -142,26 +167,9 @@ function pickClues(clues: Record<string, unknown>, key: string): unknown {
   return clues[key] ?? clues[key.toLowerCase()];
 }
 
-/** Normalize one solution-grid cell to an uppercase letter (or short
- *  rebus string) or null (block). Caps multi-char solutions at
- *  MAX_REBUS_LEN; rejects object form with `value` over the cap and
- *  any cell shape we don't recognize. */
-function parseSolutionCell(
-  raw: unknown,
-  blockChar: string,
-  isBlock: boolean,
-  where: string,
-): string | null {
-  if (isBlock) return null;
-  let value: unknown = raw;
-  if (isPlainObject(raw)) {
-    checkCellObjectKeys(raw, where);
-    if (raw.style !== undefined) parseStyle(raw.style, where);
-    value = "value" in raw ? raw.value : raw.cell;
-  }
-  if (value === blockChar) {
-    fail(`${where}: solution marks block where puzzle marks an open cell`);
-  }
+/** Validate one answer string for a solution cell. Returns the
+ *  uppercased letter / rebus, or fails with a clear message. */
+function validateAnswer(value: unknown, where: string): string {
   if (typeof value !== "string") {
     fail(`${where}: solution cell must be a letter (got ${JSON.stringify(value)})`);
   }
@@ -172,6 +180,41 @@ function parseSolutionCell(
     fail(`${where}: rebus solutions over ${MAX_REBUS_LEN} characters are not supported`);
   }
   return value.toUpperCase();
+}
+
+/** Normalize one solution-grid cell to an array of accepted answers
+ *  (length 1 for normal cells, > 1 for Schrödinger cells) or null
+ *  (block). Accepts a bare string, or an object `{value, alternates}`
+ *  where `alternates` is an array of additional accepted answers. */
+function parseSolutionCell(
+  raw: unknown,
+  blockChar: string,
+  isBlock: boolean,
+  where: string,
+): string[] | null {
+  if (isBlock) return null;
+  let value: unknown = raw;
+  let alternates: unknown = undefined;
+  if (isPlainObject(raw)) {
+    checkCellObjectKeys(raw, where);
+    if (raw.style !== undefined) parseStyle(raw.style, where);
+    value = "value" in raw ? raw.value : raw.cell;
+    alternates = raw.alternates;
+  }
+  if (value === blockChar) {
+    fail(`${where}: solution marks block where puzzle marks an open cell`);
+  }
+  const out: string[] = [validateAnswer(value, where)];
+  if (alternates !== undefined) {
+    if (!Array.isArray(alternates)) {
+      fail(`${where}: alternates must be an array`);
+    }
+    for (let i = 0; i < alternates.length; i++) {
+      const alt = validateAnswer(alternates[i], `${where}.alternates[${i}]`);
+      if (!out.includes(alt)) out.push(alt);
+    }
+  }
+  return out;
 }
 
 /**
@@ -223,7 +266,7 @@ export function parseIpuzBuffer(id: string, buffer: Buffer): ParseResult {
   }
 
   const cells: Cell[][] = [];
-  const solution: (string | null)[][] = [];
+  const solution: (string[] | null)[][] = [];
   for (let r = 0; r < height; r++) {
     const puzRow = puzzleGrid[r];
     const solRow = solutionGrid[r];
@@ -234,27 +277,47 @@ export function parseIpuzBuffer(id: string, buffer: Buffer): ParseResult {
       fail(`solution row ${r} must have ${width} cells`);
     }
     const cellRow: Cell[] = [];
-    const solOut: (string | null)[] = [];
+    const solOut: (string[] | null)[] = [];
     for (let c = 0; c < width; c++) {
       const where = `puzzle[${r}][${c}]`;
       const raw = puzRow[c];
       let cellValue: unknown = raw;
       let circled = false;
+      let shaded = false;
+      let given: string | undefined;
       if (isPlainObject(raw)) {
         const obj = raw as IpuzCellObject;
         checkCellObjectKeys(raw, where);
         if (obj.style !== undefined) {
-          ({ circled } = parseStyle(obj.style, where));
+          ({ circled, shaded } = parseStyle(obj.style, where));
         }
-        if (obj.value !== undefined) fail(`${where}: pre-filled cell values are not supported`);
+        if (obj.value !== undefined) {
+          // Pre-filled (given) cells: the author seeds a letter that
+          // the player can't edit. We store it as `fill` + `given:
+          // true`; applyFill refuses to mutate, fillPercent skips,
+          // and the client renders it underlined.
+          given = validateAnswer(obj.value, `${where}.value`);
+        }
         cellValue = obj.cell ?? emptyMarker;
       }
 
       if (cellValue === null) {
-        fail(`${where}: null cells (irregular grids) are not supported`);
+        // Irregular-grid void cell: same word-boundary / unfillable
+        // behavior as a block, but rendered as transparent space.
+        // Decoration / value flags are nonsensical here — reject so a
+        // typo in the puzzle file surfaces clearly rather than getting
+        // silently rendered into nothing.
+        if (circled) fail(`${where}: circled null cells are not supported`);
+        if (shaded) fail(`${where}: shaded null cells are not supported`);
+        if (given !== undefined) fail(`${where}: null cells cannot have a value`);
+        cellRow.push({ kind: "block", hidden: true });
+        solOut.push(parseSolutionCell(solRow[c], blockChar, true, `solution[${r}][${c}]`));
+        continue;
       }
       if (cellValue === blockChar) {
         if (circled) fail(`${where}: circled blocks are not supported`);
+        if (shaded) fail(`${where}: shaded blocks are not supported`);
+        if (given !== undefined) fail(`${where}: blocks cannot have a value`);
         cellRow.push({ kind: "block" });
         solOut.push(parseSolutionCell(solRow[c], blockChar, true, `solution[${r}][${c}]`));
         continue;
@@ -271,8 +334,10 @@ export function parseIpuzBuffer(id: string, buffer: Buffer): ParseResult {
       cellRow.push({
         kind: "cell",
         number,
-        fill: null,
+        fill: given ?? null,
         ...(circled ? { circled: true } : {}),
+        ...(shaded ? { shaded: true } : {}),
+        ...(given !== undefined ? { given: true } : {}),
       });
       solOut.push(parseSolutionCell(solRow[c], blockChar, false, `solution[${r}][${c}]`));
     }
@@ -285,6 +350,8 @@ export function parseIpuzBuffer(id: string, buffer: Buffer): ParseResult {
   // produced by our download endpoint mid-game. We apply letters into
   // the snapshot but ignore the `revealed`/`wrong`/`pencil` flags
   // (ipuz has no concept of them; we'd need a custom extension).
+  // Given cells already have their author-prefilled fill from the
+  // puzzle grid and are skipped here — `saved` is for player typing.
   const savedGrid = data.saved;
   if (savedGrid !== undefined) {
     if (!Array.isArray(savedGrid) || savedGrid.length !== height) {
@@ -298,6 +365,7 @@ export function parseIpuzBuffer(id: string, buffer: Buffer): ParseResult {
       for (let c = 0; c < width; c++) {
         const cell = cells[r]![c]!;
         if (cell.kind === "block") continue;
+        if (cell.given) continue;
         const raw = row[c];
         let value: unknown = raw;
         if (isPlainObject(raw)) {
@@ -351,33 +419,61 @@ export function parseIpuzBuffer(id: string, buffer: Buffer): ParseResult {
  * @param state  PuzzleState (meta + snapshot).
  * @param solution  Server-side solution grid (letters or null).
  */
-export function writeIpuz(state: PuzzleState, solution: (string | null)[][]): string {
+export function writeIpuz(state: PuzzleState, solution: (string[] | null)[][]): string {
   const { meta, snapshot } = state;
 
-  // Circled cells need the object form `{ cell, style: { shapebg: "circle" } }`
-  // so the decoration survives the round-trip through the stored ipuz
-  // blob — boards are flushed as canonical ipuz on every idle tick,
-  // and a flat-number representation would erase the circles.
+  // Decorations (circle / shading) and givens need the object form so
+  // they survive the round-trip through the stored ipuz blob — boards
+  // are flushed as canonical ipuz on every idle tick, and a flat-
+  // number representation would erase them.
   const puzzle = snapshot.cells.map((row) =>
-    row.map((cell): string | number | Record<string, unknown> => {
-      if (cell.kind === "block") return "#";
+    row.map((cell): null | string | number | Record<string, unknown> => {
+      if (cell.kind === "block") return cell.hidden ? null : "#";
       const value = cell.number ?? 0;
-      if (cell.circled) {
-        return { cell: value, style: { shapebg: "circle" } };
-      }
-      return value;
+      const style: Record<string, unknown> = {};
+      if (cell.circled) style.shapebg = "circle";
+      if (cell.shaded) style.color = "#dddddd";
+      const hasStyle = Object.keys(style).length > 0;
+      if (!hasStyle && !cell.given) return value;
+      const obj: Record<string, unknown> = { cell: value };
+      if (hasStyle) obj.style = style;
+      if (cell.given && cell.fill) obj.value = cell.fill.toUpperCase();
+      return obj;
     }),
   );
 
-  const sol = solution.map((row) => row.map((c) => (c === null ? "#" : c.toUpperCase())));
+  // Solution: walk in parallel with the snapshot so hidden blocks
+  // emit `null` (matching the puzzle grid) while visible blocks emit
+  // "#". A reader that loses the parallel relationship between the
+  // two grids would silently drop the irregular shape.
+  const sol = solution.map((row, r) =>
+    row.map((answers, c): null | string | number | Record<string, unknown> => {
+      if (answers === null) {
+        const cell = snapshot.cells[r]?.[c];
+        return cell?.kind === "block" && cell.hidden ? null : "#";
+      }
+      const primary = answers[0]!.toUpperCase();
+      if (answers.length === 1) return primary;
+      return {
+        value: primary,
+        alternates: answers.slice(1).map((a) => a.toUpperCase()),
+      };
+    }),
+  );
 
+  // Only emit `saved` for player typing — given letters are part of
+  // the template, not user state, and would round-trip through `value`
+  // on the puzzle grid above.
   const hasFills = snapshot.cells.some((row) =>
-    row.some((cell) => cell.kind === "cell" && cell.fill != null && cell.fill !== ""),
+    row.some(
+      (cell) => cell.kind === "cell" && !cell.given && cell.fill != null && cell.fill !== "",
+    ),
   );
   const saved = hasFills
     ? snapshot.cells.map((row) =>
         row.map((cell): string | number => {
           if (cell.kind === "block") return 0;
+          if (cell.given) return 0;
           return cell.fill ? cell.fill.toUpperCase() : 0;
         }),
       )

@@ -98,7 +98,18 @@ export function App() {
       setLoad({ kind: "loading" });
       try {
         const p = await fetchBoard(id);
-        if (!cancelled) setLoad({ kind: "loaded", puzzle: p });
+        if (!cancelled) {
+          // Dev-only: dump the board the server handed us so the
+          // network response can be inspected without DevTools. The
+          // `import.meta.env.DEV` check is statically replaced at
+          // build time, so this block is dead-code-eliminated from
+          // production bundles.
+          if (import.meta.env.DEV) {
+            // eslint-disable-next-line no-console
+            console.log("[crossplay] board loaded", id, p);
+          }
+          setLoad({ kind: "loaded", puzzle: p });
+        }
       } catch (err) {
         if (cancelled) return;
         if (err instanceof HttpError && err.status === 404) {

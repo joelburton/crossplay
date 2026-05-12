@@ -6,17 +6,17 @@
   "title": "Sunday Sampler (synthetic)",
   "author": "Crossplay generator",
   "copyright": "test fixture; not a real puzzle",
-  "notes": "Welcome to the Sunday Sampler -- a synthetic 21x21 grid generated for layout testing.\n\nTheme: There is no theme. The grid was placed by a deterministic random number generator with rotational symmetry, and the letters are nonsense.\n\nAbout the clues: Every clue is a placeholder of the form \"Across clue N\" or \"Down clue N\". They have no relationship to the letters in the grid. If you came here expecting wordplay, please complain loudly to the seeded RNG (look up rng(42) -- that's the responsible party).\n\nCryptic note: In a real cryptic crossword, this section would explain conventions like \"all answers contain a hidden moth\" or \"every down answer is an anagram of a chemical element\". Here, the only convention is that everything has 17% block density and no pretensions to solvability.\n\nUse the menu to test reveal/check actions against this grid; the \"solution\" is the random letter we wrote into each cell, so reveal-letter will fill in the same nonsense your fingers were about to type.",
+  "notes": "Welcome to the Sunday Sampler -- a synthetic 21x21 grid generated for layout testing.\n\nTheme: There is no theme. The grid was placed by a deterministic random number generator with rotational symmetry, and the letters are nonsense. A handful of cells are decorated with features (circle, shading, rebus, given, Schrodinger) so the rendering can be eyeballed end to end.\n\nFeature locations: the demonstration cells live in the top-left quadrant so you don't have to scroll. Look for a circled letter, a shaded square, a HEART rebus, and (in the .ipuz fixture only) an underlined given letter plus a Schrodinger cell that accepts two different answers.\n\nAbout the clues: Every clue is a placeholder of the form \"Across clue N\" or \"Down clue N\" except for one deliberately overlong Across clue near the start, which exists to test how the layout handles a wraparound cryptic.",
   "dimensions": {
     "width": 21,
     "height": 21
   },
   "puzzle": [
     [
+      null,
+      null,
       1,
       2,
-      0,
-      0,
       3,
       "#",
       4,
@@ -32,17 +32,37 @@
       "#",
       13,
       14,
-      15,
-      16
+      null,
+      null
     ],
     [
+      null,
+      {
+        "cell": 15,
+        "style": {
+          "shapebg": "circle"
+        }
+      },
+      "#",
+      {
+        "cell": 16,
+        "style": {
+          "color": "#dddddd"
+        }
+      },
+      {
+        "cell": 0,
+        "style": {
+          "color": "#dddddd"
+        }
+      },
       17,
       0,
-      "#",
-      "#",
+      0,
+      0,
+      0,
+      0,
       18,
-      0,
-      0,
       0,
       0,
       0,
@@ -51,26 +71,21 @@
       0,
       0,
       0,
-      0,
-      20,
-      0,
-      0,
-      0,
-      0
+      null
     ],
     [
       "#",
+      20,
       21,
+      0,
+      "#",
       22,
+      0,
+      0,
       "#",
-      "#",
+      0,
       "#",
       23,
-      0,
-      "#",
-      0,
-      "#",
-      24,
       0,
       0,
       0,
@@ -82,7 +97,17 @@
       "#"
     ],
     [
+      24,
+      {
+        "cell": 0,
+        "value": "G"
+      },
+      0,
+      0,
       25,
+      0,
+      0,
+      0,
       0,
       0,
       "#",
@@ -94,35 +119,28 @@
       0,
       "#",
       27,
-      0,
-      0,
-      0,
-      0,
-      0,
-      "#",
       28,
-      29,
-      30
+      29
     ],
     [
+      30,
+      0,
+      0,
+      0,
+      0,
+      "#",
       31,
       0,
-      0,
-      32,
-      0,
       "#",
+      32,
       33,
-      0,
+      "#",
       "#",
       34,
+      0,
+      0,
+      0,
       35,
-      "#",
-      "#",
-      0,
-      "#",
-      36,
-      0,
-      37,
       0,
       0,
       0
@@ -130,46 +148,46 @@
     [
       0,
       "#",
+      36,
+      0,
+      0,
+      0,
+      0,
+      0,
+      37,
+      0,
+      0,
       38,
-      0,
-      0,
-      0,
-      0,
-      0,
       39,
       0,
       0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
       40,
       41,
       0,
       0,
       0,
-      0,
-      0,
-      0,
-      0,
-      0
-    ],
-    [
+      "#",
       42,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      "#",
+      "#",
       43,
       0,
       0,
       0,
-      "#",
-      44,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      "#",
-      "#",
-      45,
-      0,
-      0,
-      0,
       0,
       0
     ],
@@ -177,157 +195,157 @@
       "#",
       0,
       "#",
+      44,
+      0,
+      45,
+      "#",
       46,
       0,
+      0,
+      0,
+      0,
+      0,
       47,
-      "#",
       48,
       0,
       0,
       0,
-      0,
-      0,
+      "#",
       49,
+      0
+    ],
+    [
       50,
+      0,
+      0,
       0,
       0,
       0,
       "#",
       51,
-      0
-    ],
-    [
-      52,
+      0,
+      0,
+      0,
       0,
       0,
       0,
       0,
       0,
       "#",
+      52,
       53,
+      "#",
+      0
+    ],
+    [
       0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
+      "#",
       "#",
       54,
-      55,
-      "#",
-      0
-    ],
-    [
       0,
-      "#",
+      0,
+      55,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
       "#",
       56,
-      0,
-      0,
+      "#",
       57,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      "#",
-      0,
-      "#",
       58,
-      59,
       0
     ],
     [
+      59,
       60,
       61,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
       62,
       0,
-      "#",
       63,
       0,
       0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
+      0
+    ],
+    [
       64,
+      0,
+      0,
+      "#",
+      0,
       "#",
       65,
       0,
       0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      "#",
+      "#",
       0
     ],
     [
+      0,
+      "#",
       66,
-      0,
-      0,
-      "#",
-      0,
-      "#",
       67,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
+      "#",
       68,
       0,
-      "#",
-      "#",
-      0
-    ],
-    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
       0,
       "#",
       69,
+      0,
+      0,
+      0,
       70,
-      "#",
-      71,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      "#",
-      72,
-      0,
-      0,
-      0,
-      73,
       0
     ],
     [
+      71,
+      72,
+      "#",
+      73,
       74,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      "#",
       75,
-      "#",
-      76,
-      77,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      "#",
-      78,
       0,
       0,
       "#",
@@ -335,27 +353,50 @@
       "#"
     ],
     [
-      79,
+      76,
       0,
+      77,
+      0,
+      0,
+      0,
+      "#",
+      "#",
+      78,
+      0,
+      0,
+      0,
+      0,
+      0,
+      79,
+      "#",
       80,
       0,
-      0,
-      0,
-      "#",
-      "#",
       81,
       0,
-      0,
-      0,
-      0,
-      0,
-      82,
-      "#",
+      82
+    ],
+    [
       83,
       0,
-      84,
       0,
-      85
+      0,
+      0,
+      0,
+      84,
+      85,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      "#",
+      0
     ],
     [
       86,
@@ -365,71 +406,69 @@
       0,
       0,
       0,
+      0,
+      "#",
+      "#",
       87,
       0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
       "#",
-      0
-    ],
-    [
       88,
       0,
-      0,
-      0,
-      0,
-      0,
-      "#",
-      0,
-      "#",
       "#",
       89,
       0,
-      "#",
+      0,
       90,
-      0,
-      "#",
-      91,
-      0,
-      0,
-      92,
       0
     ],
     [
-      93,
+      91,
       0,
       0,
       "#",
-      94,
+      92,
       0,
+      0,
+      0,
+      93,
+      94,
+      "#",
       95,
       0,
+      0,
+      0,
       96,
-      97,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
       "#",
+      "#",
+      97,
       98,
       0,
       0,
       0,
       0,
       0,
+      0,
+      "#",
+      0,
       "#",
       99,
       0,
-      0
-    ],
-    [
-      "#",
+      0,
       "#",
       100,
+      0,
+      0,
+      "#"
+    ],
+    [
+      null,
       101,
       0,
       0,
@@ -437,103 +476,103 @@
       0,
       0,
       0,
-      "#",
       0,
-      "#",
+      0,
       102,
       0,
-      "#",
-      "#",
-      "#",
       103,
       0,
-      "#"
+      0,
+      0,
+      104,
+      0,
+      "#",
+      0,
+      null
     ],
     [
-      104,
+      null,
+      null,
       105,
       0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
+      "#",
       106,
       0,
+      0,
+      0,
+      "#",
       107,
       0,
       0,
       0,
+      0,
+      "#",
       108,
-      "#",
-      "#",
-      109,
-      110
-    ],
-    [
-      111,
       0,
       0,
-      0,
-      "#",
-      112,
-      0,
-      0,
-      0,
-      "#",
-      113,
-      0,
-      0,
-      0,
-      0,
-      "#",
-      114,
-      0,
-      0,
-      0,
-      0
+      null,
+      null
     ]
   ],
   "solution": [
     [
+      null,
+      null,
+      "D",
+      "G",
+      "P",
+      "#",
+      "S",
+      "M",
+      "F",
+      "F",
+      "S",
+      "#",
+      "W",
+      "V",
       "S",
       "V",
+      "#",
       "K",
       "D",
+      null,
+      null
+    ],
+    [
+      null,
       "D",
       "#",
       "O",
       "Q",
       "Z",
       "L",
-      "T",
-      "#",
+      "HEART",
       "L",
       "B",
       "C",
       "V",
-      "#",
       "Z",
       "U",
       "E",
-      "K"
-    ],
-    [
+      "K",
       "H",
       "M",
-      "#",
-      "#",
       "V",
       "X",
+      null
+    ],
+    [
+      "#",
       "F",
       "I",
       "N",
+      "#",
       "G",
       "K",
       "A",
+      "#",
       "Q",
+      "#",
       "J",
       "M",
       "G",
@@ -541,80 +580,75 @@
       "S",
       "O",
       "P",
-      "G"
-    ],
-    [
-      "#",
-      "J",
-      "K",
-      "#",
-      "#",
-      "#",
-      "Y",
       "G",
-      "#",
-      "X",
-      "#",
-      "Y",
-      "O",
-      "Y",
-      "A",
-      "G",
-      "O",
-      "N",
-      "Y",
       "#",
       "#"
     ],
     [
+      "J",
+      "G",
+      "Y",
+      {
+        "value": "S",
+        "alternates": [
+          "Z"
+        ]
+      },
+      "X",
+      "Y",
+      "O",
+      "Y",
+      "A",
+      "G",
+      "#",
+      "O",
+      "N",
+      "Y",
       "Z",
       "S",
       "V",
       "#",
       "I",
       "O",
-      "R",
+      "R"
+    ],
+    [
       "B",
       "I",
       "L",
-      "#",
       "T",
       "Z",
+      "#",
       "A",
       "O",
+      "#",
       "H",
       "Q",
       "#",
+      "#",
       "R",
       "M",
-      "G"
-    ],
-    [
+      "G",
       "S",
       "N",
       "A",
       "V",
-      "T",
-      "#",
+      "T"
+    ],
+    [
       "X",
-      "T",
       "#",
+      "T",
       "N",
       "Z",
-      "#",
-      "#",
       "Z",
-      "#",
       "Q",
       "U",
       "B",
       "O",
       "Q",
-      "G"
-    ],
-    [
+      "G",
       "T",
-      "#",
       "A",
       "Y",
       "L",
@@ -622,75 +656,81 @@
       "O",
       "O",
       "A",
-      "K",
+      "K"
+    ],
+    [
       "P",
       "B",
       "D",
       "C",
       "G",
+      "#",
       "H",
       "O",
       "L",
       "Z",
       "R",
-      "P"
-    ],
-    [
+      "P",
       "J",
+      "#",
+      "#",
       "S",
       "H",
       "X",
       "W",
-      "#",
       "O",
-      "R",
+      "R"
+    ],
+    [
+      "#",
       "T",
+      "#",
       "P",
       "H",
       "D",
+      "#",
       "G",
-      "#",
-      "#",
       "C",
       "I",
       "L",
       "U",
       "Q",
-      "V"
-    ],
-    [
-      "#",
+      "V",
       "H",
-      "#",
       "S",
       "L",
       "J",
       "#",
       "S",
-      "N",
+      "N"
+    ],
+    [
       "T",
       "R",
       "H",
       "U",
       "Y",
       "U",
+      "#",
       "W",
       "E",
       "P",
-      "#",
       "N",
-      "S"
-    ],
-    [
+      "S",
       "A",
       "L",
       "B",
       "V",
+      "#",
       "F",
       "K",
       "#",
-      "Z",
+      "Z"
+    ],
+    [
       "R",
+      "#",
+      "#",
       "P",
       "D",
       "M",
@@ -698,84 +738,77 @@
       "Y",
       "D",
       "D",
-      "#",
       "V",
       "Z",
+      "T",
+      "D",
+      "F",
+      "#",
+      "U",
+      "#",
+      "W",
+      "W",
+      "W"
+    ],
+    [
+      "C",
+      "R",
+      "Y",
+      "Q",
+      "O",
+      "X",
+      "T",
+      "T",
+      "L",
+      "U",
+      "G",
+      "M",
+      "P",
+      "G",
+      "E",
+      "L",
+      "D",
+      "U",
+      "R",
+      "F",
+      "F"
+    ],
+    [
+      "C",
+      "V",
+      "Z",
+      "#",
+      "K",
+      "#",
+      "L",
+      "D",
+      "C",
+      "V",
+      "G",
+      "L",
+      "P",
+      "J",
+      "S",
+      "H",
+      "G",
+      "Y",
+      "#",
       "#",
       "T"
     ],
     [
-      "D",
-      "#",
-      "#",
-      "F",
-      "U",
-      "W",
-      "W",
-      "W",
-      "C",
-      "R",
-      "Y",
-      "Q",
-      "O",
-      "X",
-      "T",
-      "#",
-      "T",
-      "#",
-      "L",
-      "U",
-      "G"
-    ],
-    [
-      "M",
-      "P",
-      "G",
-      "E",
-      "#",
-      "L",
-      "D",
-      "U",
-      "R",
-      "F",
-      "F",
-      "C",
-      "V",
-      "Z",
-      "K",
-      "L",
-      "#",
-      "D",
-      "C",
-      "V",
-      "G"
-    ],
-    [
-      "L",
-      "P",
-      "J",
-      "#",
-      "S",
-      "#",
-      "H",
-      "G",
-      "Y",
-      "T",
       "B",
+      "#",
       "W",
       "E",
+      "#",
       "H",
       "I",
       "X",
       "U",
       "M",
-      "#",
-      "#",
-      "B"
-    ],
-    [
+      "B",
       "U",
-      "#",
       "L",
       "X",
       "#",
@@ -784,65 +817,64 @@
       "C",
       "T",
       "H",
-      "G",
+      "G"
+    ],
+    [
       "W",
       "S",
-      "B",
       "#",
+      "B",
       "V",
       "E",
       "G",
       "T",
       "E",
-      "K"
-    ],
-    [
+      "K",
       "Z",
       "T",
-      "#",
       "L",
       "N",
+      "#",
       "S",
       "F",
       "B",
+      "#",
       "N",
-      "R",
-      "Z",
-      "G",
-      "J",
-      "W",
-      "#",
-      "P",
-      "H",
-      "Y",
-      "#",
-      "Y",
       "#"
     ],
     [
       "R",
+      "Z",
+      "G",
+      "J",
+      "W",
+      "P",
+      "#",
+      "#",
+      "H",
+      "Y",
+      "Y",
+      "R",
       "Q",
       "Z",
       "I",
+      "#",
       "F",
       "T",
-      "#",
-      "#",
       "O",
       "C",
-      "C",
+      "C"
+    ],
+    [
       "S",
       "W",
       "Q",
       "U",
-      "#",
       "L",
       "T",
       "D",
       "D",
-      "J"
-    ],
-    [
+      "J",
       "N",
       "H",
       "F",
@@ -853,7 +885,10 @@
       "M",
       "L",
       "V",
-      "K",
+      "#",
+      "K"
+    ],
+    [
       "O",
       "W",
       "G",
@@ -863,22 +898,21 @@
       "F",
       "M",
       "#",
-      "G"
-    ],
-    [
+      "#",
+      "G",
       "Z",
+      "#",
       "K",
       "U",
+      "#",
       "Z",
       "O",
       "V",
-      "#",
       "H",
-      "#",
-      "#",
-      "K",
+      "K"
+    ],
+    [
       "X",
-      "#",
       "P",
       "F",
       "#",
@@ -886,55 +920,50 @@
       "H",
       "Z",
       "I",
-      "D"
-    ],
-    [
+      "D",
       "S",
+      "#",
       "U",
       "Z",
-      "#",
       "O",
       "R",
       "E",
       "V",
       "K",
       "J",
-      "#",
       "X",
-      "W",
-      "R",
-      "H",
-      "P",
-      "E",
-      "#",
-      "D",
-      "B",
-      "T"
+      "W"
     ],
     [
       "#",
       "#",
+      "R",
+      "H",
+      "P",
+      "E",
+      "D",
+      "B",
+      "T",
       "F",
+      "#",
       "U",
+      "#",
       "M",
       "Q",
       "S",
+      "#",
       "D",
       "B",
       "O",
-      "#",
-      "S",
-      "#",
-      "W",
-      "I",
-      "#",
-      "#",
-      "#",
-      "J",
-      "Z",
       "#"
     ],
     [
+      null,
+      "S",
+      "W",
+      "I",
+      "J",
+      "Z",
       "H",
       "U",
       "F",
@@ -947,38 +976,32 @@
       "H",
       "R",
       "J",
-      "B",
-      "B",
-      "W",
-      "N",
-      "L",
       "#",
-      "#",
-      "X",
-      "K"
+      "B",
+      null
     ],
     [
+      null,
+      null,
+      "B",
+      "W",
+      "#",
+      "N",
+      "L",
+      "X",
+      "K",
+      "#",
       "W",
       "D",
       "K",
       "M",
-      "#",
       "E",
+      "#",
       "X",
       "H",
       "Z",
-      "#",
-      "I",
-      "P",
-      "C",
-      "B",
-      "U",
-      "#",
-      "D",
-      "X",
-      "S",
-      "Q",
-      "K"
+      null,
+      null
     ]
   ],
   "clues": {
@@ -989,7 +1012,7 @@
       ],
       [
         4,
-        "Across clue 4"
+        "A deliberately overlong clue intended to test how the clue panels, the active-clue header pill, and the narrow-mode below-the-grid strip cope when an author writes one of those rambling cryptic surfaces that doesn't end before the reader has run out of patience or screen real estate"
       ],
       [
         9,
@@ -1000,16 +1023,16 @@
         "Across clue 13"
       ],
       [
-        17,
-        "Across clue 17"
+        16,
+        "Across clue 16"
       ],
       [
-        18,
-        "Across clue 18"
+        20,
+        "Across clue 20"
       ],
       [
-        21,
-        "Across clue 21"
+        22,
+        "Across clue 22"
       ],
       [
         23,
@@ -1020,10 +1043,6 @@
         "Across clue 24"
       ],
       [
-        25,
-        "Across clue 25"
-      ],
-      [
         26,
         "Across clue 26"
       ],
@@ -1032,16 +1051,16 @@
         "Across clue 27"
       ],
       [
-        28,
-        "Across clue 28"
+        30,
+        "Across clue 30"
       ],
       [
         31,
         "Across clue 31"
       ],
       [
-        33,
-        "Across clue 33"
+        32,
+        "Across clue 32"
       ],
       [
         34,
@@ -1052,28 +1071,32 @@
         "Across clue 36"
       ],
       [
-        38,
-        "Across clue 38"
+        40,
+        "Across clue 40"
       ],
       [
         42,
         "Across clue 42"
       ],
       [
-        44,
-        "Across clue 44"
+        43,
+        "Across clue 43"
       ],
       [
-        45,
-        "Across clue 45"
+        44,
+        "Across clue 44"
       ],
       [
         46,
         "Across clue 46"
       ],
       [
-        48,
-        "Across clue 48"
+        49,
+        "Across clue 49"
+      ],
+      [
+        50,
+        "Across clue 50"
       ],
       [
         51,
@@ -1084,28 +1107,20 @@
         "Across clue 52"
       ],
       [
-        53,
-        "Across clue 53"
-      ],
-      [
         54,
         "Across clue 54"
       ],
       [
-        56,
-        "Across clue 56"
+        57,
+        "Across clue 57"
       ],
       [
-        58,
-        "Across clue 58"
+        59,
+        "Across clue 59"
       ],
       [
-        60,
-        "Across clue 60"
-      ],
-      [
-        63,
-        "Across clue 63"
+        64,
+        "Across clue 64"
       ],
       [
         65,
@@ -1116,8 +1131,8 @@
         "Across clue 66"
       ],
       [
-        67,
-        "Across clue 67"
+        68,
+        "Across clue 68"
       ],
       [
         69,
@@ -1128,12 +1143,12 @@
         "Across clue 71"
       ],
       [
-        72,
-        "Across clue 72"
+        73,
+        "Across clue 73"
       ],
       [
-        74,
-        "Across clue 74"
+        75,
+        "Across clue 75"
       ],
       [
         76,
@@ -1144,12 +1159,8 @@
         "Across clue 78"
       ],
       [
-        79,
-        "Across clue 79"
-      ],
-      [
-        81,
-        "Across clue 81"
+        80,
+        "Across clue 80"
       ],
       [
         83,
@@ -1160,6 +1171,10 @@
         "Across clue 86"
       ],
       [
+        87,
+        "Across clue 87"
+      ],
+      [
         88,
         "Across clue 88"
       ],
@@ -1168,24 +1183,20 @@
         "Across clue 89"
       ],
       [
-        90,
-        "Across clue 90"
-      ],
-      [
         91,
         "Across clue 91"
       ],
       [
-        93,
-        "Across clue 93"
+        92,
+        "Across clue 92"
       ],
       [
-        94,
-        "Across clue 94"
+        95,
+        "Across clue 95"
       ],
       [
-        98,
-        "Across clue 98"
+        97,
+        "Across clue 97"
       ],
       [
         99,
@@ -1196,43 +1207,27 @@
         "Across clue 100"
       ],
       [
-        102,
-        "Across clue 102"
+        101,
+        "Across clue 101"
       ],
       [
-        103,
-        "Across clue 103"
+        105,
+        "Across clue 105"
       ],
       [
-        104,
-        "Across clue 104"
+        106,
+        "Across clue 106"
       ],
       [
-        109,
-        "Across clue 109"
+        107,
+        "Across clue 107"
       ],
       [
-        111,
-        "Across clue 111"
-      ],
-      [
-        112,
-        "Across clue 112"
-      ],
-      [
-        113,
-        "Across clue 113"
-      ],
-      [
-        114,
-        "Across clue 114"
+        108,
+        "Across clue 108"
       ]
     ],
     "Down": [
-      [
-        1,
-        "Down clue 1"
-      ],
       [
         2,
         "Down clue 2"
@@ -1290,40 +1285,40 @@
         "Down clue 15"
       ],
       [
-        16,
-        "Down clue 16"
+        17,
+        "Down clue 17"
+      ],
+      [
+        18,
+        "Down clue 18"
       ],
       [
         19,
         "Down clue 19"
       ],
       [
-        20,
-        "Down clue 20"
+        21,
+        "Down clue 21"
       ],
       [
-        22,
-        "Down clue 22"
+        24,
+        "Down clue 24"
       ],
       [
         25,
         "Down clue 25"
       ],
       [
-        26,
-        "Down clue 26"
+        28,
+        "Down clue 28"
       ],
       [
         29,
         "Down clue 29"
       ],
       [
-        30,
-        "Down clue 30"
-      ],
-      [
-        32,
-        "Down clue 32"
+        33,
+        "Down clue 33"
       ],
       [
         35,
@@ -1334,48 +1329,52 @@
         "Down clue 37"
       ],
       [
-        39,
-        "Down clue 39"
+        38,
+        "Down clue 38"
       ],
       [
-        40,
-        "Down clue 40"
+        39,
+        "Down clue 39"
       ],
       [
         41,
         "Down clue 41"
       ],
       [
-        43,
-        "Down clue 43"
+        45,
+        "Down clue 45"
       ],
       [
         47,
         "Down clue 47"
       ],
       [
-        49,
-        "Down clue 49"
+        48,
+        "Down clue 48"
       ],
       [
         50,
         "Down clue 50"
       ],
       [
-        52,
-        "Down clue 52"
+        53,
+        "Down clue 53"
       ],
       [
         55,
         "Down clue 55"
       ],
       [
-        57,
-        "Down clue 57"
+        56,
+        "Down clue 56"
       ],
       [
-        59,
-        "Down clue 59"
+        58,
+        "Down clue 58"
+      ],
+      [
+        60,
+        "Down clue 60"
       ],
       [
         61,
@@ -1386,12 +1385,12 @@
         "Down clue 62"
       ],
       [
-        64,
-        "Down clue 64"
+        63,
+        "Down clue 63"
       ],
       [
-        65,
-        "Down clue 65"
+        67,
+        "Down clue 67"
       ],
       [
         68,
@@ -1402,24 +1401,24 @@
         "Down clue 70"
       ],
       [
-        71,
-        "Down clue 71"
+        72,
+        "Down clue 72"
       ],
       [
-        73,
-        "Down clue 73"
-      ],
-      [
-        75,
-        "Down clue 75"
+        74,
+        "Down clue 74"
       ],
       [
         77,
         "Down clue 77"
       ],
       [
-        80,
-        "Down clue 80"
+        79,
+        "Down clue 79"
+      ],
+      [
+        81,
+        "Down clue 81"
       ],
       [
         82,
@@ -1434,52 +1433,36 @@
         "Down clue 85"
       ],
       [
-        87,
-        "Down clue 87"
+        90,
+        "Down clue 90"
       ],
       [
-        92,
-        "Down clue 92"
+        93,
+        "Down clue 93"
       ],
       [
-        95,
-        "Down clue 95"
+        94,
+        "Down clue 94"
       ],
       [
         96,
         "Down clue 96"
       ],
       [
-        97,
-        "Down clue 97"
+        98,
+        "Down clue 98"
       ],
       [
-        101,
-        "Down clue 101"
+        102,
+        "Down clue 102"
+      ],
+      [
+        103,
+        "Down clue 103"
       ],
       [
         104,
         "Down clue 104"
-      ],
-      [
-        105,
-        "Down clue 105"
-      ],
-      [
-        106,
-        "Down clue 106"
-      ],
-      [
-        107,
-        "Down clue 107"
-      ],
-      [
-        108,
-        "Down clue 108"
-      ],
-      [
-        110,
-        "Down clue 110"
       ]
     ]
   }

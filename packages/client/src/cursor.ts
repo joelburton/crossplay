@@ -36,6 +36,53 @@ export function isOpen(cells: Cell[][], row: number, col: number): boolean {
   return r[col]!.kind === "cell";
 }
 
+/** True iff `(row, col)` is a real, drawn cell — either an open cell
+ *  or a regular black block. Off-grid and hidden ("null") blocks
+ *  return false; everything else returns true. Used to compute the
+ *  per-cell border mask so the puzzle's outer edge follows the
+ *  irregular shape (a visible cell adjacent to a hidden block or to
+ *  off-grid space draws a black border on that side). */
+export function isVisibleCell(cells: Cell[][], row: number, col: number): boolean {
+  if (row < 0 || col < 0) return false;
+  if (row >= cells.length) return false;
+  const r = cells[row];
+  if (!r || col >= r.length) return false;
+  const cell = r[col]!;
+  if (cell.kind === "cell") return true;
+  return !cell.hidden;
+}
+
+/** Bitmask flags for `computeBorderMask`. Each bit is one side; combined
+ *  with OR to form a 0–15 mask passed to `Cell` as a single primitive
+ *  prop (so React.memo's shallow compare still works). */
+export const BORDER_TOP = 1 << 3;
+export const BORDER_RIGHT = 1 << 2;
+export const BORDER_BOTTOM = 1 << 1;
+export const BORDER_LEFT = 1 << 0;
+
+/**
+ * Which sides of the cell at `(row, col)` need a black border.
+ *
+ * Rules (chosen so each shared boundary is drawn exactly once and the
+ * puzzle's outer edge always reads black):
+ *
+ *   - A hidden ("null") cell has no borders — its neighbors handle it.
+ *   - A visible cell ALWAYS draws top and left. Between two visible
+ *     cells, only the right/bottom cell of the pair draws its top/
+ *     left, so the shared edge is exactly 1px.
+ *   - A visible cell draws bottom IFF the cell below is *not* visible
+ *     (hidden or off-grid). Same for right. This is what makes the
+ *     puzzle's outer edge appear: an open cell at the bottom row, or
+ *     adjacent to a hidden block, draws a closing line.
+ */
+export function computeBorderMask(cells: Cell[][], row: number, col: number): number {
+  if (!isVisibleCell(cells, row, col)) return 0;
+  let mask = BORDER_TOP | BORDER_LEFT;
+  if (!isVisibleCell(cells, row + 1, col)) mask |= BORDER_BOTTOM;
+  if (!isVisibleCell(cells, row, col + 1)) mask |= BORDER_RIGHT;
+  return mask;
+}
+
 /** First open cell scanning row-by-row. Returns `null` only on an
  *  all-blocks grid (which `parsePuzBuffer` won't produce). PuzzleView
  *  uses this as the initial cursor position. */
@@ -46,6 +93,30 @@ export function firstOpenCell(cells: Cell[][]): CellPos | null {
     }
   }
   return null;
+}
+
+/** Initial cursor position + direction for a freshly-loaded puzzle.
+ *
+ * Picks the first open cell in reading order (same as `firstOpenCell`),
+ * then picks the direction that has an actual clue starting there:
+ *
+ *   - If the cell starts an across word (and possibly also a down word),
+ *     direction is "across" — matches solver convention for rectangular
+ *     puzzles where 1-Across exists at the top-left.
+ *   - If the cell starts only a down word (e.g. an irregular grid where
+ *     the first open cell is the top of a vertical entry but has a
+ *     block immediately to its right), direction is "down".
+ *   - If neither (an isolated cell, rare), falls back to "across".
+ *
+ * Returns null only when the grid has no open cells.
+ */
+export function initialCursor(cells: Cell[][]): Cursor | null {
+  const start = firstOpenCell(cells);
+  if (!start) return null;
+  const { row, col } = start;
+  const startsAcross = !isOpen(cells, row, col - 1) && isOpen(cells, row, col + 1);
+  const dir: Direction = startsAcross ? "across" : isOpen(cells, row + 1, col) ? "down" : "across";
+  return { row, col, dir };
 }
 
 /** Find the cell with the given clue number (e.g. `1` for "1 across" /

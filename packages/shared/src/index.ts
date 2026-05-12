@@ -19,7 +19,15 @@ export const MAX_REBUS_LEN = 8;
 export type Direction = "across" | "down";
 
 export type Cell =
-  | { kind: "block" }
+  | {
+      kind: "block";
+      /** Irregular-grid "void" cell — functionally identical to a
+       *  regular block (terminates words, unclickable, unfillable),
+       *  but rendered as transparent space instead of a black square
+       *  with an outline. Used to carve non-rectangular puzzle shapes
+       *  (.ipuz `null` cells). */
+      hidden?: boolean;
+    }
   | {
       kind: "cell";
       number: number | null;
@@ -31,6 +39,15 @@ export type Cell =
        *  Pure presentation: set at parse time, never mutated, ignored
        *  by reveal/check/clear/fill. */
       circled?: boolean;
+      /** Author-defined background shading (alternative theme marker;
+       *  ipuz `style.color` / .puz GEXT shade bit). Pure presentation
+       *  like `circled`: set at parse time, never mutated. */
+      shaded?: boolean;
+      /** Author-prefilled cell: the `fill` arrived with the puzzle and
+       *  is part of the template. The server's `applyFill` refuses to
+       *  mutate it, fill_percent excludes it from both numerator and
+       *  denominator, and the client renders the letter underlined. */
+      given?: boolean;
     };
 
 export type Clue = {

@@ -42,8 +42,22 @@ type Props = {
    *  letter (display only — the underlying fill is unchanged, and
    *  the rebus overlay still shows / commits the full string). */
   collapseRebus: boolean;
+  /** Bitmask of which sides need a black border (BORDER_TOP/RIGHT/
+   *  BOTTOM/LEFT from cursor.ts, OR'd together). Computed in Board
+   *  from the static cell shape; stable for the lifetime of a puzzle
+   *  so React.memo's shallow compare keeps cells from re-rendering. */
+  borderMask: number;
   onClick: (row: number, col: number) => void;
 };
+
+function borderClasses(mask: number): string {
+  const parts: (string | undefined)[] = [];
+  if (mask & 8) parts.push(styles.borderTop);
+  if (mask & 4) parts.push(styles.borderRight);
+  if (mask & 2) parts.push(styles.borderBottom);
+  if (mask & 1) parts.push(styles.borderLeft);
+  return parts.filter(Boolean).join(" ");
+}
 
 /**
  * One grid cell. Pure and memoized — re-renders only when its props
@@ -67,12 +81,18 @@ function CellImpl({
   recentColor,
   remoteCursorColor,
   collapseRebus,
+  borderMask,
   onClick,
 }: Props) {
   if (cell.kind === "block") {
-    return <div className={`${styles.cell} ${styles.block}`} />;
+    // Borders close the puzzle's outline; the cell's own background
+    // (black for a regular block, white for a hidden null) carries
+    // the rest of the visual. Hidden cells skip the .block class so
+    // they stay white.
+    const kindClass = cell.hidden ? styles.voidCell : styles.block;
+    return <div className={`${styles.cell} ${kindClass} ${borderClasses(borderMask)}`} />;
   }
-  const cls = [styles.cell];
+  const cls = [styles.cell, borderClasses(borderMask)];
   if (isCursor) cls.push(styles.cursor);
   else if (isInWord) cls.push(styles.inWord);
   // Display string: optionally collapse a rebus to its first letter
@@ -82,6 +102,7 @@ function CellImpl({
     cell.fill && collapseRebus && cell.fill.length > 1 ? cell.fill[0]! : cell.fill;
   return (
     <div className={cls.join(" ")} onClick={() => onClick(row, col)}>
+      {cell.shaded && <span className={styles.shade} aria-hidden />}
       {cell.circled && <span className={styles.circle} aria-hidden />}
       {remoteCursorColor && (
         // Absolutely-positioned overlay with a per-side border. We used
@@ -105,7 +126,11 @@ function CellImpl({
       ) : null}
       {displayed && (
         <span
-          className={`${styles.fill} ${cell.pencil ? styles.pencil : ""}`}
+          className={[
+            styles.fill,
+            cell.pencil ? styles.pencil : "",
+            cell.given ? styles.given : "",
+          ].filter(Boolean).join(" ")}
           style={fillStyle(displayed, recentColor)}
         >
           {displayed}

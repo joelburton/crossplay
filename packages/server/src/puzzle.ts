@@ -4,7 +4,7 @@ import { IpuzUnsupportedError, MAX_REBUS_LEN } from "./ipuz.js";
 
 type ParseResult = {
   state: PuzzleState;
-  solution: (string | null)[][];
+  solution: (string[] | null)[][];
 };
 
 /**
@@ -40,19 +40,13 @@ export function parsePuzBuffer(id: string, buffer: Buffer): ParseResult {
   // bytes as additional markup. The result is spurious out-of-range
   // indices in both `circles` and `shades`. Filter to in-grid indices
   // (0 <= i < cellCount) before reading them.
-  //
-  // Then reject features we don't render so any unsupported puzzle
-  // surfaces as a clear 400 at upload time rather than silently
-  // degrading. Shading isn't supported yet; circles are (set on the
-  // per-cell `circled` flag below).
   const cellCount = width * height;
   const inGrid = (i: number): boolean => Number.isInteger(i) && i >= 0 && i < cellCount;
-  const realShades = (Array.isArray(decoded.shades) ? decoded.shades : []).filter(inGrid);
-  if (realShades.length > 0) {
-    throw new IpuzUnsupportedError("shaded cells are not supported");
-  }
   const circledSet = new Set<number>(
     (Array.isArray(decoded.circles) ? decoded.circles : []).filter(inGrid),
+  );
+  const shadedSet = new Set<number>(
+    (Array.isArray(decoded.shades) ? decoded.shades : []).filter(inGrid),
   );
 
   // puzjs returns object cells `{0:"B", solution:"BLOCK"}` for rebus
@@ -60,7 +54,9 @@ export function parsePuzBuffer(id: string, buffer: Buffer): ParseResult {
   // up to MAX_REBUS_LEN; longer ones get rejected so the upload route
   // can surface a clear 400 instead of failing later when getBoardState
   // re-parses the stored ipuz.
-  const solution: (string | null)[][] = rawGrid.map((row, r) =>
+  // .puz has no native concept of Schrödinger alternates, so each cell
+  // gets a single-element array. ipuz imports can be multi-element.
+  const solution: (string[] | null)[][] = rawGrid.map((row, r) =>
     row.map((cell, c) => {
       if (cell === ".") return null;
       const letter = typeof cell === "string" ? cell : cell.solution;
@@ -74,7 +70,7 @@ export function parsePuzBuffer(id: string, buffer: Buffer): ParseResult {
           `rebus solutions over ${MAX_REBUS_LEN} characters are not supported`,
         );
       }
-      return letter.toUpperCase();
+      return [letter.toUpperCase()];
     }),
   );
 
@@ -111,12 +107,15 @@ export function parsePuzBuffer(id: string, buffer: Buffer): ParseResult {
   const cells: Cell[][] = rawGrid.map((row, r) =>
     row.map((cell, c): Cell => {
       if (cell === ".") return { kind: "block" };
-      const circled = circledSet.has(r * width + c);
+      const idx = r * width + c;
+      const circled = circledSet.has(idx);
+      const shaded = shadedSet.has(idx);
       return {
         kind: "cell",
         number: numbers[r]![c] ?? null,
         fill: null,
         ...(circled ? { circled: true } : {}),
+        ...(shaded ? { shaded: true } : {}),
       };
     }),
   );

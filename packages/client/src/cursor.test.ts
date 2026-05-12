@@ -6,6 +6,7 @@ import {
   clueStarts,
   findWordStart,
   firstOpenCell,
+  initialCursor,
   jumpClue,
   moveCursor,
   retreatForBackspace,
@@ -36,6 +37,44 @@ describe("firstOpenCell", () => {
   });
   it("returns null on all-block", () => {
     expect(firstOpenCell(grid(["##", "##"]))).toBeNull();
+  });
+});
+
+describe("initialCursor", () => {
+  it("defaults to across on a normal rectangular grid", () => {
+    // (0, 0) starts both directions; convention picks across.
+    expect(initialCursor(grid(["...", "...", "..."]))).toEqual({
+      row: 0,
+      col: 0,
+      dir: "across",
+    });
+  });
+
+  it("picks down when the first open cell only starts a down word", () => {
+    // 3-col, 3-row, with the only non-block in row 0 being a 1-cell
+    // isolated cell at column 1 that starts a down word. The first
+    // across would be at row 1 with number 2.
+    const g = grid([
+      "#.#",
+      "...",
+      "#.#",
+    ]);
+    expect(initialCursor(g)).toEqual({ row: 0, col: 1, dir: "down" });
+  });
+
+  it("falls back to across for an isolated cell that starts neither", () => {
+    // A single open cell with blocks on every side. (Not a realistic
+    // puzzle shape, but the helper shouldn't crash.)
+    const g = grid([
+      "###",
+      "#.#",
+      "###",
+    ]);
+    expect(initialCursor(g)).toEqual({ row: 1, col: 1, dir: "across" });
+  });
+
+  it("returns null on an all-block grid", () => {
+    expect(initialCursor(grid(["##", "##"]))).toBeNull();
   });
 });
 

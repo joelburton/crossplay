@@ -65,7 +65,10 @@ describe("parseIpuzBuffer (minimal happy path)", () => {
   });
 
   it("solution is uppercased and aligned with the puzzle grid", () => {
-    expect(solution[0]).toEqual(["A", "B", "C"]);
+    // Each cell's solution is a single-element array of accepted answers
+    // (length > 1 only for Schrödinger cells, which the minimal fixture
+    // doesn't exercise).
+    expect(solution[0]).toEqual([["A"], ["B"], ["C"]]);
     expect(solution[2]![0]).toBeNull();
   });
 
@@ -77,7 +80,13 @@ describe("parseIpuzBuffer (minimal happy path)", () => {
 });
 
 describe("parseIpuzBuffer (fixture round-trip)", () => {
-  it("parses the converted Sunday fixture and matches the .puz parse", () => {
+  // The .ipuz fixture intentionally carries features the .puz format
+  // can't represent (given cells, Schrödinger alternates), so the two
+  // are no longer byte-for-byte identical. The shared base (grid
+  // shape, clues, meta, and every cell that isn't a feature
+  // demonstration) must still agree — that's what catches a divergent
+  // parser.
+  it("parses the converted Sunday fixture and matches the .puz parse on shared fields", () => {
     const ipuzBuf = readFileSync(SUNDAY_IPUZ);
     const puzBuf = readFileSync(SUNDAY_PUZ);
     const fromIpuz = parseIpuzBuffer("sunday", ipuzBuf);
@@ -90,8 +99,30 @@ describe("parseIpuzBuffer (fixture round-trip)", () => {
     expect(fromIpuz.state.meta.copyright).toBe(fromPuz.state.meta.copyright);
     expect(fromIpuz.state.meta.note).toBe(fromPuz.state.meta.note);
     expect(fromIpuz.state.meta.clues).toEqual(fromPuz.state.meta.clues);
-    expect(fromIpuz.state.snapshot.cells).toEqual(fromPuz.state.snapshot.cells);
-    expect(fromIpuz.solution).toEqual(fromPuz.solution);
+
+    // Compare cells/solution element-wise, allowing the ipuz extras to
+    // differ at the demo cells. A cell that has `given` in ipuz won't
+    // have it in puz; Schrödinger cells carry multi-element solution
+    // arrays in ipuz where the puz parse returns a single-element one.
+    for (let r = 0; r < fromIpuz.state.snapshot.cells.length; r++) {
+      for (let c = 0; c < fromIpuz.state.snapshot.cells[r]!.length; c++) {
+        const ic = fromIpuz.state.snapshot.cells[r]![c]!;
+        const pc = fromPuz.state.snapshot.cells[r]![c]!;
+        if (ic.kind === "cell" && ic.given) continue;
+        // Hidden blocks (ipuz null cells) appear as regular visible
+        // blocks in the .puz — same word-boundary behavior, just
+        // different rendering. Allow them to differ.
+        if (ic.kind === "block" && ic.hidden) {
+          expect(pc.kind).toBe("block");
+          continue;
+        }
+        expect(pc).toEqual(ic);
+        const is = fromIpuz.solution[r]![c];
+        const ps = fromPuz.solution[r]![c];
+        if (is && is.length > 1) continue; // Schrödinger: alternates only in ipuz
+        expect(ps).toEqual(is);
+      }
+    }
   });
 });
 
@@ -117,14 +148,26 @@ describe("writeIpuz", () => {
   it("emits player fills as the ipuz `saved` grid", () => {
     const puzBuf = readFileSync(SUNDAY_PUZ);
     const { state, solution } = parsePuzBuffer("sunday", puzBuf);
-    state.snapshot.cells[0]![0] = { kind: "cell", number: 1, fill: "Z" };
+    // Plant the fill at the first fillable cell rather than (0,0),
+    // which in the sunday fixture is now a corner-cutout block.
+    let r = -1, c = -1;
+    outer: for (let i = 0; i < state.meta.height; i++) {
+      for (let j = 0; j < state.meta.width; j++) {
+        if (state.snapshot.cells[i]![j]!.kind === "cell") {
+          r = i; c = j; break outer;
+        }
+      }
+    }
+    expect(r).toBeGreaterThanOrEqual(0);
+    const existing = state.snapshot.cells[r]![c]! as Extract<typeof state.snapshot.cells[number][number], { kind: "cell" }>;
+    state.snapshot.cells[r]![c] = { kind: "cell", number: existing.number, fill: "Z" };
     const obj = JSON.parse(writeIpuz(state, solution));
     expect(Array.isArray(obj.saved)).toBe(true);
-    expect(obj.saved[0][0]).toBe("Z");
-    // Cells without a fill serialize as the empty marker (0), not a letter.
-    expect(obj.saved[0][1]).toBe(0);
+    expect(obj.saved[r][c]).toBe("Z");
     // Solution still carries the original letter, untouched by the typed-in fill.
-    expect(obj.solution[0][0]).toBe(solution[0]![0]);
+    // writeIpuz emits a single-element answer array as a bare string;
+    // the in-memory shape is `[letter]`.
+    expect(obj.solution[r][c]).toBe(solution[r]![c]![0]);
   });
 
   it("round-trips player fills through write -> parse", () => {
@@ -209,7 +252,7 @@ describe("parseIpuzBuffer (rejections)", () => {
     const obj = structuredClone(MINIMAL_IPUZ);
     obj.solution[0]![0] = "block";
     const { solution } = parseIpuzBuffer("x", ipuzOf(obj));
-    expect(solution[0]![0]).toBe("BLOCK");
+    expect(solution[0]![0]).toEqual(["BLOCK"]);
   });
 
   it("rejects rebus solutions over the cap", () => {
@@ -269,11 +312,33 @@ describe("parseIpuzBuffer (rejections)", () => {
     expectReject(obj, /unsupported cell-object key 'marks'/);
   });
 
-  it("rejects null cells (irregular grids)", () => {
+  it("accepts null cells (irregular grids) as hidden blocks", () => {
     const obj = structuredClone(MINIMAL_IPUZ);
     obj.puzzle[2]![0] = null as unknown as string;
-    expectReject(obj, /null cells/);
+    obj.solution[2]![0] = null as unknown as string;
+    const { state } = parseIpuzBuffer("x", ipuzOf(obj));
+    const cell = state.snapshot.cells[2]![0]!;
+    expect(cell.kind).toBe("block");
+    if (cell.kind === "block") expect(cell.hidden).toBe(true);
   });
+
+  it("round-trips null cells through write -> parse", () => {
+    const obj = structuredClone(MINIMAL_IPUZ);
+    obj.puzzle[2]![0] = null as unknown as string;
+    obj.solution[2]![0] = null as unknown as string;
+    const parsed = parseIpuzBuffer("x", ipuzOf(obj));
+    const json = writeIpuz(parsed.state, parsed.solution);
+    const written = JSON.parse(json);
+    expect(written.puzzle[2][0]).toBeNull();
+    expect(written.solution[2][0]).toBeNull();
+    // Regular blocks still emit "#".
+    expect(written.puzzle[2][0]).not.toBe("#");
+    const reparsed = parseIpuzBuffer("x", Buffer.from(json, "utf8"));
+    const cell = reparsed.state.snapshot.cells[2]![0]!;
+    expect(cell.kind).toBe("block");
+    if (cell.kind === "block") expect(cell.hidden).toBe(true);
+  });
+
 
   it("rejects mismatched solution shape", () => {
     const obj = structuredClone(MINIMAL_IPUZ);
@@ -281,10 +346,36 @@ describe("parseIpuzBuffer (rejections)", () => {
     expectReject(obj, /solution row 0 must have 3 cells/);
   });
 
-  it("rejects pre-filled cell values", () => {
+  it("accepts pre-filled cell values (givens)", () => {
     const obj = structuredClone(MINIMAL_IPUZ);
     (obj.puzzle[0] as unknown[])[0] = { cell: 1, value: "A" };
-    expectReject(obj, /pre-filled cell values/);
+    const { state } = parseIpuzBuffer("x", ipuzOf(obj));
+    const cell = state.snapshot.cells[0]![0]!;
+    expect(cell.kind).toBe("cell");
+    if (cell.kind === "cell") {
+      expect(cell.given).toBe(true);
+      expect(cell.fill).toBe("A");
+      expect(cell.number).toBe(1);
+    }
+  });
+
+  it("accepts shaded cells (style.color)", () => {
+    const obj = structuredClone(MINIMAL_IPUZ);
+    (obj.puzzle[0] as unknown[])[0] = { cell: 1, style: { color: "#dddddd" } };
+    const { state } = parseIpuzBuffer("x", ipuzOf(obj));
+    const cell = state.snapshot.cells[0]![0]!;
+    expect(cell.kind).toBe("cell");
+    if (cell.kind === "cell") {
+      expect(cell.shaded).toBe(true);
+      expect(cell.circled).toBeUndefined();
+    }
+  });
+
+  it("accepts Schrödinger alternates on the solution grid", () => {
+    const obj = structuredClone(MINIMAL_IPUZ);
+    obj.solution[0]![0] = { value: "A", alternates: ["E"] } as unknown as string;
+    const { solution } = parseIpuzBuffer("x", ipuzOf(obj));
+    expect(solution[0]![0]).toEqual(["A", "E"]);
   });
 
   it("accepts rebus saved values up to the cap", () => {

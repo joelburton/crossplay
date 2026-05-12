@@ -67,8 +67,8 @@ function makeEntry(): StoredBoard {
 describe("rebus: parse", () => {
   it("preserves the multi-character solution at the rebus cell", () => {
     const { solution } = parseIpuzBuffer("rebus", fixtureBuf());
-    expect(solution[1]![1]).toBe("INSECT");
-    expect(solution[0]![0]).toBe("B");
+    expect(solution[1]![1]).toEqual(["INSECT"]);
+    expect(solution[0]![0]).toEqual(["B"]);
   });
 
   it("leaves the snapshot cell empty (rebus lives in the solution grid)", () => {
@@ -230,7 +230,7 @@ describe("rebus: writeIpuz round-trip", () => {
     };
     const json = writeIpuz(original.state, original.solution);
     const reparsed = parseIpuzBuffer("rebus", Buffer.from(json, "utf8"));
-    expect(reparsed.solution[1]![1]).toBe("INSECT");
+    expect(reparsed.solution[1]![1]).toEqual(["INSECT"]);
     const cell = reparsed.state.snapshot.cells[1]![1]! as Cell & { kind: "cell" };
     expect(cell.fill).toBe("INSECT");
   });

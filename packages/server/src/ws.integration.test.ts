@@ -52,10 +52,10 @@ function buildBoard(id: string): StoredBoard {
     snapshot: { version: 0, cells },
   };
   const solution = [
-    ["A", "B", null, "C", "D"],
-    ["E", "F", "G", "H", "I"],
-    [null, null, "J", null, null],
-  ];
+    [["A"], ["B"], null, ["C"], ["D"]],
+    [["E"], ["F"], ["G"], ["H"], ["I"]],
+    [null, null, ["J"], null, null],
+  ] satisfies (string[] | null)[][];
   return {
     id,
     state,

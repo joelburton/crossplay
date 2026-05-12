@@ -254,6 +254,10 @@ export function applyFill(
   if (msg.col < 0 || msg.col >= meta.width) return null;
   const cell = snapshot.cells[msg.row]![msg.col]!;
   if (cell.kind !== "cell") return null;
+  // Author-prefilled cells are immutable — the player can't edit the
+  // template. Returning null so the inbound `fill` is silently
+  // ignored and no broadcast happens.
+  if (cell.given) return null;
   const letter = msg.letter == null ? null : msg.letter.toUpperCase();
   if (letter !== null && !FILL_RE.test(letter)) return null;
   cell.fill = letter;
@@ -279,10 +283,18 @@ export function applyFill(
 function revealAt(entry: StoredBoard, row: number, col: number): CellChange | null {
   const cell = entry.state.snapshot.cells[row]?.[col];
   if (!cell || cell.kind !== "cell") return null;
-  const sol = entry.solution[row]?.[col];
-  if (sol == null) return null;
-  if (cell.revealed && cell.fill === sol && !cell.wrong && !cell.pencil) return null;
-  cell.fill = sol;
+  // Given cells already contain the author's letter and aren't
+  // considered "solved by reveal" — skip cleanly.
+  if (cell.given) return null;
+  const sols = entry.solution[row]?.[col];
+  if (sols == null || sols.length === 0) return null;
+  // Reveal writes the canonical (first) answer. For Schrödinger cells
+  // the player may have typed an alternate that was already correct —
+  // we still overwrite with the canonical to match how reveal works
+  // for everyone else.
+  const canonical = sols[0]!;
+  if (cell.revealed && cell.fill === canonical && !cell.wrong && !cell.pencil) return null;
+  cell.fill = canonical;
   cell.revealed = true;
   delete cell.wrong;
   delete cell.pencil;
@@ -304,6 +316,7 @@ function checkAt(entry: StoredBoard, row: number, col: number): CellChange | nul
   if (!cell || cell.kind !== "cell") return null;
   if (cell.fill == null) return null; // skip empty cells
   if (cell.pencil) return null; // skip pencil cells
+  if (cell.given) return null; // givens are author-correct by construction
   const sol = entry.solution[row]?.[col];
   const wasWrong = cell.wrong === true;
   if (!fillMatchesSolution(cell.fill, sol)) {
@@ -318,16 +331,19 @@ function checkAt(entry: StoredBoard, row: number, col: number): CellChange | nul
   return null;
 }
 
-/** True if `fill` is an acceptable answer for `sol`. Single-letter
- *  solutions require an exact match. For rebus solutions (length > 1)
- *  we also accept the first letter alone — it's a long-standing NYT
- *  convention and saves players from having to type out the full
- *  rebus on small screens. The fill stays whatever the player typed;
- *  only the check decision is affected. */
-export function fillMatchesSolution(fill: string, sol: string | null | undefined): boolean {
-  if (sol == null) return false;
-  if (fill === sol) return true;
-  if (sol.length > 1 && fill === sol[0]) return true;
+/** True if `fill` is an acceptable answer for `sols`. `sols` is the
+ *  per-cell answer array: length 1 for normal cells, length > 1 for
+ *  Schrödinger cells. Each candidate accepts both an exact match and
+ *  (for length > 1 candidates) the first letter alone — a long-
+ *  standing NYT convention for rebus answers that saves typing on
+ *  small screens. The fill stays whatever the player typed; only the
+ *  check decision is affected. */
+export function fillMatchesSolution(fill: string, sols: string[] | null | undefined): boolean {
+  if (sols == null) return false;
+  for (const sol of sols) {
+    if (fill === sol) return true;
+    if (sol.length > 1 && fill === sol[0]) return true;
+  }
   return false;
 }
 
@@ -412,6 +428,15 @@ export function applyClear(entry: StoredBoard): CellChange[] {
         else delete live.wrong;
         if (init.pencil) live.pencil = true;
         else delete live.pencil;
+        // circled / shaded / given are author-defined and immutable
+        // during play. They never get out of sync in practice, but we
+        // restore them defensively so the comparator above matches.
+        if (init.circled) live.circled = true;
+        else delete live.circled;
+        if (init.shaded) live.shaded = true;
+        else delete live.shaded;
+        if (init.given) live.given = true;
+        else delete live.given;
         snapshot.version += 1;
         changes.push({ row: r, col: c, cell: live });
       } else {
@@ -430,7 +455,10 @@ export function applyClear(entry: StoredBoard): CellChange[] {
  *  `{ pencil: undefined }` look the same). */
 function cellsEqual(a: Cell, b: Cell): boolean {
   if (a.kind !== b.kind) return false;
-  if (a.kind === "block") return true;
+  if (a.kind === "block") {
+    const bb = b as Extract<Cell, { kind: "block" }>;
+    return !!a.hidden === !!bb.hidden;
+  }
   // both are cells
   const bb = b as Extract<Cell, { kind: "cell" }>;
   return (
@@ -438,7 +466,10 @@ function cellsEqual(a: Cell, b: Cell): boolean {
     a.fill === bb.fill &&
     !!a.revealed === !!bb.revealed &&
     !!a.wrong === !!bb.wrong &&
-    !!a.pencil === !!bb.pencil
+    !!a.pencil === !!bb.pencil &&
+    !!a.circled === !!bb.circled &&
+    !!a.shaded === !!bb.shaded &&
+    !!a.given === !!bb.given
   );
 }
 

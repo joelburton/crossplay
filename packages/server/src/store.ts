@@ -42,8 +42,10 @@ export type StoredBoard = {
   /** The board's snapshot at creation time. `applyClear` restores to
    *  this so author-prefilled cells survive the wipe. */
   initialSnapshot: GridSnapshot;
-  /** Server-only: never sent on the wire. Used by reveal/check. */
-  solution: (string | null)[][];
+  /** Server-only: never sent on the wire. Used by reveal/check.
+   *  Per cell: null for blocks, otherwise an array of accepted answers
+   *  (length 1 for normal cells, > 1 for Schrödinger cells). */
+  solution: (string[] | null)[][];
   /** Persisted chat history (will be flushed back to `boards.chat`). */
   chat: ChatLine[];
   sockets: Set<WebSocket>;

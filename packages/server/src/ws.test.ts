@@ -55,10 +55,10 @@ function entry(): StoredBoard {
     },
     snapshot: { version: 0, cells },
   };
-  const solution = [
-    ["A", "B", null, "C", "D"],
-    ["E", "F", "G", "H", "I"],
-    [null, null, "J", null, null],
+  const solution: (string[] | null)[][] = [
+    [["A"], ["B"], null, ["C"], ["D"]],
+    [["E"], ["F"], ["G"], ["H"], ["I"]],
+    [null, null, ["J"], null, null],
   ];
   return {
     id: "test",
@@ -703,6 +703,54 @@ describe("checkScopeHasPencil", () => {
   });
 });
 
+describe("applyFill against given cells", () => {
+  it("refuses to mutate a given cell (returns null)", () => {
+    const e = entry();
+    // Plant a given at (0, 0): author letter "A", immutable.
+    e.state.snapshot.cells[0]![0] = { kind: "cell", number: 1, fill: "A", given: true };
+    e.initialSnapshot.cells[0]![0] = { kind: "cell", number: 1, fill: "A", given: true };
+    const before = e.state.snapshot.version;
+    const change = applyFill(e, fill(0, 0, "Z"));
+    expect(change).toBeNull();
+    expect(e.state.snapshot.version).toBe(before);
+    const cell = e.state.snapshot.cells[0]![0]!;
+    expect(cell.kind === "cell" && cell.fill).toBe("A");
+  });
+
+  it("refuses to erase a given (Backspace wire)", () => {
+    const e = entry();
+    e.state.snapshot.cells[0]![0] = { kind: "cell", number: 1, fill: "A", given: true };
+    const change = applyFill(e, fill(0, 0, null));
+    expect(change).toBeNull();
+    const cell = e.state.snapshot.cells[0]![0]!;
+    expect(cell.kind === "cell" && cell.fill).toBe("A");
+  });
+});
+
+describe("applyReveal / applyCheck against Schrödinger cells", () => {
+  it("check accepts either accepted answer", () => {
+    const e = entry();
+    e.solution[0]![0] = ["A", "E"];
+    // Player typed the alternate "E"; check should not mark wrong.
+    e.state.snapshot.cells[0]![0] = { kind: "cell", number: 1, fill: "E" };
+    const changes = applyCheck(e, { type: "check", scope: "letter", row: 0, col: 0 });
+    expect(changes).toHaveLength(0);
+    const cell = e.state.snapshot.cells[0]![0]!;
+    expect(cell.kind === "cell" && cell.wrong).toBeFalsy();
+  });
+
+  it("reveal writes the canonical (first) answer even when an alternate is typed", () => {
+    const e = entry();
+    e.solution[0]![0] = ["A", "E"];
+    e.state.snapshot.cells[0]![0] = { kind: "cell", number: 1, fill: "E" };
+    const changes = applyReveal(e, { type: "reveal", scope: "letter", row: 0, col: 0 });
+    expect(changes).toHaveLength(1);
+    const cell = e.state.snapshot.cells[0]![0]!;
+    expect(cell.kind === "cell" && cell.fill).toBe("A");
+    expect(cell.kind === "cell" && cell.revealed).toBe(true);
+  });
+});
+
 describe("fillMatchesSolution", () => {
   it("returns false when the solution is null/undefined", () => {
     expect(fillMatchesSolution("A", null)).toBe(false);
@@ -710,32 +758,45 @@ describe("fillMatchesSolution", () => {
   });
 
   it("returns true on an exact match (single letter)", () => {
-    expect(fillMatchesSolution("A", "A")).toBe(true);
+    expect(fillMatchesSolution("A", ["A"])).toBe(true);
   });
 
   it("returns true on an exact match (rebus full string)", () => {
-    expect(fillMatchesSolution("BLOCK", "BLOCK")).toBe(true);
+    expect(fillMatchesSolution("BLOCK", ["BLOCK"])).toBe(true);
   });
 
   it("returns true when fill is the first letter of a rebus solution (NYT)", () => {
-    expect(fillMatchesSolution("B", "BLOCK")).toBe(true);
+    expect(fillMatchesSolution("B", ["BLOCK"])).toBe(true);
   });
 
   it("rejects an arbitrary prefix of a rebus solution", () => {
     // Only the full answer OR the first letter are accepted — partial
     // prefixes like "BL" must NOT be treated as correct.
-    expect(fillMatchesSolution("BL", "BLOCK")).toBe(false);
-    expect(fillMatchesSolution("BLO", "BLOCK")).toBe(false);
-    expect(fillMatchesSolution("BLOC", "BLOCK")).toBe(false);
+    expect(fillMatchesSolution("BL", ["BLOCK"])).toBe(false);
+    expect(fillMatchesSolution("BLO", ["BLOCK"])).toBe(false);
+    expect(fillMatchesSolution("BLOC", ["BLOCK"])).toBe(false);
   });
 
   it("rejects a wrong letter against a rebus solution", () => {
-    expect(fillMatchesSolution("X", "BLOCK")).toBe(false);
-    expect(fillMatchesSolution("Z", "BLOCK")).toBe(false);
+    expect(fillMatchesSolution("X", ["BLOCK"])).toBe(false);
+    expect(fillMatchesSolution("Z", ["BLOCK"])).toBe(false);
   });
 
   it("first-letter rule does NOT apply when the solution is a single letter", () => {
     // sol.length > 1 gate: a one-character solution requires exact match.
-    expect(fillMatchesSolution("A", "B")).toBe(false);
+    expect(fillMatchesSolution("A", ["B"])).toBe(false);
+  });
+
+  it("accepts any element of a Schrödinger answer array", () => {
+    expect(fillMatchesSolution("S", ["S", "Z"])).toBe(true);
+    expect(fillMatchesSolution("Z", ["S", "Z"])).toBe(true);
+    expect(fillMatchesSolution("Q", ["S", "Z"])).toBe(false);
+  });
+
+  it("applies the rebus first-letter rule per-element in a Schrödinger array", () => {
+    // BLOCK accepts "B"; STAR accepts "S"; both alternates apply.
+    expect(fillMatchesSolution("B", ["BLOCK", "STAR"])).toBe(true);
+    expect(fillMatchesSolution("S", ["BLOCK", "STAR"])).toBe(true);
+    expect(fillMatchesSolution("X", ["BLOCK", "STAR"])).toBe(false);
   });
 });

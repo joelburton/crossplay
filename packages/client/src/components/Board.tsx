@@ -1,7 +1,7 @@
-import { forwardRef, useEffect, useState } from "react";
+import { forwardRef, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Cell as CellT } from "@crossplay/shared";
-import type { Cursor } from "../cursor";
+import { computeBorderMask, type Cursor } from "../cursor";
 import { Cell } from "./Cell";
 import { RebusInput } from "./RebusInput";
 import styles from "./Board.module.css";
@@ -127,6 +127,21 @@ export const Board = forwardRef<HTMLDivElement, Props>(function Board(
 ) {
   const width = cells[0]?.length ?? 0;
   const height = cells.length;
+  // Per-cell border bitmask. Computed once per `cells` reference (the
+  // shape is fixed for the puzzle, so this is effectively per-puzzle).
+  // Each entry is a 0–15 number; Cell receives it as a single
+  // primitive prop so React.memo's shallow compare doesn't break.
+  const borderMasks = useMemo(() => {
+    const out: number[][] = [];
+    for (let r = 0; r < cells.length; r++) {
+      const row: number[] = [];
+      for (let c = 0; c < (cells[r]?.length ?? 0); c++) {
+        row.push(computeBorderMask(cells, r, c));
+      }
+      out.push(row);
+    }
+    return out;
+  }, [cells]);
   const narrow = useNarrowViewport();
   const horiz = narrow
     ? `calc((100vw - (${NARROW_HORIZ_RESERVE_CSS})) / ${width})`
@@ -156,6 +171,7 @@ export const Board = forwardRef<HTMLDivElement, Props>(function Board(
               recentColor={recentFills.get(key) ?? null}
               remoteCursorColor={remoteCursorByCell.get(key) ?? null}
               collapseRebus={collapseRebus}
+              borderMask={borderMasks[r]![c]!}
               onClick={onCellClick}
             />
           );

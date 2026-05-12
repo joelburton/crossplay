@@ -8,7 +8,7 @@ import {
   activeClueNumber,
   advanceAfterFill,
   findCellByNumber,
-  firstOpenCell,
+  initialCursor,
   jumpClue,
   moveCursor,
   retreatForBackspace,
@@ -150,10 +150,9 @@ export function PuzzleView({
   const cellsRef = useRef(cells);
   cellsRef.current = cells;
 
-  const [cursor, setCursor] = useState<Cursor>(() => {
-    const start = firstOpenCell(puzzle.snapshot.cells) ?? { row: 0, col: 0 };
-    return { ...start, dir: "across" };
-  });
+  const [cursor, setCursor] = useState<Cursor>(
+    () => initialCursor(puzzle.snapshot.cells) ?? { row: 0, col: 0, dir: "across" },
+  );
 
   const [identity, setIdentity] = useState<ChatIdentity>(() => readChatIdentity());
   const identityRef = useRef(identity);
@@ -531,6 +530,13 @@ export function PuzzleView({
       if (helpOpenRef.current) return;
       // Same story for the number-jump popup: it owns its own input.
       if (numberJumpOpenRef.current) return;
+      // When the title menu is open, its buttons own keyboard focus
+      // and the Menu's own keydown listener handles ArrowUp/Down/
+      // Home/End navigation. We must stay out of the way — otherwise
+      // arrows move the board cursor in parallel, and (worse) our
+      // bare-Enter preventDefault cancels the focused button's native
+      // activation so menu items never fire.
+      if ((document.activeElement as HTMLElement | null)?.closest('[role="menu"]')) return;
 
       // Don't intercept anything when an input/textarea has focus
       // (chat input, future search boxes, etc.) — EXCEPT Tab. Tab is
@@ -657,7 +663,7 @@ export function PuzzleView({
         if (!e.shiftKey) return;
         const { row, col } = cursor;
         const cell = cells[row]?.[col];
-        if (cell?.kind === "cell") {
+        if (cell?.kind === "cell" && !cell.given) {
           onActivity?.();
           setRebusOpen(true);
         }
@@ -680,6 +686,15 @@ export function PuzzleView({
         onActivity?.();
         const letter = e.key.toUpperCase();
         const { row, col } = cursor;
+        const target = cells[row]?.[col];
+        // Given cells are author-prefilled and immutable. Skip the
+        // local write + wire send, but still advance — the cursor
+        // should slide off a given the way it would slide past an
+        // already-correct cell.
+        if (target?.kind === "cell" && target.given) {
+          setCursor((cur) => advanceAfterFill(cells, cur));
+          return;
+        }
         const isPencil = mode === "pencil";
         setSnapshot((prev) => ({
           version: prev.version,
@@ -702,6 +717,15 @@ export function PuzzleView({
         onActivity?.();
         const { row, col } = cursor;
         const cell = cells[row]?.[col];
+        if (cell?.kind === "cell" && cell.given) {
+          // Can't erase a given. Mirror the typing-on-given behavior
+          // and just retreat the cursor (without clearing the cell we
+          // land on, since that cell may itself be a given — we just
+          // back off the immovable letter).
+          const back = retreatForBackspace(cells, cursor);
+          if (back.row !== cursor.row || back.col !== cursor.col) setCursor(back);
+          return;
+        }
         if (cell?.kind === "cell" && cell.fill != null) {
           setSnapshot((prev) => ({
             version: prev.version,
