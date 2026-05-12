@@ -4,6 +4,7 @@ import { openDb } from "./db.js";
 import { importPuzzle } from "./importer.js";
 import {
   PuzzleNotFoundError,
+  addBoardMembership,
   deleteBoard,
   findOrCreateBoard,
   getBoardState,
@@ -47,6 +48,33 @@ describe("findOrCreateBoard", () => {
     expect(row.puzzle_id).toBe("sunday-sample");
     expect(row.title).toBeTruthy();
     expect(row.owner_id).toBe(userId);
+
+    // Owner auto-inserted as a member.
+    const member = db
+      .prepare("SELECT user_id FROM boards_users WHERE board_id = ?")
+      .get(result.boardId) as { user_id: number } | undefined;
+    expect(member?.user_id).toBe(userId);
+    db.close();
+  });
+
+  it("finds a shared board on a library click (membership dedup, not just owner_id)", () => {
+    // Alice owns a board; she shares it with Bob (we simulate the share
+    // by inserting a boards_users row directly). When Bob clicks the
+    // same library puzzle, findOrCreateBoard should return Alice's
+    // existing board rather than spinning up a new one for him.
+    const db = freshDb();
+    const alice = seedUser(db, "alice");
+    const bob = seedUser(db, "bob");
+    importPuzzle({ db, path: SUNDAY_PUZ, force: false });
+    const aliceBoard = findOrCreateBoard(db, "sunday-sample", alice).boardId;
+    addBoardMembership(db, aliceBoard, bob);
+
+    const bobResult = findOrCreateBoard(db, "sunday-sample", bob);
+    expect(bobResult.boardId).toBe(aliceBoard);
+    expect(bobResult.newlyCreated).toBe(false);
+
+    const count = db.prepare("SELECT COUNT(*) AS c FROM boards").get() as { c: number };
+    expect(count.c).toBe(1);
     db.close();
   });
 
@@ -169,14 +197,17 @@ describe("listBoards", () => {
     db.close();
   });
 
-  it("includes ad-hoc boards (puzzleId IS NULL) owned by the user", () => {
+  it("includes ad-hoc boards (puzzleId IS NULL) the user is a member of", () => {
     const db = freshDb();
     const userId = seedUser(db);
     // Simulate an upload-as-board insert: no puzzle row, NULL puzzle_id.
+    // The route layer always pairs this with a boards_users insert; do
+    // the same here so the join picks the row up.
     const now = new Date().toISOString();
     db.prepare(
       "INSERT INTO boards (id, puzzle_id, ipuz, title, author, snapshot, chat, owner_id, created_at, updated_at) VALUES (?, NULL, '{}', 'Ad hoc', '', '{\"version\":0,\"cells\":[]}', '[]', ?, ?, ?)",
     ).run("adhoc-1", userId, now, now);
+    addBoardMembership(db, "adhoc-1", userId);
 
     const puzzleCount = db.prepare("SELECT COUNT(*) AS c FROM puzzles").get() as { c: number };
     expect(puzzleCount.c).toBe(0); // no puzzle row exists
@@ -185,6 +216,37 @@ describe("listBoards", () => {
     expect(list.length).toBe(1);
     expect(list[0]!.id).toBe("adhoc-1");
     expect(list[0]!.puzzleId).toBeNull();
+    db.close();
+  });
+
+  it("includes boards shared with the user (membership without ownership)", () => {
+    const db = freshDb();
+    const alice = seedUser(db, "alice");
+    const bob = seedUser(db, "bob");
+    importPuzzle({ db, path: SUNDAY_PUZ, force: false });
+    const aliceBoard = findOrCreateBoard(db, "sunday-sample", alice).boardId;
+    addBoardMembership(db, aliceBoard, bob);
+
+    // Bob's list contains Alice's board even though he doesn't own it.
+    const bobList = listBoards(db, bob);
+    expect(bobList).toHaveLength(1);
+    expect(bobList[0]!.id).toBe(aliceBoard);
+    db.close();
+  });
+
+  it("never includes boards the user used to be on but isn't now (no membership row)", () => {
+    const db = freshDb();
+    const userId = seedUser(db);
+    importPuzzle({ db, path: SUNDAY_PUZ, force: false });
+    const boardId = findOrCreateBoard(db, "sunday-sample", userId).boardId;
+    // Strip the membership row directly — simulates a future "leave"
+    // action. The board row itself still exists (owner_id still set),
+    // but listBoards should no longer surface it.
+    db.prepare("DELETE FROM boards_users WHERE board_id = ? AND user_id = ?").run(
+      boardId,
+      userId,
+    );
+    expect(listBoards(db, userId)).toHaveLength(0);
     db.close();
   });
 

@@ -19,6 +19,7 @@ import { slugify } from "./importer.js";
 import { detectFormat, parsePuzzleBuffer } from "./format.js";
 import {
   PuzzleNotFoundError,
+  addBoardMembership,
   deleteBoard,
   findOrCreateBoard,
   getBoardState,
@@ -98,17 +99,28 @@ export async function registerHttpRoutes(app: FastifyInstance, opts: HttpRouteOp
           const parsed = parsePuzzleBuffer(id, buffer, format);
           const ipuz = writeIpuz(parsed.state, parsed.solution);
           const meta = parsed.state.meta;
-          insertBoardRow({
-            db,
-            boardId: id,
-            puzzleId: null,
-            ipuz,
-            title: meta.title,
-            author: meta.author,
-            copyright: meta.copyright,
-            snapshot: JSON.stringify(parsed.state.snapshot),
-            ownerId: req.user.id,
-          });
+          // Board + membership in one transaction — mirrors
+          // findOrCreateBoard's invariant ("a board always has at
+          // least its creator as a member").
+          db.exec("BEGIN");
+          try {
+            insertBoardRow({
+              db,
+              boardId: id,
+              puzzleId: null,
+              ipuz,
+              title: meta.title,
+              author: meta.author,
+              copyright: meta.copyright,
+              snapshot: JSON.stringify(parsed.state.snapshot),
+              ownerId: req.user.id,
+            });
+            addBoardMembership(db, id, req.user.id);
+            db.exec("COMMIT");
+          } catch (err) {
+            db.exec("ROLLBACK");
+            throw err;
+          }
           // No in-memory mirror: the first WS connect to this board will
           // lazy-load it via getOrLoadBoard.
           return { boardId: id };

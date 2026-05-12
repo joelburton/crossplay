@@ -5,9 +5,10 @@
  * temporary in-memory cache.
  *
  * Two main entry points:
- *   - findOrCreateBoard: enforces "one board per puzzle" in our
- *     pre-user world; later when users exist this becomes "per
- *     (user, puzzle)".
+ *   - findOrCreateBoard: enforces "one board per (user, library
+ *     puzzle)" — looks up via the `boards_users` join (so a board
+ *     someone shared with me also dedups my library-click), and on
+ *     creation auto-inserts the owner into the membership table.
  *   - getBoardState: hydrates a board into the same PuzzleState shape
  *     the play layer expects (meta from the immutable ipuz blob;
  *     snapshot from the live boards.snapshot column). Solution stays
@@ -72,11 +73,29 @@ export function insertBoardRow(args: {
     );
 }
 
-/** Find-or-create a board for `(puzzleId, ownerId)`. The dedup is
- *  per-user: every account gets at most one board per library puzzle.
- *  (Phase 3 will switch the dedup to query `boards_users` so shared
- *  membership counts too, but for Phase 2 ownership stands in for
- *  membership.) Ad-hoc upload boards (`puzzleId IS NULL`) are
+/** Insert a membership row, idempotently. Returns true if a new row
+ *  was actually added (false if the user was already a member). The
+ *  composite PK on (board_id, user_id) makes INSERT OR IGNORE the
+ *  natural shape: re-sharing with an existing member silently no-ops
+ *  rather than raising. */
+export function addBoardMembership(
+  db: DatabaseSync,
+  boardId: string,
+  userId: number,
+): boolean {
+  const result = db
+    .prepare(
+      "INSERT OR IGNORE INTO boards_users (board_id, user_id, created_at) VALUES (?, ?, ?)",
+    )
+    .run(boardId, userId, new Date().toISOString());
+  return result.changes > 0;
+}
+
+/** Find-or-create a board for `(puzzleId, userId)`. The dedup is
+ *  membership-based: if the user is a member of any board for this
+ *  puzzle (whether they created it or someone shared it with them),
+ *  that's what we return. On creation, the owner is auto-inserted
+ *  into `boards_users`. Ad-hoc upload boards (`puzzleId IS NULL`) are
  *  intentionally invisible to this lookup — they're separate
  *  playthroughs created by `POST /api/boards/upload`.
  *  Throws PuzzleNotFoundError if the puzzle row doesn't exist. */
@@ -91,7 +110,13 @@ export function findOrCreateBoard(
   if (!puzzle) throw new PuzzleNotFoundError(puzzleId);
 
   const existing = db
-    .prepare("SELECT id FROM boards WHERE puzzle_id = ? AND owner_id = ? LIMIT 1")
+    .prepare(
+      `SELECT b.id AS id
+         FROM boards b
+         JOIN boards_users bu ON bu.board_id = b.id
+        WHERE b.puzzle_id = ? AND bu.user_id = ?
+        LIMIT 1`,
+    )
     .get(puzzleId, ownerId) as { id: string } | undefined;
   if (existing) return { boardId: existing.id, newlyCreated: false };
 
@@ -100,17 +125,28 @@ export function findOrCreateBoard(
   // ipuz string verbatim into boards.ipuz — it's already canonical.
   const parsed = parseIpuzBuffer(boardId, Buffer.from(puzzle.ipuz, "utf8"));
   const snapshot = JSON.stringify(parsed.state.snapshot);
-  insertBoardRow({
-    db,
-    boardId,
-    puzzleId: puzzle.id,
-    ipuz: puzzle.ipuz,
-    title: puzzle.title,
-    author: puzzle.author,
-    copyright: puzzle.copyright,
-    snapshot,
-    ownerId,
-  });
+  // Board insert + membership insert are a single logical creation;
+  // wrap so a crash between them can't leave a board with no members
+  // (which would then look invisible to everyone).
+  db.exec("BEGIN");
+  try {
+    insertBoardRow({
+      db,
+      boardId,
+      puzzleId: puzzle.id,
+      ipuz: puzzle.ipuz,
+      title: puzzle.title,
+      author: puzzle.author,
+      copyright: puzzle.copyright,
+      snapshot,
+      ownerId,
+    });
+    addBoardMembership(db, boardId, ownerId);
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
 
   return { boardId, newlyCreated: true };
 }
@@ -148,16 +184,27 @@ export function deleteBoard(db: DatabaseSync, boardId: string): { existed: boole
   return { existed: result.changes > 0 };
 }
 
-/** List a user's boards (Phase 2: by owner_id). Phase 3 will switch
- *  this to query the `boards_users` join so shared boards show up
- *  too. Anon-era boards (`owner_id IS NULL`) never appear in any
- *  user's list — they're URL-accessible but invisible. */
-export function listBoards(db: DatabaseSync, ownerId: number): BoardSummary[] {
+/** List boards the user is a member of (Phase 3: query the
+ *  `boards_users` join, so boards shared with the user show up
+ *  alongside ones they created). Anon-era boards (no membership row
+ *  for anyone) are invisible to every user's list — URL-accessible
+ *  but undiscoverable. */
+export function listBoards(db: DatabaseSync, userId: number): BoardSummary[] {
   const rows = db
     .prepare(
-      "SELECT id, puzzle_id, title, author, copyright, updated_at, fill_percent FROM boards WHERE owner_id = ? ORDER BY updated_at DESC",
+      `SELECT b.id           AS id,
+              b.puzzle_id    AS puzzle_id,
+              b.title        AS title,
+              b.author       AS author,
+              b.copyright    AS copyright,
+              b.updated_at   AS updated_at,
+              b.fill_percent AS fill_percent
+         FROM boards b
+         JOIN boards_users bu ON bu.board_id = b.id
+        WHERE bu.user_id = ?
+        ORDER BY b.updated_at DESC`,
     )
-    .all(ownerId) as Array<{
+    .all(userId) as Array<{
     id: string;
     puzzle_id: string | null;
     title: string;

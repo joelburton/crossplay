@@ -22,6 +22,7 @@ import { writeIpuz } from "./ipuz.js";
 import { parsePuzBuffer } from "./puzzle.js";
 import {
   PuzzleNotFoundError,
+  addBoardMembership,
   findOrCreateBoard,
   getBoardState,
   listBoards,
@@ -40,9 +41,9 @@ const SUNDAY_PUZ = resolve(FIXTURE_DIR, "sunday-sample.puz");
 
 /** Mimic the `POST /api/boards/upload` route end-to-end without spinning
  *  up Fastify: parse a fixture, re-serialize to canonical ipuz, insert
- *  a boards row with NULL puzzle_id. Returns `{boardId, ownerId}` —
- *  ownership matters because findOrCreateBoard / listBoards both scope
- *  to the user under Phase 2. */
+ *  a boards row with NULL puzzle_id + the owner's membership row.
+ *  Returns `{boardId, ownerId}` — ownership matters because
+ *  findOrCreateBoard / listBoards both scope to the user. */
 function uploadFixtureAsBoard(
   db: DatabaseSync,
   path: string,
@@ -65,6 +66,7 @@ function uploadFixtureAsBoard(
   db.prepare(
     "INSERT INTO boards (id, puzzle_id, ipuz, title, author, snapshot, chat, owner_id, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, ?, '[]', ?, ?, ?)",
   ).run(id, ipuz, meta.title, meta.author, snapshot, ownerId, now, now);
+  addBoardMembership(db, id, ownerId);
   return { boardId: id, ownerId };
 }
 
