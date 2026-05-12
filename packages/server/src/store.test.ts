@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { openDb } from "./db.js";
 import { importPuzzle } from "./importer.js";
 import { findOrCreateBoard } from "./boards.js";
+import type { WebSocket } from "ws";
 import {
   FLUSH_IDLE_MS,
   _clearCacheForTest,
@@ -13,6 +14,7 @@ import {
   flushAndEvict,
   flushBoard,
   getOrLoadBoard,
+  isBoardLive,
   markDirty,
 } from "./store.js";
 
@@ -201,6 +203,44 @@ describe("flushAll", () => {
     expect(entry.dirty).toBe(false);
     const row = db.prepare("SELECT snapshot FROM boards WHERE id = ?").get(boardId) as { snapshot: string };
     expect(JSON.parse(row.snapshot).version).toBe(99);
+    db.close();
+  });
+});
+
+describe("isBoardLive", () => {
+  /** Minimal fake WebSocket with a settable readyState. We need the
+   *  `OPEN` static constant on each instance because the production
+   *  code compares against `s.OPEN` (per-instance per the `ws` API). */
+  function fakeSocket(readyState: number): WebSocket {
+    return { OPEN: 1, readyState } as unknown as WebSocket;
+  }
+
+  it("is false for an unknown board (nothing in the cache)", () => {
+    _clearCacheForTest();
+    expect(isBoardLive("never-loaded")).toBe(false);
+  });
+
+  it("is false when the cached entry has zero sockets", () => {
+    const { db, boardId } = freshDbWithBoard();
+    getOrLoadBoard(db, boardId); // loads with empty sockets set
+    expect(isBoardLive(boardId)).toBe(false);
+    db.close();
+  });
+
+  it("is true with at least one OPEN socket", () => {
+    const { db, boardId } = freshDbWithBoard();
+    const entry = getOrLoadBoard(db, boardId)!;
+    entry.sockets.add(fakeSocket(1)); // OPEN
+    expect(isBoardLive(boardId)).toBe(true);
+    db.close();
+  });
+
+  it("ignores CLOSING / CLOSED sockets (treats them as gone)", () => {
+    const { db, boardId } = freshDbWithBoard();
+    const entry = getOrLoadBoard(db, boardId)!;
+    entry.sockets.add(fakeSocket(2)); // CLOSING
+    entry.sockets.add(fakeSocket(3)); // CLOSED
+    expect(isBoardLive(boardId)).toBe(false);
     db.close();
   });
 });

@@ -182,6 +182,10 @@ export type BoardSummary = {
   /** Null when the board is untouched (rendered as "NEW" on the home
    *  page); otherwise an integer 0–100. Kept up to date by `flushBoard`. */
   fillPercent: number | null;
+  /** Co-player handles — every member of the board's `boards_users`
+   *  join other than the caller. Display-cased (matches `users.handle`).
+   *  Empty array for solo boards. */
+  members: string[];
 };
 
 /** Hard-delete a board row. Returns whether a row was removed so the
@@ -194,9 +198,11 @@ export function deleteBoard(db: DatabaseSync, boardId: string): { existed: boole
 
 /** List boards the user is a member of (Phase 3: query the
  *  `boards_users` join, so boards shared with the user show up
- *  alongside ones they created). Anon-era boards (no membership row
- *  for anyone) are invisible to every user's list — URL-accessible
- *  but undiscoverable. */
+ *  alongside ones they created). Each row carries the handles of
+ *  co-players (other members) so the home-page row can render
+ *  "Playing with moth, sue" without an extra round-trip.
+ *  Anon-era boards (no membership row for anyone) are invisible to
+ *  every user's list — URL-accessible but undiscoverable. */
 export function listBoards(db: DatabaseSync, userId: number): BoardSummary[] {
   const rows = db
     .prepare(
@@ -221,6 +227,30 @@ export function listBoards(db: DatabaseSync, userId: number): BoardSummary[] {
     updated_at: string;
     fill_percent: number | null;
   }>;
+  if (rows.length === 0) return [];
+
+  // Second pass: every co-player handle for the boards in the result.
+  // The self-join on `mine` constrains the search to boards the caller
+  // is in (so we don't leak membership of boards they're not on); the
+  // `bu.user_id != ?` filter excludes the caller themselves.
+  const memberRows = db
+    .prepare(
+      `SELECT bu.board_id AS board_id, u.handle AS handle
+         FROM boards_users bu
+         JOIN users u ON u.id = bu.user_id
+         JOIN boards_users mine ON mine.board_id = bu.board_id
+        WHERE mine.user_id = ?
+          AND bu.user_id != ?
+        ORDER BY u.handle COLLATE NOCASE`,
+    )
+    .all(userId, userId) as Array<{ board_id: string; handle: string }>;
+  const membersByBoard = new Map<string, string[]>();
+  for (const m of memberRows) {
+    const list = membersByBoard.get(m.board_id) ?? [];
+    list.push(m.handle);
+    membersByBoard.set(m.board_id, list);
+  }
+
   return rows.map((r) => ({
     id: r.id,
     puzzleId: r.puzzle_id,
@@ -229,5 +259,6 @@ export function listBoards(db: DatabaseSync, userId: number): BoardSummary[] {
     copyright: r.copyright,
     updatedAt: r.updated_at,
     fillPercent: r.fill_percent,
+    members: membersByBoard.get(r.id) ?? [],
   }));
 }

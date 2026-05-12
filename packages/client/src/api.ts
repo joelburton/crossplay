@@ -87,6 +87,15 @@ export type BoardSummary = {
   /** Null when the board has no player fills (rendered as "NEW");
    *  otherwise an integer 0–100. */
   fillPercent: number | null;
+  /** Co-player handles — every other member of the board. Empty
+   *  for solo boards. Display-cased; ordered case-insensitively
+   *  by the server so the home-page row's "Playing with moth, sue"
+   *  is stable across reloads. */
+  members: string[];
+  /** True when at least one ws socket is currently connected to the
+   *  board (someone is playing right now). Computed at request time;
+   *  no real-time updates — refresh the page to re-poll. */
+  isLive: boolean;
 };
 
 /** Fetch the in-progress boards (any user can resume any board). */

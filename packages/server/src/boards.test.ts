@@ -267,6 +267,53 @@ describe("listBoards", () => {
     db.close();
   });
 
+  it("members[] lists co-players (excluding self), case-insensitively sorted", () => {
+    const db = freshDb();
+    const alice = seedUser(db, "alice");
+    const bob = seedUser(db, "bob");
+    const moth = seedUser(db, "Moth");
+    importPuzzle({ db, path: SUNDAY_PUZ, force: false });
+    const boardId = findOrCreateBoard(db, "sunday-sample", alice).boardId;
+    addBoardMembership(db, boardId, bob);
+    addBoardMembership(db, boardId, moth);
+
+    // From Alice's perspective, members are Bob + Moth (display-cased,
+    // sorted case-insensitively so "Moth" comes after "bob").
+    const aliceList = listBoards(db, alice);
+    expect(aliceList).toHaveLength(1);
+    expect(aliceList[0]!.members).toEqual(["bob", "Moth"]);
+
+    // From Bob's perspective, members are alice + Moth.
+    const bobList = listBoards(db, bob);
+    expect(bobList[0]!.members).toEqual(["alice", "Moth"]);
+    db.close();
+  });
+
+  it("members[] is empty for a solo board", () => {
+    const db = freshDb();
+    const userId = seedUser(db);
+    importPuzzle({ db, path: SUNDAY_PUZ, force: false });
+    findOrCreateBoard(db, "sunday-sample", userId);
+    const list = listBoards(db, userId);
+    expect(list[0]!.members).toEqual([]);
+    db.close();
+  });
+
+  it("members[] never leaks members of boards the caller isn't on", () => {
+    // Alice and Bob each have their own solo board. Alice's members
+    // query must not surface "bob" — they're on disjoint boards.
+    const db = freshDb();
+    const alice = seedUser(db, "alice");
+    const bob = seedUser(db, "bob");
+    importPuzzle({ db, path: SUNDAY_PUZ, force: false });
+    importPuzzle({ db, path: MOTH_PUZ, force: false });
+    findOrCreateBoard(db, "sunday-sample", alice);
+    findOrCreateBoard(db, "a-very-moth-puzzle", bob);
+    const aliceList = listBoards(db, alice);
+    expect(aliceList[0]!.members).toEqual([]);
+    db.close();
+  });
+
   it("never includes boards the user used to be on but isn't now (no membership row)", () => {
     const db = freshDb();
     const userId = seedUser(db);

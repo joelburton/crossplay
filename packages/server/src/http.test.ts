@@ -269,6 +269,58 @@ describe("http: GET /api/boards and GET /api/boards/:id", () => {
     expect(list.some((b) => b.id === b1 && b.puzzleId === "p1")).toBe(true);
   });
 
+  it("populates members[] from boards_users and isLive=false for idle boards", async () => {
+    seedPuzzle(db);
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { puzzleId: "test-puzzle" },
+      cookies,
+    });
+    const { boardId } = create.json() as { boardId: string };
+    // Share with Bob via the route so the join is set up the
+    // production way.
+    await seedAuth(app, db, "bob");
+    await app.inject({
+      method: "POST",
+      url: `/api/boards/${boardId}/share`,
+      payload: { handle: "bob" },
+      cookies,
+    });
+
+    const res = await app.inject({ method: "GET", url: "/api/boards", cookies });
+    const row = (res.json() as Array<{
+      id: string;
+      members: string[];
+      isLive: boolean;
+    }>).find((b) => b.id === boardId)!;
+    expect(row.members).toEqual(["bob"]);
+    expect(row.isLive).toBe(false); // nobody connected
+  });
+
+  it("isLive flips to true when a socket is connected to the board's room", async () => {
+    seedPuzzle(db);
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { puzzleId: "test-puzzle" },
+      cookies,
+    });
+    const { boardId } = create.json() as { boardId: string };
+    // Simulate an open WS connection by loading the cache entry and
+    // adding a fake OPEN socket. Avoids spinning up a real ws server.
+    const { _putBoardForTest, getOrLoadBoard } = await import("./store.js");
+    void _putBoardForTest; // helper exists, but we go via getOrLoadBoard
+    const entry = getOrLoadBoard(db, boardId)!;
+    entry.sockets.add({ OPEN: 1, readyState: 1 } as unknown as never);
+
+    const res = await app.inject({ method: "GET", url: "/api/boards", cookies });
+    const row = (res.json() as Array<{ id: string; isLive: boolean }>).find(
+      (b) => b.id === boardId,
+    )!;
+    expect(row.isLive).toBe(true);
+  });
+
   it("GET /api/boards returns 401 when not authed", async () => {
     const res = await app.inject({ method: "GET", url: "/api/boards" });
     expect(res.statusCode).toBe(401);

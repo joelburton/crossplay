@@ -199,6 +199,19 @@ export function getCachedBoard(boardId: string): StoredBoard | undefined {
   return cache.get(boardId);
 }
 
+/** Is anyone currently connected to this board's ws room? "Live"
+ *  means: the board is cached AND has at least one open socket. A
+ *  board that's never been opened (or was idle long enough to have
+ *  flushAndEvict'd) reports false. Cheap — pure in-memory lookup. */
+export function isBoardLive(boardId: string): boolean {
+  const entry = cache.get(boardId);
+  if (!entry) return false;
+  for (const s of entry.sockets) {
+    if (s.readyState === s.OPEN) return true;
+  }
+  return false;
+}
+
 /** Test-only: install a synthetic StoredBoard directly. Lets unit
  *  tests bypass the DB load path. Pair with `_clearCacheForTest`
  *  between tests. */

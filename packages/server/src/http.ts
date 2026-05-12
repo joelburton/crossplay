@@ -15,7 +15,7 @@ import type { FastifyInstance } from "fastify";
 import { findUserByHandle, validateHandle } from "./auth.js";
 import { registerAuthRoutes } from "./authRoutes.js";
 import { IpuzUnsupportedError, writeIpuz } from "./ipuz.js";
-import { evictBoard, getCachedBoard, getOrLoadBoard } from "./store.js";
+import { evictBoard, getCachedBoard, getOrLoadBoard, isBoardLive } from "./store.js";
 import { slugify } from "./importer.js";
 import { detectFormat, parsePuzzleBuffer } from "./format.js";
 import {
@@ -158,13 +158,16 @@ export async function registerHttpRoutes(app: FastifyInstance, opts: HttpRouteOp
       });
 
       api.get("/boards", async (req, reply) => {
-        // "My games": boards this user owns (Phase 2 interim — Phase 3
-        // switches to a `boards_users` membership query so shared
-        // boards also show up).
+        // "My games": every board the caller is a member of (whether
+        // they created it or someone shared it with them). Each row
+        // also carries `isLive`, derived from the in-memory store —
+        // surfaces "someone is playing this right now" so a peer can
+        // jump in without an out-of-band ping.
         if (!req.user) {
           return reply.code(401).send({ error: "not logged in" });
         }
-        return listBoards(db, req.user.id);
+        const boards = listBoards(db, req.user.id);
+        return boards.map((b) => ({ ...b, isLive: isBoardLive(b.id) }));
       });
 
       api.get<{ Params: { id: string } }>("/boards/:id", async (req, reply) => {
