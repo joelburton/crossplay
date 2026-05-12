@@ -9,6 +9,7 @@ import { LandingPage } from "./components/LandingPage";
 import { Menu } from "./components/Menu";
 import { ModeButton } from "./components/ModeButton";
 import { SiteIcon } from "./components/SiteIcon";
+import { UserMenu } from "./components/UserMenu";
 import { UploadForm } from "./components/UploadForm";
 import { PuzzleView, type Mode, type Presence } from "./components/PuzzleView";
 import type { Feedback } from "./feedback";
@@ -319,14 +320,7 @@ export function App() {
           </div>
           {auth.kind === "user" && (
             <div className={styles.userBar}>
-              <span className={styles.userBarHandle}>{auth.user.handle}</span>
-              <button
-                type="button"
-                className={styles.userBarLogout}
-                onClick={onLogout}
-              >
-                Log out
-              </button>
+              <UserMenu handle={auth.user.handle} onLogout={onLogout} />
             </div>
           )}
         </header>

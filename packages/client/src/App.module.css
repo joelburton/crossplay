@@ -74,44 +74,17 @@
   min-width: 0;
 }
 
-/* Top-right strip when authed: "<handle> · Log out". Inside the header
-   flex (not fixed-position) so it participates in horizontal layout
-   alongside the chat indicator. The indicator floats above via
-   `position: fixed` and gets shifted left by `--user-bar-width` so it
-   doesn't overlap. */
+/* Top-right slot when authed. Wraps `UserMenu` (a dropdown with
+   "Log out" + room for future Preferences / Change password / …
+   entries). Inside the header flex; the chat indicator floats over
+   via `position: fixed` and the right padding here reserves space
+   so the dropdown's trigger doesn't collide with it. */
 .userBar {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
   margin-left: 0.4rem;
-  /* Leave room on the right for the chat indicator (which floats over
-     the header at `right: var(--chat-right, 0.5rem)`). */
   padding-right: 3rem;
-  font-size: 0.85rem;
-  color: var(--c-text-mute, #555);
-}
-
-.userBarHandle {
-  font-weight: 600;
-  color: var(--c-text, #111);
-  max-width: 8rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.userBarLogout {
-  font: inherit;
-  padding: 0.15rem 0.5rem;
-  background: transparent;
-  border: 1px solid var(--c-card-border, #ccc);
-  border-radius: 0.25rem;
-  cursor: pointer;
-}
-
-.userBarLogout:hover {
-  background: var(--c-card-bg-soft, #fafafa);
 }
 
 .titleWrap {
@@ -148,13 +121,9 @@
   /* On narrow viewports the chat indicator floats flush with the
      board's right edge (PuzzleView sets `--chat-right` from a
      ResizeObserver), so userBar's reserved chat-indicator gap shrinks
-     to match. The handle also gets a tighter cap so it doesn't push
-     other header items off-screen on phone widths. */
+     to match. */
   .userBar {
     padding-right: 2.5rem;
-  }
-  .userBarHandle {
-    max-width: 5rem;
   }
 }
 
