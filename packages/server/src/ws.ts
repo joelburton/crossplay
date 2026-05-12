@@ -622,12 +622,20 @@ export function checkScopeHasPencil(
   return false;
 }
 
-const HELLO_DEBOUNCE_MS = 30_000;
+// 5 minutes. The "X joined" feedback fires when a hello arrives more
+// than this long after the last one with the same name. The window
+// has to be longer than any plausible silent disconnect/reconnect
+// cycle (Vite proxy idle close, OS network blip, briefly-throttled
+// tab) or visible/idle tabs that get silently re-handshaked spam
+// users with "Joel joined" every minute or two. 30s used to be the
+// value and was definitely too short. A real return-after-leaving
+// within 5 min is rare enough that swallowing those is fine.
+const HELLO_DEBOUNCE_MS = 5 * 60_000;
 
 // How long an entry can sit in `recentHellos` before being pruned.
-// 4× the debounce window means a returning player still gets the silent
-// reconnect within the debounce, but a one-off visitor's name is gone
-// well before the map can grow without bound.
+// 4× the debounce window means a returning player still gets the
+// silent reconnect within the debounce, but a one-off visitor's name
+// is gone well before the map can grow without bound.
 const HELLO_PRUNE_AFTER_MS = HELLO_DEBOUNCE_MS * 4;
 
 /**
@@ -695,12 +703,16 @@ function broadcastChanges(entry: StoredBoard, changes: CellChange[]): void {
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 // Number of consecutive missed pongs we tolerate before terminating
-// the socket. Bumped from 1 → 2 (window 30s → 90s) because Chrome /
-// Safari aggressively throttle JS in backgrounded tabs (App Nap on
-// macOS) and the auto-pong can be late. The previous 15s × 1 window
-// produced spurious "X joined" feedbacks on long cryptic sessions
-// (see memory `project_post_playtest_followups.md` item #7).
-const MISSED_PONG_TOLERANCE = 2;
+// the socket. Bumped 1 → 2 → 3 (window 30s → 90s → ~120s) over
+// time as browser throttling kept killing visible-but-idle tabs:
+// Chrome / Safari throttle JS in backgrounded tabs (App Nap on
+// macOS), and even side-by-side visible tabs can briefly miss a
+// pong when the OS sleeps the radio or schedules elsewhere. A
+// lingering ghost socket for ~2min is a cheaper UX cost than a
+// spurious "Joel joined" every couple of minutes; pair this with
+// the longer HELLO_DEBOUNCE_MS so the few reconnects that *do*
+// happen don't surface as joins.
+const MISSED_PONG_TOLERANCE = 3;
 
 /** Per-message dispatch context. Every handler receives this plus the
  *  parsed (and narrowed) message. Module-level handlers keep the route
