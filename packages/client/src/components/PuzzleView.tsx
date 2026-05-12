@@ -793,6 +793,46 @@ export function PuzzleView({
       if (e.key === "Backspace") {
         e.preventDefault();
         onActivity?.();
+        if (e.shiftKey) {
+          // Shift+Backspace: clear every fillable cell in the current
+          // word. Givens are skipped. After clearing, the cursor jumps
+          // to the word's first non-given cell so the player can start
+          // re-typing immediately. Each cleared cell goes out as its
+          // own `fill` message (same wire shape as a normal erase) —
+          // peers see the word disappear cell-by-cell.
+          const word = wordCells(cells, cursor.row, cursor.col, cursor.dir);
+          const targets = word.filter(({ row, col }) => {
+            const c = cells[row]?.[col];
+            return c?.kind === "cell" && !c.given && c.fill != null;
+          });
+          if (targets.length > 0) {
+            setSnapshot((prev) => {
+              let next = prev.cells;
+              for (const t of targets) {
+                next = setCellFill(next, t.row, t.col, null, false);
+              }
+              return { version: prev.version, cells: next };
+            });
+            for (const t of targets) {
+              send({
+                type: "fill",
+                row: t.row,
+                col: t.col,
+                letter: null,
+                clientVersion: snapshot.version,
+                senderColor: identity.color,
+              });
+            }
+          }
+          const firstEditable = word.find(({ row, col }) => {
+            const c = cells[row]?.[col];
+            return c?.kind === "cell" && !c.given;
+          });
+          if (firstEditable) {
+            setCursor((cur) => ({ ...cur, row: firstEditable.row, col: firstEditable.col }));
+          }
+          return;
+        }
         const { row, col } = cursor;
         const cell = cells[row]?.[col];
         if (cell?.kind === "cell" && cell.given) {

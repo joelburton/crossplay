@@ -10,6 +10,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ["Tab / ⇧Tab", "Next / previous clue"],
   ["Letter", "Fill the current cell"],
   ["Backspace", "Erase and step back (clears a whole rebus in one press)"],
+  ["⇧Backspace", "Clear the current word"],
   ["⇧Enter", "Open the rebus overlay over the focused cell"],
   ["Space", "Zoom-peek a multi-letter cell (read-only)"],
   ["|", "Cycle right-edge mark: break → hyphen → none"],
