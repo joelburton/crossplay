@@ -1,0 +1,112 @@
+// SQLite schema for Crossplay (post-Phase-3 of the users feature).
+// Render with: dot -Tpng docs/schema.dot -o docs/schema.png
+//
+// Nodes are tables; rows inside the HTML label are columns (PK
+// marked, FKs shown in their own column). Solid edges are real
+// foreign keys; the label notes the ON DELETE behavior. The dashed
+// edge from boards.puzzle_id to puzzles.id is intentional — it's a
+// **label, not a FK**: ad-hoc upload boards leave it NULL, and
+// puzzle deletion does not cascade (boards are stamped, not
+// referenced; see CLAUDE.md "Boards are stamped, not referenced").
+//
+// Colors echo the component diagrams: blue-ish for the play side
+// (puzzles, boards), green-ish for the users / membership side.
+
+digraph CrossplaySchema {
+  rankdir=LR;
+  splines=true;
+  nodesep=0.6;
+  ranksep=0.8;
+  bgcolor="white";
+  node [
+    shape=plain,
+    fontname="Helvetica",
+    fontsize=11,
+  ];
+  edge [color="#444", arrowsize=0.7, fontname="Helvetica", fontsize=9];
+
+  puzzles [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4" BGCOLOR="#e3eefc">
+      <TR><TD COLSPAN="2" BGCOLOR="#bcd2f0"><B>puzzles</B> &nbsp;<FONT POINT-SIZE="9">CLI-curated library</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" PORT="id"><B>id</B> &nbsp;PK</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+      <TR><TD ALIGN="LEFT">ipuz</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+      <TR><TD ALIGN="LEFT">title, author, copyright</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+      <TR><TD ALIGN="LEFT">width, height</TD><TD ALIGN="LEFT">INTEGER</TD></TR>
+      <TR><TD ALIGN="LEFT">created_at, updated_at</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+    </TABLE>
+  >];
+
+  boards [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4" BGCOLOR="#e3eefc">
+      <TR><TD COLSPAN="2" BGCOLOR="#bcd2f0"><B>boards</B> &nbsp;<FONT POINT-SIZE="9">one playthrough each</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" PORT="id"><B>id</B> &nbsp;PK</TD><TD ALIGN="LEFT">TEXT (UUID)</TD></TR>
+      <TR><TD ALIGN="LEFT" PORT="puzzle_id">puzzle_id &nbsp;(label, NULL ok)</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+      <TR><TD ALIGN="LEFT">ipuz &nbsp;(stamped copy)</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+      <TR><TD ALIGN="LEFT">title, author, copyright</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+      <TR><TD ALIGN="LEFT">snapshot &nbsp;(live JSON)</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+      <TR><TD ALIGN="LEFT">chat &nbsp;(JSON array)</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+      <TR><TD ALIGN="LEFT">fill_percent &nbsp;(NULL = NEW)</TD><TD ALIGN="LEFT">INTEGER</TD></TR>
+      <TR><TD ALIGN="LEFT" PORT="owner_id">owner_id &nbsp;FK → users.id</TD><TD ALIGN="LEFT">INTEGER</TD></TR>
+      <TR><TD ALIGN="LEFT">created_at, updated_at</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+    </TABLE>
+  >];
+
+  users [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4" BGCOLOR="#dff5e1">
+      <TR><TD COLSPAN="2" BGCOLOR="#b8e1bf"><B>users</B> &nbsp;<FONT POINT-SIZE="9">accounts</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" PORT="id"><B>id</B> &nbsp;PK</TD><TD ALIGN="LEFT">INTEGER</TD></TR>
+      <TR><TD ALIGN="LEFT">handle &nbsp;(display case)</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+      <TR><TD ALIGN="LEFT">handle_lower &nbsp;UNIQUE</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+      <TR><TD ALIGN="LEFT">password_hash &nbsp;(scrypt)</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+      <TR><TD ALIGN="LEFT">email &nbsp;(admin-only)</TD><TD ALIGN="LEFT">TEXT?</TD></TR>
+      <TR><TD ALIGN="LEFT">is_admin</TD><TD ALIGN="LEFT">INTEGER</TD></TR>
+      <TR><TD ALIGN="LEFT">invite_code_used</TD><TD ALIGN="LEFT">TEXT?</TD></TR>
+      <TR><TD ALIGN="LEFT">prefs &nbsp;(reserved)</TD><TD ALIGN="LEFT">TEXT?</TD></TR>
+      <TR><TD ALIGN="LEFT">created_at</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+    </TABLE>
+  >];
+
+  sessions [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4" BGCOLOR="#dff5e1">
+      <TR><TD COLSPAN="2" BGCOLOR="#b8e1bf"><B>sessions</B> &nbsp;<FONT POINT-SIZE="9">cookie-keyed</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT"><B>id</B> &nbsp;PK (random hex)</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+      <TR><TD ALIGN="LEFT" PORT="user_id">user_id &nbsp;FK → users.id</TD><TD ALIGN="LEFT">INTEGER</TD></TR>
+      <TR><TD ALIGN="LEFT">created_at, last_seen_at</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+      <TR><TD ALIGN="LEFT">expires_at &nbsp;(sliding 30d)</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+    </TABLE>
+  >];
+
+  invite_codes [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4" BGCOLOR="#dff5e1">
+      <TR><TD COLSPAN="2" BGCOLOR="#b8e1bf"><B>invite_codes</B> &nbsp;<FONT POINT-SIZE="9">admin-managed</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT"><B>code</B> &nbsp;PK (lowercase)</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+      <TR><TD ALIGN="LEFT">label</TD><TD ALIGN="LEFT">TEXT?</TD></TR>
+      <TR><TD ALIGN="LEFT">created_at</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+    </TABLE>
+  >];
+
+  boards_users [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4" BGCOLOR="#dff5e1">
+      <TR><TD COLSPAN="2" BGCOLOR="#b8e1bf"><B>boards_users</B> &nbsp;<FONT POINT-SIZE="9">membership (M2M)</FONT></TD></TR>
+      <TR><TD ALIGN="LEFT" PORT="board_id"><B>board_id</B> &nbsp;PK, FK → boards.id</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+      <TR><TD ALIGN="LEFT" PORT="user_id"><B>user_id</B> &nbsp;PK, FK → users.id</TD><TD ALIGN="LEFT">INTEGER</TD></TR>
+      <TR><TD ALIGN="LEFT">created_at</TD><TD ALIGN="LEFT">TEXT</TD></TR>
+    </TABLE>
+  >];
+
+  // Real foreign keys (solid).
+  boards:owner_id -> users:id [label="ON DELETE SET NULL"];
+  sessions:user_id -> users:id [label="ON DELETE CASCADE"];
+  boards_users:board_id -> boards:id [label="ON DELETE CASCADE"];
+  boards_users:user_id -> users:id [label="ON DELETE CASCADE"];
+
+  // Label-only edge: boards.puzzle_id is just a slug, not a FK.
+  boards:puzzle_id -> puzzles:id [
+    style=dashed,
+    color="#888",
+    label="label only\n(no FK, NULL ok)"
+  ];
+
+  // Layout hint: keep the auth-side tables on one rank cluster.
+  { rank=same; users; sessions; invite_codes; }
+}

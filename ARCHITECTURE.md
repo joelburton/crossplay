@@ -7,7 +7,7 @@ A walkthrough of how Crossplay is put together, aimed at someone who just wants 
 Crossplay is an npm-workspaces monorepo with three packages:
 
 - **`shared`** — TypeScript types only, no runtime code. The wire protocol (what flies between client and server) lives here so both sides agree on shape.
-- **`server`** — Node + Fastify + Node's built-in `node:sqlite`. Owns the persistent library (puzzles), the persistent playthroughs (boards), and a WebSocket per board. Parses `.puz` via `puzjs` and `.ipuz` directly.
+- **`server`** — Node + Fastify + Node's built-in `node:sqlite`. Owns the persistent library (puzzles), the persistent playthroughs (boards), accounts and sessions, and a WebSocket per board. Parses `.puz` via `puzjs` and `.ipuz` directly.
 - **`client`** — React + Vite + TypeScript with CSS Modules. Renders the grid, handles input, and stays in sync with the server.
 
 In production, the server also serves the built client static files, so it's a single Node process behind nginx. In development, the client is served by Vite and proxies API/WebSocket calls to the server on a separate port.
@@ -21,7 +21,24 @@ The data model has two first-class entities, and confusing them creates real bug
 
 `boards.puzzle_id` records which puzzle slug a board came from, but it's a label, not a foreign key — it's nullable (ad-hoc uploads have no puzzle row at all) and may dangle (the puzzle was deleted later). Either way, everything play needs is on the board.
 
-In user-facing copy these become "Community puzzles" and "Your games." In code, never use the word *game* — it's ambiguous between the two.
+In user-facing copy these become "Puzzle library" and "Your games." In code, never use the word *game* — it's ambiguous between the two.
+
+## Accounts, sessions, and board membership
+
+Users exist (Phase 1+2+3 of the users feature; see `docs/users-design.md` for the source of truth). The shape:
+
+- **Posture A — anon URL play.** Visiting `/b/<id>` works without a login, same as before. Anyone with the URL can play, chat as `Rando<NN>`, and read/write the board. The unguessable UUID is the access barrier. The home page (`/`), library browse, and upload are account-only — visiting `/` while signed out shows a `LandingPage` (login + signup + invite-code paragraph) instead.
+- **Registration is invite-code gated.** No email verification, no password reset, no OAuth — the trust model is friends-of-friends. Admins curate `invite_codes` rows by hand via SQL; signup requires a valid (case-insensitive) code.
+- **Sessions live in SQLite**, keyed by a random 32-byte hex token. The token is the value of an HTTP-only `crossplay_session` cookie, sliding 30-day expiry. A Fastify `onRequest` hook resolves `req.user` on every request; routes that require auth check that field themselves.
+- **Boards have an owner *and* members.** `boards.owner_id` records the creator (FK with `ON DELETE SET NULL`). The `boards_users` join table records who has the board in their "My Games" — the owner is auto-inserted on creation, and shares add rows. The home page list queries through the join, so boards I created *and* boards shared with me both surface.
+- **`DELETE /api/boards/:id` is "leave this board."** It removes my membership row. If I was the last member, the board is hard-deleted (force-close WS sockets, evict cache) in the same DB transaction.
+- **Multiple boards per (user, puzzle) are allowed.** A user can legitimately want one solo board and one collab board on the same puzzle. The library click does a soft dedup — returns the most-recently-updated existing board, or creates a new one — but the schema doesn't enforce uniqueness. The share route is a plain idempotent insert with no collision branch.
+
+The data model — six tables, the FKs between them, and the one intentionally-not-a-FK label edge from `boards.puzzle_id` to `puzzles.id` — is in [the schema diagram](docs/schema.png).
+
+![Database schema](docs/schema.png)
+
+Source: [`docs/schema.dot`](docs/schema.dot) (regenerate with `dot -Tpng docs/schema.dot -o docs/schema.png`).
 
 ## How a keystroke travels
 
@@ -57,14 +74,18 @@ The wire carries two architecturally distinct kinds of message, and they have di
 - **State changes** — `fill`, `reveal`, `check`, `clear`, `chat`, `showNotes`. The server is authoritative, mutations bump a snapshot version, broadcasts are durable (persisted via the 15-second flush), and clients reconcile by version.
 - **Pure presence** — `cursorMoved` (peer cursor position), `cursorLeft` (peer disconnected), and the "X joined" feedback derived from `hello`. None of this is persisted, version-stamped, or replayed on reconnect. A peer that misses a `cursorMoved` while reconnecting just sees the next one. The cost of presence traffic is intentionally cheap so it can't impact the typing hot path (see `project_optimistic_typing.md`): outbound `cursorMoved` is throttled to ~80ms on the client and is fire-and-forget; inbound updates only re-render the affected cell.
 
-## Persistence: SQLite, partial today
+## Persistence: SQLite
 
-The server uses Node's built-in `node:sqlite` (synchronous, ships with Node 22.5+, stable in 24+). Two tables, no FK between them:
+The server uses Node's built-in `node:sqlite` (synchronous, ships with Node 22.5+, stable in 24+). Six tables; see [the schema diagram](docs/schema.png) for the columns and FKs at a glance.
 
-- `puzzles` — id, ipuz blob, denormalized title/author/copyright/width/height, timestamps. Curated by the operator via CLI.
-- `boards` — id, nullable puzzle_id, ipuz blob (a copy at stamp time), denormalized title/author/copyright, JSON snapshot, JSON chat, timestamps, plus a nullable `fill_percent` updated on flush so the home page can show NEW / N% / 100% without re-parsing the board.
+- `puzzles` — CLI-curated library. id, ipuz blob, denormalized title/author/copyright/width/height, timestamps.
+- `boards` — one playthrough each. id, nullable `puzzle_id` (a label, not a FK), ipuz blob (a copy at stamp time), denormalized title/author/copyright, JSON snapshot, JSON chat, timestamps, nullable `fill_percent` (updated on flush so the home page can show NEW / N% / 100% without re-parsing), nullable `owner_id` (FK to users, SET NULL on user delete).
+- `users` — accounts. id, `handle` (case-preserved for display) + `handle_lower` (UNIQUE, the lookup column), scrypt `password_hash`, nullable email (admin out-of-band use only), `is_admin` flag, `invite_code_used` (forensic — "delete every account from this code"), reserved `prefs` JSON column, `created_at`.
+- `invite_codes` — `code` PK (stored lowercased), optional `label`, `created_at`. Admins INSERT/DELETE by hand to grant/revoke registration access.
+- `sessions` — server-side session table. Random hex `id` PK (sent as the cookie value), `user_id` FK (CASCADE on user delete), creation / last-seen / sliding expiry timestamps.
+- `boards_users` — the membership M2M. Composite PK `(board_id, user_id)`, both FKs CASCADE on delete. Owner is auto-inserted on board creation; the share route adds rows; "leave board" deletes the caller's row and hard-deletes the board if it was the last membership.
 
-Migrations are tracked via SQLite's built-in `PRAGMA user_version` — `db.ts` walks an append-only `migrations[]` array, runs anything past the current version inside its own transaction, and bumps the version. No migrations table.
+Migrations are tracked via SQLite's built-in `PRAGMA user_version` — `db.ts` walks an append-only `migrations[]` array, runs anything past the current version inside its own transaction, and bumps the version. No migrations table. The current head is v6.
 
 What's persistent: the puzzle library, every board's existence + denormalized title/author, and the live snapshot + chat history. Mutations during play happen in-memory first; a per-board 15-second idle-debounced flush writes them back to the DB. The last socket leaving a board triggers a flush + cache eviction. SIGTERM/SIGINT drains every dirty cached board before exit. A hard crash within the 15-second window loses up to 15 seconds of play — by design (see `project_sqlite_sprint_plan.md`).
 
@@ -100,14 +121,16 @@ Source: [`docs/components-game.dot`](docs/components-game.dot) (regenerate with 
 - **The two big floating panels (chat and notes) use `react-rnd`** for drag and resize, with their position/size persisted to `localStorage` per panel. The Rect/load/save/clamp logic and the shared card/header/drag-handle CSS live in one place (`draggablePanel.ts` + `Panel.module.css`); each panel composes those bones and overrides the bits that differ.
 - **Modifier keys bypass the keyboard handler.** `Cmd-L` focuses the address bar like usual; we don't try to capture browser shortcuts. `Option`/`Alt` + a letter is the namespace we use for in-app action shortcuts (`⌥R` reveal, `⌥C` check, `⌥N` notes, `⌥P` toggle pen/pencil, `⌥M` open the title menu). A few unmodified-keypress shortcuts also exist for things that open a dialog rather than mutate the board: `⇧Enter` (rebus overlay), `#` (jump-to-clue-number), `?` (help dialog), `/` (open chat or focus its input). See CLAUDE.md for the full list and rationale.
 - **Menu is keyboard-navigable.** `⌥M` toggles the title menu; inside the menu, the first enabled item gets focus on open, ArrowUp/Down/Home/End move focus across the enabled buttons (re-queried each press so newly-enabled items participate), and Enter/Space activate natively. Tab stays reserved for next-clue, so arrows are the sole traversal — fine for a menu this small.
-- **Three modal dialogs share a pattern.** `HelpDialog`, `NumberJumpDialog`, and the inline `RebusInput` overlay are all centered cards with backdrop / Esc / × dismissal. `PuzzleView` tracks an `*Open` boolean per dialog plus a `*OpenRef` so its window-level keystroke handler can bail out cleanly while a dialog is taking input. The chat panel and notes panel are different — those are draggable `react-rnd` panels with persisted geometry.
+- **Four modal dialogs share a pattern.** `HelpDialog`, `NumberJumpDialog`, `ShareDialog`, and the inline `RebusInput` overlay are all centered cards with backdrop / Esc / × dismissal. `PuzzleView` tracks an `*Open` boolean per dialog plus a `*OpenRef` so its window-level keystroke handler can bail out cleanly while a dialog is taking input. The chat panel and notes panel are different — those are draggable `react-rnd` panels with persisted geometry.
 - **Home page and board page have separate headers.** The shared top bar (small icon, title-with-menu, feedback slot) only renders on `/b/:id`. The home page (`/`) draws its own centered hero (large icon + wordmark) and intentionally has no menu — landing pages and play views have different needs and they no longer share a component.
 - **Welcome feedback is once-per-browser.** The "Click heart for menu" hint fires on first board-load only, gated on a `seenWelcome` localStorage flag. When user accounts land, this should move from per-browser to per-user. Feedback text is kept short on purpose — the header pill truncates on a phone in the low-20-character range, so all four current messages (`Click heart for menu`, `<name> joined`, `Check skips pencil cells`, `No notes for puzzle`) fit or degrade gracefully.
 - **Home-page list filters are pure client-side.** Both lists do a case-insensitive substring match across title + author + copyright (so e.g. "times" finds NYT puzzles via the copyright field). The library is expected to stay in the hundreds; server-side filtering would buy nothing.
 
 ## What's deliberately out of scope
 
-- Authentication or accounts. The trust model is "share the URL with a friend you trust." Boards are global, not per-user (yet).
+- Email verification, password reset flows, OAuth, SSO. Accounts exist (Phase 1+), but the trust model is friends-of-friends: invite codes are shared secrets the admin manages with raw SQL. A leaked code is fixed by deleting the row.
+- Real-time share notifications. The home page's "members" + "live" columns are computed at request time; you refresh to see updates.
+- Per-board ACLs / kick / report. Everyone in your circle is welcome — if a member becomes a problem, the social fix is removing them from the join row.
 - Mobile / touch input *without a hardware keyboard*. Tablets and phones that have an external keyboard (option keys work on iPad/iPhone keyboards) get a "narrow mode" UI: side clue lists hidden, active clue moved to a 3-line strip below the grid, home page stacked vertically and page-scrollable. See CLAUDE.md "Platform philosophy" for the full audience priorities and the rules that follow (board page doesn't scroll, no hover-gated info, don't bloat tap targets at the expense of grid readability).
 - A solve timer — flagged for future work and needs its own design conversation.
 - Most non-standard `.puz` / `.ipuz` features (shading, bars, irregular/null cells, non-crossword `kind`, named style references, unknown style or cell-object keys) are rejected at upload time with a clear message rather than partially loaded — the ipuz `style` check is a **whitelist** so brand-new features surface as a 400 rather than a quietly-stripped puzzle. The supported subset today is square grid, integer cell numbers, plain text clues, rebus solutions up to 8 characters (see CLAUDE.md "Basic rebus"), and circled theme cells (`.ipuz` `style.shapebg === "circle"`; `.puz` GEXT circle bit).

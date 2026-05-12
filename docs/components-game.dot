@@ -48,6 +48,8 @@ digraph CrossplayGame {
   NoteDialog       [fillcolor="#ecdcfb"];
   HelpDialog       [fillcolor="#ecdcfb"];
   NumberJumpDialog [fillcolor="#ecdcfb"];
+  ShareDialog      [fillcolor="#ecdcfb"];
+  SolvedDialog     [fillcolor="#ecdcfb"];
 
   // Header chrome: always rendered on this route
   App -> SiteIcon;
@@ -68,6 +70,8 @@ digraph CrossplayGame {
   PuzzleView -> NoteDialog       [style=dashed, label="notes open"];
   PuzzleView -> HelpDialog       [style=dashed, label="help open"];
   PuzzleView -> NumberJumpDialog [style=dashed, label="# popup open"];
+  PuzzleView -> ShareDialog      [style=dashed, label="share open\n(authed only)"];
+  PuzzleView -> SolvedDialog     [style=dashed, label="puzzleSolved"];
 
   Board -> Cell       [label="N×M"];
   Board -> RebusInput [style=dashed, label="rebus open"];
@@ -75,5 +79,5 @@ digraph CrossplayGame {
   // Layout hints
   { rank=same; SiteIcon; Menu; ModeButton; FeedbackBar; }
   { rank=same; PuzzleView; UploadForm; }
-  { rank=same; ChatIndicator; ChatPreview; ChatPanel; NoteDialog; HelpDialog; NumberJumpDialog; }
+  { rank=same; ChatIndicator; ChatPreview; ChatPanel; NoteDialog; HelpDialog; NumberJumpDialog; ShareDialog; SolvedDialog; }
 }

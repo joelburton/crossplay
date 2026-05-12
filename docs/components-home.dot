@@ -6,6 +6,9 @@
 // distinct UI units mentioned in the docs and worth seeing on the map,
 // but they don't have their own files (yet). Dashed edges mark
 // conditional renders.
+//
+// The home route ("/") branches on auth: anons see LandingPage; authed
+// users see HomePage.
 
 digraph CrossplayHome {
   rankdir=TB;
@@ -25,6 +28,7 @@ digraph CrossplayHome {
 
   // Real components (solid border)
   App         [fillcolor="#e3eefc"];
+  LandingPage [fillcolor="#fff4d6"];
   HomePage    [fillcolor="#fff4d6"];
   SiteIcon    [fillcolor="#f6f6f6"];
   UploadForm  [fillcolor="#f6f6f6"];
@@ -32,17 +36,23 @@ digraph CrossplayHome {
   // Inline logical sections within HomePage (dashed border to flag that
   // they're JSX subtrees, not their own components)
   Hero            [fillcolor="#fff4d6", style="rounded,filled,dashed", label="Hero\n(icon + wordmark)"];
-  CommunityList   [fillcolor="#fff4d6", style="rounded,filled,dashed", label="Community puzzles\n(filter + puzzle rows)"];
-  YourGamesList   [fillcolor="#fff4d6", style="rounded,filled,dashed", label="Your games\n(filter + board rows\n+ delete confirm)"];
+  LibraryList     [fillcolor="#fff4d6", style="rounded,filled,dashed", label="Puzzle library\n(filter + puzzle rows)"];
+  YourGamesList   [fillcolor="#fff4d6", style="rounded,filled,dashed", label="Your games\n(filter + board rows\n+ members + live\n+ delete confirm)"];
   UploadSection   [fillcolor="#fff4d6", style="rounded,filled,dashed", label="Upload your own"];
   Footer          [fillcolor="#fff4d6", style="rounded,filled,dashed", label="Footer"];
 
-  // App mounts HomePage when on the home route and load is idle
-  App -> HomePage [style=dashed, label="home route"];
+  LandingHero     [fillcolor="#fff4d6", style="rounded,filled,dashed", label="Hero + login\n+ signup + invite\nparagraph"];
+
+  // App's home route branches on auth state
+  App -> LandingPage [style=dashed, label="home route, anon"];
+  App -> HomePage    [style=dashed, label="home route, authed"];
+
+  // LandingPage's render tree (anon view of "/")
+  LandingPage -> LandingHero;
 
   // HomePage's render tree — sections in display order
   HomePage -> Hero;
-  HomePage -> CommunityList [style=dashed, label="puzzles non-empty"];
+  HomePage -> LibraryList   [style=dashed, label="puzzles non-empty"];
   HomePage -> YourGamesList;
   HomePage -> UploadSection;
   HomePage -> Footer;
@@ -51,5 +61,5 @@ digraph CrossplayHome {
   Hero          -> SiteIcon;
   UploadSection -> UploadForm;
 
-  { rank=same; Hero; CommunityList; YourGamesList; UploadSection; Footer; }
+  { rank=same; Hero; LibraryList; YourGamesList; UploadSection; Footer; }
 }
