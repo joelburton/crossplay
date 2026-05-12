@@ -355,7 +355,7 @@ describe("http: DELETE /api/boards/:id", () => {
     _clearCacheForTest();
   });
 
-  it("removes the row; subsequent GET 404s", async () => {
+  it("solo member: removes the row + hard-deletes the board (deleted:true); GET 404s", async () => {
     seedPuzzle(db);
     const create = await app.inject({
       method: "POST",
@@ -367,10 +367,124 @@ describe("http: DELETE /api/boards/:id", () => {
 
     const del = await app.inject({ method: "DELETE", url: `/api/boards/${boardId}`, cookies });
     expect(del.statusCode).toBe(200);
-    expect((del.json() as { ok: boolean }).ok).toBe(true);
+    const body = del.json() as { ok: boolean; deleted: boolean };
+    expect(body.ok).toBe(true);
+    expect(body.deleted).toBe(true);
 
     const get = await app.inject({ method: "GET", url: `/api/boards/${boardId}` });
     expect(get.statusCode).toBe(404);
+  });
+
+  it("multi-member: leaving drops only my row; board persists; other members keep playing", async () => {
+    seedPuzzle(db);
+    // Alice (default `cookies`) creates and shares with Bob via the
+    // share route, so the membership is wired the same way real users
+    // would set it up.
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { puzzleId: "test-puzzle" },
+      cookies,
+    });
+    const { boardId } = create.json() as { boardId: string };
+    const bob = await seedAuth(app, db, "bob");
+    await app.inject({
+      method: "POST",
+      url: `/api/boards/${boardId}/share`,
+      payload: { handle: "bob" },
+      cookies,
+    });
+
+    const del = await app.inject({ method: "DELETE", url: `/api/boards/${boardId}`, cookies });
+    expect(del.statusCode).toBe(200);
+    expect((del.json() as { ok: boolean; deleted: boolean })).toEqual({
+      ok: true,
+      deleted: false,
+    });
+
+    // Board row still exists; alice's membership is gone; bob's remains.
+    const row = db.prepare("SELECT id FROM boards WHERE id = ?").get(boardId);
+    expect(row).toBeDefined();
+    const memberHandles = db
+      .prepare(
+        "SELECT u.handle FROM boards_users bu JOIN users u ON u.id = bu.user_id WHERE bu.board_id = ?",
+      )
+      .all(boardId) as Array<{ handle: string }>;
+    expect(memberHandles.map((m) => m.handle)).toEqual(["bob"]);
+
+    // Bob can still list and load the board.
+    const list = await app.inject({ method: "GET", url: "/api/boards", cookies: bob.cookies });
+    const ids = (list.json() as Array<{ id: string }>).map((b) => b.id);
+    expect(ids).toContain(boardId);
+
+    // Alice no longer sees it in her list.
+    const aliceList = await app.inject({ method: "GET", url: "/api/boards", cookies });
+    const aliceIds = (aliceList.json() as Array<{ id: string }>).map((b) => b.id);
+    expect(aliceIds).not.toContain(boardId);
+  });
+
+  it("multi-member: when the last member leaves, the board is hard-deleted", async () => {
+    seedPuzzle(db);
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { puzzleId: "test-puzzle" },
+      cookies,
+    });
+    const { boardId } = create.json() as { boardId: string };
+    const bob = await seedAuth(app, db, "bob");
+    await app.inject({
+      method: "POST",
+      url: `/api/boards/${boardId}/share`,
+      payload: { handle: "bob" },
+      cookies,
+    });
+    // Alice leaves; board persists with bob.
+    await app.inject({ method: "DELETE", url: `/api/boards/${boardId}`, cookies });
+    // Bob leaves; he was the last. Board should be deleted.
+    const del = await app.inject({
+      method: "DELETE",
+      url: `/api/boards/${boardId}`,
+      cookies: bob.cookies,
+    });
+    expect(del.statusCode).toBe(200);
+    expect((del.json() as { deleted: boolean }).deleted).toBe(true);
+    const row = db.prepare("SELECT id FROM boards WHERE id = ?").get(boardId);
+    expect(row).toBeUndefined();
+  });
+
+  it("returns 401 when not authed", async () => {
+    seedPuzzle(db);
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { puzzleId: "test-puzzle" },
+      cookies,
+    });
+    const { boardId } = create.json() as { boardId: string };
+    const res = await app.inject({ method: "DELETE", url: `/api/boards/${boardId}` });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("returns 404 when caller isn't a member of an existing board", async () => {
+    seedPuzzle(db);
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { puzzleId: "test-puzzle" },
+      cookies,
+    });
+    const { boardId } = create.json() as { boardId: string };
+    const bob = await seedAuth(app, db, "bob");
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/api/boards/${boardId}`,
+      cookies: bob.cookies, // bob has no membership
+    });
+    expect(res.statusCode).toBe(404);
+    // Alice's board is untouched.
+    const row = db.prepare("SELECT id FROM boards WHERE id = ?").get(boardId);
+    expect(row).toBeDefined();
   });
 
   it("returns 404 for unknown board", async () => {

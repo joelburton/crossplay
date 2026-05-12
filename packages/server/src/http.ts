@@ -21,7 +21,6 @@ import { detectFormat, parsePuzzleBuffer } from "./format.js";
 import {
   PuzzleNotFoundError,
   addBoardMembership,
-  deleteBoard,
   findOrCreateBoard,
   getBoardState,
   insertBoardRow,
@@ -175,25 +174,66 @@ export async function registerHttpRoutes(app: FastifyInstance, opts: HttpRouteOp
       });
 
       api.delete<{ Params: { id: string } }>("/boards/:id", async (req, reply) => {
-        // Hard delete. Order matters: close ws sockets so they stop
-        // mutating the entry, DELETE the row *before* evicting so any
-        // racing WS connect that lazy-loads sees a missing row and
-        // 1008-closes (rather than resurrecting the entry into the
-        // cache between evict and delete), then evict the cache to
-        // cancel its pending flush timer. The cache entry may briefly
-        // outlive the row; its eventual flush UPDATE matches 0 rows
-        // and silently no-ops.
-        const id = req.params.id;
-        const cached = getCachedBoard(id);
-        if (cached) {
-          for (const s of cached.sockets) {
-            if (s.readyState === s.OPEN) s.close(1000, "board deleted");
-          }
+        // Semantically "leave this board": remove the caller's
+        // `boards_users` row. If that was the last membership, also
+        // hard-delete the board (force-close ws sockets, evict the
+        // cache). Returns `{ ok, deleted }` so the UI can react —
+        // most callers just remove the row from My Games either way,
+        // but `deleted: true` would let us surface "the last
+        // collaborator left, so the board is gone" copy if we ever
+        // want it.
+        //
+        // 404 covers both "no such board" and "board exists but you
+        // aren't a member" — from the caller's perspective the row
+        // wasn't in their list either way.
+        if (!req.user) {
+          return reply.code(401).send({ error: "not logged in" });
         }
-        const { existed } = deleteBoard(db, id);
-        evictBoard(id);
-        if (!existed) return reply.code(404).send({ error: "not found" });
-        return { ok: true };
+        const id = req.params.id;
+        const member = db
+          .prepare("SELECT 1 AS ok FROM boards_users WHERE board_id = ? AND user_id = ?")
+          .get(id, req.user.id) as { ok: number } | undefined;
+        if (!member) return reply.code(404).send({ error: "not found" });
+
+        // Single transaction: drop my membership row, count what's
+        // left, hard-delete the board if I was the last one. Socket
+        // close + cache evict happen after commit (they touch
+        // process state, not the DB).
+        let boardDeleted = false;
+        db.exec("BEGIN");
+        try {
+          db.prepare("DELETE FROM boards_users WHERE board_id = ? AND user_id = ?").run(
+            id,
+            req.user.id,
+          );
+          const remaining = db
+            .prepare("SELECT COUNT(*) AS c FROM boards_users WHERE board_id = ?")
+            .get(id) as { c: number };
+          if (remaining.c === 0) {
+            db.prepare("DELETE FROM boards WHERE id = ?").run(id);
+            boardDeleted = true;
+          }
+          db.exec("COMMIT");
+        } catch (err) {
+          db.exec("ROLLBACK");
+          throw err;
+        }
+
+        if (boardDeleted) {
+          // Same order as the previous (pre-membership) DELETE: close
+          // sockets first so they stop mutating the cache entry, then
+          // evict to cancel any pending flush timer. The DB row is
+          // already gone, so a racing WS connect would see no row and
+          // 1008-close.
+          const cached = getCachedBoard(id);
+          if (cached) {
+            for (const s of cached.sockets) {
+              if (s.readyState === s.OPEN) s.close(1000, "board deleted");
+            }
+          }
+          evictBoard(id);
+        }
+        return { ok: true, deleted: boardDeleted };
       });
 
       api.post<{ Params: { id: string }; Body: { handle?: unknown } }>(
