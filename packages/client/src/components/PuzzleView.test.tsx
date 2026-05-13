@@ -126,9 +126,10 @@ beforeEach(() => {
   if (!Element.prototype.scrollIntoView) {
     Element.prototype.scrollIntoView = function () {};
   }
-  // Ensure readChatIdentity is deterministic.
-  window.history.replaceState({}, "", "/?name=Tester");
+  // Ensure resolveChatIdentity is deterministic across runs: clear
+  // localStorage, then seed the anon-name slot with a fixed Rando.
   window.localStorage?.clear();
+  window.localStorage?.setItem("crossplay.anonName", "Rando42");
 });
 
 afterEach(() => {

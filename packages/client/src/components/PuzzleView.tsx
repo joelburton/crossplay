@@ -16,7 +16,7 @@ import {
   wordCells,
 } from "../cursor";
 import { type ChatLine, useBoardSocket } from "../useBoardSocket";
-import { type ChatIdentity, makeIdentity, persistName, readChatIdentity } from "../chatIdentity";
+import { type ChatIdentity, resolveChatIdentity } from "../chatIdentity";
 import type { Feedback } from "../feedback";
 import type { PuzzleActions } from "../puzzleActions";
 import { Board } from "./Board";
@@ -216,9 +216,11 @@ export function PuzzleView({
     () => initialCursor(puzzle.snapshot.cells) ?? { row: 0, col: 0, dir: "across" },
   );
 
-  const [identity, setIdentity] = useState<ChatIdentity>(
-    () => readChatIdentity(authedHandle),
-  );
+  // Identity is fixed at mount: account handle for authed users,
+  // a stable Rando<NN> (persisted in localStorage) for anons. No
+  // in-session rename — the cognitive cost of an account-handle ≠
+  // chat-name split wasn't paying for itself (see chatIdentity.ts).
+  const [identity] = useState<ChatIdentity>(() => resolveChatIdentity(authedHandle ?? null));
   const identityRef = useRef(identity);
   identityRef.current = identity;
   const [chatOpen, setChatOpen] = useState(false);
@@ -430,12 +432,6 @@ export function PuzzleView({
   }, [cursor.row, cursor.col, connState, sendCursorNow]);
   useEffect(() => () => {
     if (cursorTimerRef.current) clearTimeout(cursorTimerRef.current);
-  }, []);
-
-  const renameMe = useCallback((newName: string) => {
-    const next = makeIdentity(newName);
-    setIdentity(next);
-    persistName(next.name);
   }, []);
 
   const openChat = useCallback(() => {
@@ -1114,7 +1110,6 @@ export function PuzzleView({
           identity={identity}
           messages={chatMessages}
           onSend={sendChat}
-          onRename={renameMe}
           onClose={closeChat}
           inputRef={chatInputRef}
         />

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import { Rnd } from "react-rnd";
 import type { ChatIdentity } from "../chatIdentity";
-import { NAME_MAX } from "../chatIdentity";
 import type { ChatLine } from "../useBoardSocket";
 import { linkify } from "../linkify";
 import { useDraggablePanel, type Rect } from "../draggablePanel";
@@ -12,7 +11,6 @@ type Props = {
   identity: ChatIdentity;
   messages: ChatLine[];
   onSend: (text: string) => void;
-  onRename: (newName: string) => void;
   onClose: () => void;
   inputRef?: MutableRefObject<HTMLTextAreaElement | null>;
 };
@@ -43,30 +41,23 @@ const PANEL_OPTS = {
  * rect/persist/clamp logic is shared with NoteDialog via
  * `useDraggablePanel`.
  *
- * Identity (name + color) is owned upstream in PuzzleView; this
- * component only exposes a rename input that calls `onRename` with the
- * new name. URLs in messages are auto-linkified (see `linkify`), and
+ * Identity (name + color) is fixed at session mount (account handle
+ * for authed users, stable `Rando<NN>` for anons) — no in-session
+ * rename. URLs in messages are auto-linkified (see `linkify`), and
  * messages whose first character is `!` render bold + force-open the
  * panel on the recipient side (logic for the latter lives in
  * PuzzleView).
  */
-export function ChatPanel({ identity, messages, onSend, onRename, onClose, inputRef }: Props) {
+export function ChatPanel({ identity, messages, onSend, onClose, inputRef }: Props) {
   const [draft, setDraft] = useState("");
-  const [editingName, setEditingName] = useState(false);
-  const [nameDraft, setNameDraft] = useState(identity.name);
   const { rect, onDragStop, onResizeStop } = useDraggablePanel(PANEL_OPTS);
   const localInputRef = useRef<HTMLTextAreaElement | null>(null);
   const tref = inputRef ?? localInputRef;
-  const nameInputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!editingName) tref.current?.focus();
-  }, [editingName, tref]);
-
-  useEffect(() => {
-    if (editingName) nameInputRef.current?.focus();
-  }, [editingName]);
+    tref.current?.focus();
+  }, [tref]);
 
   useEffect(() => {
     const el = listRef.current;
@@ -92,28 +83,6 @@ export function ChatPanel({ identity, messages, onSend, onRename, onClose, input
     }
   }
 
-  function startRename() {
-    setNameDraft(identity.name);
-    setEditingName(true);
-  }
-  function commitRename() {
-    const next = nameDraft.trim();
-    if (next.length > 0 && next !== identity.name) onRename(next);
-    setEditingName(false);
-  }
-  function cancelRename() {
-    setEditingName(false);
-  }
-  function onNameKey(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      commitRename();
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      cancelRename();
-    }
-  }
-
   return (
     <Rnd
       className={styles.rnd}
@@ -130,38 +99,10 @@ export function ChatPanel({ identity, messages, onSend, onRename, onClose, input
     >
       <aside className={styles.panel} aria-label="Chat">
         <header className={`${styles.header} ${styles.dragHandle}`}>
-          {editingName ? (
-            <input
-              ref={nameInputRef}
-              className={styles.nameInput}
-              value={nameDraft}
-              onChange={(e) => setNameDraft(e.target.value)}
-              onKeyDown={onNameKey}
-              onBlur={commitRename}
-              maxLength={NAME_MAX}
-              placeholder="New name"
-              aria-label="Edit name"
-            />
-          ) : (
-            <span className={styles.title}>
-              Chat as{" "}
-              <span style={{ color: identity.color, fontWeight: 700 }}>{identity.name}</span>
-              <button
-                type="button"
-                className={styles.editName}
-                onClick={startRename}
-                aria-label="Edit name"
-                title="Edit name"
-              >
-                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-                  <path
-                    d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"
-                    fill="currentColor"
-                  />
-                </svg>
-              </button>
-            </span>
-          )}
+          <span className={styles.title}>
+            Chat as{" "}
+            <span style={{ color: identity.color, fontWeight: 700 }}>{identity.name}</span>
+          </span>
           <button type="button" className={styles.close} onClick={onClose} aria-label="Close chat">
             ×
           </button>

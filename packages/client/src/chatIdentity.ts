@@ -1,14 +1,24 @@
 /**
  * Player identity for chat and presence.
  *
- * A "chat identity" is just a (name, color) pair. The name is whatever
- * the user typed (or a generated default); the color is derived
- * deterministically from the name via `colorForName` so the same name
- * always renders in the same color across all clients in a room without
- * any server coordination.
+ * A "chat identity" is just a (name, color) pair. The name is the
+ * account handle for authed users and a stable `Rando<NN>` for anons;
+ * the color is derived deterministically from the name via
+ * `colorForName` so the same name always renders in the same color
+ * across all clients in a room without any server coordination.
  *
- * Identity also flows to the board: optimistic fills carry `senderColor`
- * so other players see the typer's color flash on the cell for 3s.
+ * Identity also flows to the board: optimistic fills carry
+ * `senderColor` so other players see the typer's color flash on the
+ * cell for 3s.
+ *
+ * Identity is fixed for the lifetime of a session — authed users
+ * can't pick a chat name distinct from their handle, and anons can't
+ * customize their `Rando<NN>`. The anon name is persisted to
+ * localStorage so a single browser stays the same `Rando<NN>` across
+ * reloads (otherwise peers would see "Rando23 left, Rando47 joined"
+ * every refresh). If a future preference brings back custom chat
+ * names, the right place for it is a `display_name` column on
+ * `users`, not a per-browser localStorage hack.
  */
 
 // Eight high-saturation colors picked across the hue wheel so adjacent
@@ -38,72 +48,50 @@ export function colorForName(name: string): string {
 
 export type ChatIdentity = { name: string; color: string };
 
-const NAME_KEY = "crossplay.chatName";
-const MAX_NAME_LEN = 32;
+const ANON_NAME_KEY = "crossplay.anonName";
+const ANON_NAME_RE = /^Rando[0-9]{2}$/;
 
-function loadStoredName(): string | null {
+/** Build an identity from a name. Used for both authed and anon
+ *  cases — the difference is just where the name comes from. */
+export function makeIdentity(name: string): ChatIdentity {
+  return { name, color: colorForName(name) };
+}
+
+/** Generate a fresh `Rando<NN>` with NN in 10–99. */
+function randomAnonName(): string {
+  return `Rando${Math.floor(Math.random() * 90 + 10)}`;
+}
+
+function loadStoredAnonName(): string | null {
   try {
-    const v = localStorage.getItem(NAME_KEY);
-    return v && v.trim().length > 0 ? v.trim().slice(0, MAX_NAME_LEN) : null;
+    const v = localStorage.getItem(ANON_NAME_KEY);
+    return v && ANON_NAME_RE.test(v) ? v : null;
   } catch {
     return null;
   }
 }
 
-function saveStoredName(name: string): void {
+function saveStoredAnonName(name: string): void {
   try {
-    localStorage.setItem(NAME_KEY, name);
+    localStorage.setItem(ANON_NAME_KEY, name);
   } catch {
     // localStorage might be disabled (private mode, quota); silently ignore.
   }
 }
 
-function clean(name: string): string {
-  return name.trim().slice(0, MAX_NAME_LEN);
-}
-
-/** Build an identity from a (possibly messy) name input. Trims and caps
- *  to 32 chars, then derives the color. */
-export function makeIdentity(name: string): ChatIdentity {
-  const cleaned = clean(name);
-  return { name: cleaned, color: colorForName(cleaned) };
-}
-
 /**
- * Resolve the current player's identity at app startup.
- *
- * Priority (highest first):
- *   1. `?name=` URL parameter — useful for "share two URLs with two
- *      friends" testing; also written through to localStorage so the
- *      next visit without `?name=` keeps the same name.
- *   2. Previously stored name in localStorage (covers both anon
- *      renames AND a logged-in user who picked a playful chat name
- *      like "DrAnagram" — that override sticks).
- *   3. `defaultName` if provided. App passes the logged-in user's
- *      account handle here, so a fresh-from-signup user lands on
- *      "moth" instead of "Rando42".
- *   4. A random fallback `Rando<NN>` (NN = 10–99).
+ * Resolve the current player's identity. Authed users always show
+ * their account handle. Anons get a `Rando<NN>` that's persisted to
+ * localStorage so the same browser stays the same anon identity
+ * across reloads.
  */
-export function readChatIdentity(defaultName?: string | null): ChatIdentity {
-  const params = new URLSearchParams(location.search);
-  const fromUrl = params.get("name")?.trim();
-  if (fromUrl && fromUrl.length > 0) {
-    const cleaned = clean(fromUrl);
-    saveStoredName(cleaned);
-    return makeIdentity(cleaned);
+export function resolveChatIdentity(authedHandle: string | null): ChatIdentity {
+  if (authedHandle && authedHandle.trim().length > 0) {
+    return makeIdentity(authedHandle.trim());
   }
-  const stored = loadStoredName();
+  const stored = loadStoredAnonName();
   if (stored) return makeIdentity(stored);
-  if (defaultName && defaultName.trim().length > 0) {
-    return makeIdentity(defaultName);
-  }
-  return makeIdentity(`Rando${Math.floor(Math.random() * 90 + 10)}`);
+  const fresh = randomAnonName();
+  saveStoredAnonName(fresh);
+  return makeIdentity(fresh);
 }
-
-/** Save a name to localStorage so the next visit (without `?name=`)
- *  picks it up. Called on rename and on URL-param-driven loads. */
-export function persistName(name: string): void {
-  saveStoredName(clean(name));
-}
-
-export const NAME_MAX = MAX_NAME_LEN;
