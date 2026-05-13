@@ -301,6 +301,118 @@ describe("ws integration", () => {
     await Promise.all([waitClose(a), waitClose(b)]);
   });
 
+  it("broadcasts puzzleSolved when the last cell typed completes the grid", async () => {
+    const id = "int-solve-by-fill";
+    _putBoardForTest(buildBoard(id));
+
+    // Two clients so we can assert the broadcast hits peers (the
+    // typical case is solver + collaborator).
+    const a = open(port, id);
+    const b = open(port, id);
+    await Promise.all([next(a, "snapshot"), next(b, "snapshot")]);
+
+    // Solution for our scratch board (see buildBoard at the top of the
+    // file): A,B,_,C,D / E,F,G,H,I / _,_,J,_,_
+    const fills: Array<[number, number, string]> = [
+      [0, 0, "A"], [0, 1, "B"], [0, 3, "C"], [0, 4, "D"],
+      [1, 0, "E"], [1, 1, "F"], [1, 2, "G"], [1, 3, "H"], [1, 4, "I"],
+      [2, 2, "J"],
+    ];
+    for (let i = 0; i < fills.length; i++) {
+      const [row, col, letter] = fills[i]!;
+      send(a, {
+        type: "fill",
+        row,
+        col,
+        letter,
+        clientVersion: 0,
+        senderColor: "#1f77b4",
+      });
+      // Drain the cellUpdate broadcast on B so the queue doesn't grow.
+      await next(b, "cellUpdate");
+    }
+
+    // The last fill should have triggered puzzleSolved on both peers.
+    const solvedA = await next(a, "puzzleSolved");
+    const solvedB = await next(b, "puzzleSolved");
+    expect(solvedA.type).toBe("puzzleSolved");
+    expect(solvedB.type).toBe("puzzleSolved");
+
+    a.ws.close();
+    b.ws.close();
+    await Promise.all([waitClose(a), waitClose(b)]);
+  });
+
+  it("a wrong PENCIL cell prevents the puzzleSolved broadcast (likely user-facing pitfall)", async () => {
+    // Pitfall worth a regression test: `check` intentionally skips
+    // pencil cells (the player hasn't "committed" them), but
+    // `isPuzzleSolved` does not — it requires every fillable cell to
+    // match its solution regardless of pencil state. A player who
+    // leaves wrong pencil-mode answers will see Check report nothing
+    // wrong and yet never get the completion popup. Confirming via
+    // reveal-letter or switching pencil → pen + correcting fixes it.
+    const id = "int-solve-pencil-blocks";
+    _putBoardForTest(buildBoard(id));
+
+    const a = open(port, id);
+    await next(a, "snapshot");
+
+    // Fill all but one cell correctly in pen.
+    const penFills: Array<[number, number, string]> = [
+      [0, 0, "A"], [0, 1, "B"], [0, 3, "C"], [0, 4, "D"],
+      [1, 0, "E"], [1, 1, "F"], [1, 2, "G"], [1, 3, "H"], [1, 4, "I"],
+    ];
+    for (const [row, col, letter] of penFills) {
+      send(a, { type: "fill", row, col, letter, clientVersion: 0 });
+    }
+    // Fill the last cell in pencil mode with the WRONG letter.
+    send(a, { type: "fill", row: 2, col: 2, letter: "Z", clientVersion: 0, pencil: true });
+    // No puzzleSolved should arrive — the wrong pencil cell blocks it.
+    await expect(next(a, "puzzleSolved", 200)).rejects.toThrow(/timed out/);
+
+    // Now fix it in pen. puzzleSolved should fire.
+    send(a, { type: "fill", row: 2, col: 2, letter: "J", clientVersion: 0 });
+    const solved = await next(a, "puzzleSolved");
+    expect(solved.type).toBe("puzzleSolved");
+
+    a.ws.close();
+    await waitClose(a);
+  });
+
+  it("does NOT re-broadcast puzzleSolved when a still-solved board is poked", async () => {
+    const id = "int-solve-no-spam";
+    _putBoardForTest(buildBoard(id));
+
+    const a = open(port, id);
+    await next(a, "snapshot");
+
+    // Fill everything correctly.
+    const fills: Array<[number, number, string]> = [
+      [0, 0, "A"], [0, 1, "B"], [0, 3, "C"], [0, 4, "D"],
+      [1, 0, "E"], [1, 1, "F"], [1, 2, "G"], [1, 3, "H"], [1, 4, "I"],
+      [2, 2, "J"],
+    ];
+    for (const [row, col, letter] of fills) {
+      send(a, {
+        type: "fill",
+        row,
+        col,
+        letter,
+        clientVersion: 0,
+      });
+    }
+    // One puzzleSolved expected.
+    await next(a, "puzzleSolved");
+
+    // Re-type a letter that's already correct (cell stays correct).
+    // Should NOT re-broadcast puzzleSolved.
+    send(a, { type: "fill", row: 0, col: 0, letter: "A", clientVersion: 0 });
+    await expect(next(a, "puzzleSolved", 150)).rejects.toThrow(/timed out/);
+
+    a.ws.close();
+    await waitClose(a);
+  });
+
   it("replays existing peers' cursors to a newly-connected socket", async () => {
     // Fresh room so cursorBySocket starts empty.
     const id = "int-replay";
