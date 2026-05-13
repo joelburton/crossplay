@@ -64,6 +64,19 @@ today's hardcoded behavior so existing users see no change.
   localStorage as the anon fallback.
 - **Tab navigation** — Tab → next clue (current) vs next *unfilled*
   clue. NYT does the latter by default.
+- **Lock board / lock filled cells** — once a solver is confident in
+  a set of answers (very natural in cryptics, where each answer is
+  often provable in isolation), they want to freeze those cells so a
+  later mistype can't blow them away. Likely shape: a menu action
+  "Lock filled cells" + "Unlock" toggle, plus a small lock icon in
+  the cell render. Open questions: per-cell lock vs whole-board
+  lock; does the lock survive page reloads and propagate to peers
+  (probably yes for both — same model as fills, broadcast as a wire
+  message with the same "newer version wins" semantics); does
+  Clear-board ignore locked cells or wipe them too. Worth pairing
+  with the "auto-check while typing" idea above — together they
+  give cryptic solvers a tight "commit a word, check, lock"
+  workflow.
 
 ## Presentation
 
