@@ -130,6 +130,10 @@ beforeEach(() => {
   window.history.replaceState({}, "", "/");
   vi.spyOn(api, "fetchPuzzles").mockResolvedValue([]);
   vi.spyOn(api, "fetchBoards").mockResolvedValue([]);
+  // Resolve auth deterministically as anon — otherwise the real
+  // fetchMe call hits an undefined backend and the seenHelp resolution
+  // races against PuzzleView's mount.
+  vi.spyOn(api, "fetchMe").mockResolvedValue(null);
 });
 
 async function flush() {
@@ -157,14 +161,13 @@ describe("App localStorage tolerance", () => {
     }
   });
 
-  it("renders when localStorage.setItem throws (welcome flag should not bubble)", async () => {
+  it("renders when localStorage.setItem throws (seen-help flag should not bubble)", async () => {
     stubBoardEnv();
     vi.spyOn(api, "fetchBoard").mockResolvedValue(fakePuzzle());
-    const fake = installFakeLocalStorage({});
-    const origSet = fake.store; // not used; we override the setter below
-    void origSet;
-    // Replace setItem on the live fake to throw — same shape as
-    // Safari private mode or a quota-exceeded browser.
+    // Replace localStorage with one whose setItem throws — Safari
+    // private mode or quota-exceeded. App should mount cleanly and
+    // still auto-show the help dialog (anon first-visit path); the
+    // setItem failure means the flag won't persist, which is fine.
     Object.defineProperty(window, "localStorage", {
       configurable: true,
       get: () => ({
@@ -178,22 +181,15 @@ describe("App localStorage tolerance", () => {
         length: 0,
       }),
     });
-    try {
-      window.history.replaceState({}, "", "/b/p-1");
-      expect(() => render(<App />)).not.toThrow();
-      await flush();
-      // FeedbackBar carries the welcome text now as a JSX fragment
-      // (a styled heart between two text nodes), so plain `getByText`
-      // can't match — its default matcher doesn't traverse children.
-      // Match against the bar's `role="status"` and check `textContent`,
-      // which concatenates across children.
-      expect(screen.getByRole("status").textContent).toMatch(/click.*menu/i);
-    } finally {
-      fake.restore();
-    }
+    window.history.replaceState({}, "", "/b/p-1");
+    expect(() => render(<App />)).not.toThrow();
+    await flush();
+    // First-visit HelpDialog should be open even though we couldn't
+    // persist the seen-help timestamp.
+    expect(screen.getByRole("dialog", { name: "Help" })).toBeTruthy();
   });
 
-  it("shows the welcome feedback on first board load and persists `seenWelcome`", async () => {
+  it("auto-opens HelpDialog on first board load and persists seenHelpAt for anons", async () => {
     stubBoardEnv();
     vi.spyOn(api, "fetchBoard").mockResolvedValue(fakePuzzle());
     const fake = installFakeLocalStorage({});
@@ -201,22 +197,24 @@ describe("App localStorage tolerance", () => {
       window.history.replaceState({}, "", "/b/p-1");
       render(<App />);
       await flush();
-      expect(screen.getByRole("status").textContent).toMatch(/click.*menu/i);
-      expect(fake.store["seenWelcome"]).toBe("1");
+      expect(screen.getByRole("dialog", { name: "Help" })).toBeTruthy();
+      expect(fake.store["crossplay.seenHelpAt"]).toBeTruthy();
     } finally {
       fake.restore();
     }
   });
 
-  it("suppresses the welcome feedback when `seenWelcome` is set", async () => {
+  it("skips the HelpDialog auto-open when crossplay.seenHelpAt is set", async () => {
     stubBoardEnv();
     vi.spyOn(api, "fetchBoard").mockResolvedValue(fakePuzzle());
-    const fake = installFakeLocalStorage({ seenWelcome: "1" });
+    const fake = installFakeLocalStorage({
+      "crossplay.seenHelpAt": "2026-05-12T00:00:00.000Z",
+    });
     try {
       window.history.replaceState({}, "", "/b/p-1");
       render(<App />);
       await flush();
-      expect(screen.queryByRole("status")).toBeNull();
+      expect(screen.queryByRole("dialog", { name: "Help" })).toBeNull();
     } finally {
       fake.restore();
     }

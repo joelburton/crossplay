@@ -123,8 +123,67 @@ export type UserRow = {
   is_admin: number;
   invite_code_used: string | null;
   prefs: string | null;
+  seen_help_at: string | null;
   created_at: string;
 };
+
+/** User preferences shape. All fields optional on the wire; missing
+ *  keys fall back to `DEFAULT_PREFS`. The store column is JSON-encoded
+ *  for ergonomics — preferences evolve fast, adding one shouldn't
+ *  require a migration, and access pattern is always "load all prefs
+ *  for one user" which JSON handles cleanly. See
+ *  `docs/user-preferences-backlog.md` for the column-vs-JSON rationale.
+ *
+ *  Empty today by design — Joel set up the machinery before the first
+ *  real preference lands so the wire shape and helpers are ready. */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface Prefs {}
+
+/** Defaults merged into whatever's stored. Adding a new pref means:
+ *  add a key here, add a key to `Prefs`, ship. No migration. */
+export const DEFAULT_PREFS: Prefs = {};
+
+/** Read + merge a user's preferences with the defaults. Always
+ *  returns a fully-populated object — callers don't need to handle
+ *  missing keys. Invalid stored JSON is treated as "no prefs set." */
+export function getUserPrefs(db: DatabaseSync, userId: number): Prefs {
+  const row = db.prepare("SELECT prefs FROM users WHERE id = ?").get(userId) as
+    | { prefs: string | null }
+    | undefined;
+  if (!row?.prefs) return { ...DEFAULT_PREFS };
+  try {
+    const parsed = JSON.parse(row.prefs) as Partial<Prefs>;
+    if (parsed && typeof parsed === "object") {
+      return { ...DEFAULT_PREFS, ...parsed };
+    }
+  } catch {
+    // fall through to defaults
+  }
+  return { ...DEFAULT_PREFS };
+}
+
+/** Patch a user's preferences. Reads current, merges, validates,
+ *  writes. Partial — keys not in `partial` retain their stored value
+ *  (or default if unset). Callers should validate at the route layer
+ *  before passing in. */
+export function setUserPrefs(
+  db: DatabaseSync,
+  userId: number,
+  partial: Partial<Prefs>,
+): void {
+  const current = getUserPrefs(db, userId);
+  const next = { ...current, ...partial };
+  db.prepare("UPDATE users SET prefs = ? WHERE id = ?").run(JSON.stringify(next), userId);
+}
+
+/** Mark a user as having seen the help dialog. Called from the
+ *  client when the auto-shown help is dismissed for the first time. */
+export function markHelpSeen(db: DatabaseSync, userId: number): void {
+  db.prepare("UPDATE users SET seen_help_at = ? WHERE id = ?").run(
+    new Date().toISOString(),
+    userId,
+  );
+}
 
 /** Look up an invite code (case-insensitive). Returns true if it
  *  exists. Admins delete rows from the table to invalidate codes. */

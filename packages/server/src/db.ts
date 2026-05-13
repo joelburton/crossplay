@@ -239,6 +239,28 @@ export const migrations: Migration[] = [
       ).run(now);
     },
   },
+  {
+    // Per-user "have you seen the help dialog?" state. NULL = never
+    // seen; non-NULL = ISO timestamp of when they first saw it. The
+    // timestamp form gives a useful clear-toolkit via SQL:
+    //   - re-show to everyone after a help rewrite:
+    //       UPDATE users SET seen_help_at = NULL
+    //   - re-show to anyone who saw it before a cutoff:
+    //       UPDATE users SET seen_help_at = NULL WHERE seen_help_at < '2026-08-01'
+    //   - re-show to a specific tester:
+    //       UPDATE users SET seen_help_at = NULL WHERE handle_lower = 'joel'
+    // Anons use the equivalent `crossplay.seenHelpAt` localStorage
+    // key — that path lives entirely in App.tsx and doesn't touch
+    // the DB. The `prefs` JSON column (already reserved in v4) is
+    // intentionally NOT used for this — see
+    // `docs/user-preferences-backlog.md` for the column-vs-JSON
+    // rationale. Preference state lives in `prefs`; lifecycle /
+    // admin-clearable state like this lives in its own column.
+    version: 7,
+    up: (db) => {
+      db.exec(`ALTER TABLE users ADD COLUMN seen_help_at TEXT`);
+    },
+  },
 ];
 
 export function openDb(path: string = process.env.DB_PATH ?? DEFAULT_DB_PATH): DatabaseSync {

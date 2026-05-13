@@ -66,6 +66,8 @@ const testUser: api.AuthUser = {
   email: null,
   isAdmin: false,
   createdAt: "2026-05-12",
+  prefs: {},
+  seenHelpAt: "2026-05-12T00:00:00.000Z",
 };
 
 describe("HomePage", () => {

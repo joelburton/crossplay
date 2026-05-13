@@ -76,6 +76,13 @@ type Props = {
   /** Logged-in user's handle, if any. Used as the default chat name
    *  when there's no localStorage override and no `?name=` param. */
   authedHandle?: string | null;
+  /** Has the player ever dismissed the help dialog? `undefined` means
+   *  "auth still resolving — don't decide yet"; `false` triggers the
+   *  one-shot auto-open of HelpDialog (and `onHelpSeen`); `true` is a
+   *  no-op. App resolves this from the user's `seenHelpAt` column
+   *  (authed) or `localStorage["crossplay.seenHelpAt"]` (anon). */
+  seenHelp?: boolean;
+  onHelpSeen?: () => void;
 };
 
 /** Outbound cursor-presence throttle window, in ms. Sends fire on the
@@ -202,6 +209,8 @@ export function PuzzleView({
   onToggleMenu,
   onNewGame,
   authedHandle,
+  seenHelp,
+  onHelpSeen,
 }: Props) {
   const { meta } = puzzle;
   const [snapshot, setSnapshot] = useState<GridSnapshot>(puzzle.snapshot);
@@ -230,7 +239,23 @@ export function PuzzleView({
   const [previewLine, setPreviewLine] = useState<ChatLine | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
   const [rebusOpen, setRebusOpen] = useState(false);
+  // Auto-open help on first board mount for users who haven't seen
+  // it. App resolves `seenHelp` from the user's seen_help_at column
+  // (authed) or localStorage (anon). It can arrive as `undefined`
+  // (auth probe still pending) and then settle to a boolean; we wait
+  // for the boolean before deciding, and decide exactly once via the
+  // ref guard so subsequent renames / re-renders don't retrigger.
   const [helpOpen, setHelpOpen] = useState(false);
+  const helpDecidedRef = useRef(false);
+  useEffect(() => {
+    if (helpDecidedRef.current) return;
+    if (seenHelp === undefined) return;
+    helpDecidedRef.current = true;
+    if (!seenHelp) {
+      setHelpOpen(true);
+      onHelpSeen?.();
+    }
+  }, [seenHelp, onHelpSeen]);
   const [numberJumpOpen, setNumberJumpOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [solvedOpen, setSolvedOpen] = useState(false);

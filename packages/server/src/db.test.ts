@@ -124,6 +124,8 @@ describe("db", () => {
 
     type ColInfo = { name: string; type: string; notnull: number; pk: number };
     const usersCols = db.prepare("PRAGMA table_info(users)").all() as ColInfo[];
+    // Asserts the full live shape after all migrations have run, not
+    // strictly the v4 set — `seen_help_at` arrived in v7.
     expect(usersCols.map((c) => c.name).sort()).toEqual([
       "created_at",
       "email",
@@ -134,6 +136,7 @@ describe("db", () => {
       "is_admin",
       "password_hash",
       "prefs",
+      "seen_help_at",
     ]);
     expect(usersCols.find((c) => c.name === "handle_lower")!.notnull).toBe(1);
     expect(usersCols.find((c) => c.name === "email")!.notnull).toBe(0);
@@ -391,6 +394,41 @@ describe("db", () => {
       // Anon-era board is intentionally NOT in the join.
       db.close();
     });
+  });
+
+  it("v7 adds users.seen_help_at (nullable TEXT) for first-visit help gating", () => {
+    const db = openDb(":memory:");
+    type ColInfo = { name: string; type: string; notnull: number };
+    const cols = db.prepare("PRAGMA table_info(users)").all() as ColInfo[];
+    const col = cols.find((c) => c.name === "seen_help_at");
+    expect(col).toBeDefined();
+    expect(col!.notnull).toBe(0); // nullable; NULL = unseen
+
+    // Seed a user; column defaults to NULL on insert.
+    db.prepare(
+      "INSERT INTO users (handle, handle_lower, password_hash, created_at) VALUES (?, ?, ?, ?)",
+    ).run("Moth", "moth", "x", "2026-05-12");
+    const row = db
+      .prepare("SELECT seen_help_at FROM users WHERE handle_lower = ?")
+      .get("moth") as { seen_help_at: string | null };
+    expect(row.seen_help_at).toBeNull();
+
+    // Application can stamp it; admin can clear it with raw SQL.
+    db.prepare("UPDATE users SET seen_help_at = ? WHERE handle_lower = ?").run(
+      "2026-05-13T00:00:00.000Z",
+      "moth",
+    );
+    const stamped = db
+      .prepare("SELECT seen_help_at FROM users WHERE handle_lower = ?")
+      .get("moth") as { seen_help_at: string | null };
+    expect(stamped.seen_help_at).toBe("2026-05-13T00:00:00.000Z");
+
+    db.prepare("UPDATE users SET seen_help_at = NULL").run();
+    const cleared = db
+      .prepare("SELECT seen_help_at FROM users WHERE handle_lower = ?")
+      .get("moth") as { seen_help_at: string | null };
+    expect(cleared.seen_help_at).toBeNull();
+    db.close();
   });
 
   it("rolls back a failing migration and leaves user_version untouched", () => {

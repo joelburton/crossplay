@@ -18,6 +18,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   MIN_PASSWORD_LENGTH,
+  type Prefs,
   type UserRow,
   createSession,
   createUser,
@@ -25,9 +26,11 @@ import {
   findSession,
   findUserByHandle,
   findUserById,
+  getUserPrefs,
   hashPassword,
   inviteCodeExists,
   isExpired,
+  markHelpSeen,
   touchSession,
   validateHandle,
   verifyPassword,
@@ -47,22 +50,28 @@ declare module "fastify" {
 export const SESSION_COOKIE = "crossplay_session";
 
 /** Subset of UserRow safe to send to the client — never the
- *  password hash. */
+ *  password hash. `prefs` is the parsed JSON blob (defaults merged in);
+ *  `seenHelpAt` is the lifecycle timestamp gating the first-visit help
+ *  auto-open (null = unseen). */
 export type PublicUser = {
   id: number;
   handle: string;
   email: string | null;
   isAdmin: boolean;
   createdAt: string;
+  prefs: Prefs;
+  seenHelpAt: string | null;
 };
 
-export function toPublicUser(user: UserRow): PublicUser {
+export function toPublicUser(user: UserRow, prefs: Prefs): PublicUser {
   return {
     id: user.id,
     handle: user.handle,
     email: user.email,
     isAdmin: user.is_admin === 1,
     createdAt: user.created_at,
+    prefs,
+    seenHelpAt: user.seen_help_at,
   };
 }
 
@@ -152,7 +161,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: DatabaseSync): void
     const token = createSession(db, userId);
     setSessionCookie(reply, token);
     const user = findUserById(db, userId)!;
-    return { user: toPublicUser(user) };
+    return { user: toPublicUser(user, getUserPrefs(db, user.id)) };
   });
 
   // POST /login — verify, create session, set cookie.
@@ -175,7 +184,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: DatabaseSync): void
     }
     const token = createSession(db, user.id);
     setSessionCookie(reply, token);
-    return { user: toPublicUser(user) };
+    return { user: toPublicUser(user, getUserPrefs(db, user.id)) };
   });
 
   // POST /logout — idempotent. Clears server-side session + cookie.
@@ -190,9 +199,20 @@ export function registerAuthRoutes(app: FastifyInstance, db: DatabaseSync): void
 
   // GET /me — returns the current user or 401. Cheap probe the
   // client uses on page load to decide which top-level surface to
-  // render.
+  // render. Includes the user's prefs (parsed + defaults merged) and
+  // their seenHelpAt timestamp, so the client doesn't need a second
+  // round-trip to decide whether to auto-open the help dialog.
   app.get("/me", async (req: FastifyRequest, reply) => {
     if (!req.user) return reply.code(401).send({ error: "not logged in" });
-    return { user: toPublicUser(req.user) };
+    return { user: toPublicUser(req.user, getUserPrefs(db, req.user.id)) };
+  });
+
+  // POST /seen-help — mark the user as having seen the help dialog.
+  // Idempotent on its own (re-calling just updates the timestamp);
+  // the client only calls it on first-open dismissal anyway.
+  app.post("/seen-help", async (req, reply) => {
+    if (!req.user) return reply.code(401).send({ error: "not logged in" });
+    markHelpSeen(db, req.user.id);
+    return { ok: true };
   });
 }

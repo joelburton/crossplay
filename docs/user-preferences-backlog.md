@@ -81,10 +81,12 @@ today's hardcoded behavior so existing users see no change.
   distracting in collaborative play; option to hide.
 - **Sound on solve** — the tada.mp3 jingle, on / off. Especially
   matters for solving in shared spaces (offices, libraries).
-- **Welcome feedback gating** — the "Click heart for menu"
-  one-shot is currently per-browser via
-  `localStorage["seenWelcome"]`. Move to per-user once prefs
-  exist (already noted as a TODO in CLAUDE.md).
+- ~~**Welcome feedback gating**~~ — DONE 2026-05-13. The
+  "Click heart for menu" feedback pill was replaced by
+  auto-opening `HelpDialog` on first board load. State is now
+  per-user via `users.seen_help_at` (authed) and per-browser via
+  `localStorage["crossplay.seenHelpAt"]` (anon). Admin can clear
+  via `UPDATE users SET seen_help_at = NULL`.
 
 ## Input ergonomics
 

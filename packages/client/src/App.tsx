@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PuzzleState } from "@crossplay/shared";
-import { type AuthUser, HttpError, fetchBoard, fetchMe, logout as apiLogout } from "./api";
+import {
+  type AuthUser,
+  HttpError,
+  fetchBoard,
+  fetchMe,
+  logout as apiLogout,
+  markHelpSeen as apiMarkHelpSeen,
+} from "./api";
 import { boardPath, navigate, useRoute } from "./routing";
 import type { PuzzleActions } from "./puzzleActions";
 import { FeedbackBar } from "./components/FeedbackBar";
@@ -230,42 +237,54 @@ export function App() {
     };
   }, [route]);
 
-  // close menu / clear presence / reset mode when puzzle changes.
-  // Show the welcome feedback once per browser (localStorage flag);
-  // returning users have learned where the menu is. When real users
-  // exist, this should move from per-browser to per-user.
+  // close menu / reset mode when puzzle changes.
   useEffect(() => {
     setMenuOpen(false);
     setMode("pen");
-    if (load.kind === "loaded") {
-      let seen = false;
+  }, [load.kind === "loaded" ? load.puzzle.meta.id : null]);
+
+  // First-visit help-dialog auto-open. For authed users the
+  // `seenHelpAt` timestamp lives on the user row (admin can clear via
+  // SQL when help changes meaningfully — `UPDATE users SET
+  // seen_help_at = NULL` etc.). For anons we use the
+  // `crossplay.seenHelpAt` localStorage key. Either way, "unseen" =>
+  // PuzzleView auto-opens HelpDialog on first board mount; the
+  // dismissal callback flips the flag.
+  const seenHelp: boolean | undefined = (() => {
+    if (auth.kind === "user") return auth.user.seenHelpAt !== null;
+    if (auth.kind === "anon") {
       try {
-        seen = window.localStorage.getItem("seenWelcome") === "1";
+        return window.localStorage.getItem("crossplay.seenHelpAt") !== null;
       } catch {
-        // ignore: privacy-mode storage just means we re-show
-      }
-      if (!seen) {
-        showFeedback({
-          id: `welcome-${load.puzzle.meta.id}`,
-          // Red heart matches the SiteIcon in the title; ⌥ is the
-          // standard Mac Option-key glyph (U+2325). Both render as
-          // inline characters — no SVG to load, no asset to ship.
-          text: (
-            <>
-              Click <span style={{ color: "#dc2626" }}>♥</span>/⌥M for menu
-            </>
-          ),
-          level: "info",
-        });
-        try {
-          window.localStorage.setItem("seenWelcome", "1");
-        } catch {
-          // ignore: read-only storage just means we'll show it again next load
-        }
+        // privacy-mode storage → treat as seen so we don't loop
+        return true;
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [load.kind === "loaded" ? load.puzzle.meta.id : null]);
+    // auth.kind === "loading": don't commit either way yet. PuzzleView
+    // waits for a defined value before deciding whether to auto-open.
+    return undefined;
+  })();
+
+  const onHelpSeen = useCallback(() => {
+    if (auth.kind === "user") {
+      // Optimistic local update so a same-session navigation back to
+      // a board doesn't re-trigger the dialog before the POST settles.
+      setAuth({
+        kind: "user",
+        user: { ...auth.user, seenHelpAt: new Date().toISOString() },
+      });
+      void apiMarkHelpSeen().catch(() => {
+        // Server is offline / hiccupped. Worst case the dialog re-shows
+        // next session; not worth surfacing.
+      });
+    } else if (auth.kind === "anon") {
+      try {
+        window.localStorage.setItem("crossplay.seenHelpAt", new Date().toISOString());
+      } catch {
+        // privacy mode: dialog will re-show next load. Acceptable.
+      }
+    }
+  }, [auth]);
 
   function onUploaded(boardId: string) {
     navigate(boardPath(boardId));
@@ -367,6 +386,8 @@ export function App() {
             onToggleMenu={() => setMenuOpen((o) => !o)}
             onNewGame={onNewGame}
             authedHandle={auth.kind === "user" ? auth.user.handle : null}
+            seenHelp={seenHelp}
+            onHelpSeen={onHelpSeen}
           />
         )}
         {load.kind === "idle" && renderHome()}

@@ -301,6 +301,111 @@ describe("GET /api/auth/me", () => {
   });
 });
 
+describe("GET /api/auth/me includes prefs + seenHelpAt", () => {
+  it("returns empty prefs and null seenHelpAt for a fresh user", async () => {
+    const { app, db } = await buildApp();
+    seedInvite(db);
+    const reg = await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { handle: "moth", password: "hunter2", inviteCode: "cryptic-night" },
+    });
+    const token = sessionCookieFrom(reg.headers["set-cookie"])!;
+    const me = await app.inject({
+      method: "GET",
+      url: "/api/auth/me",
+      cookies: { [SESSION_COOKIE]: token },
+    });
+    const user = me.json().user;
+    expect(user.prefs).toEqual({});
+    expect(user.seenHelpAt).toBeNull();
+    await app.close();
+  });
+});
+
+describe("POST /api/auth/seen-help", () => {
+  it("stamps seen_help_at on the user row; /me reflects it", async () => {
+    const { app, db } = await buildApp();
+    seedInvite(db);
+    const reg = await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { handle: "moth", password: "hunter2", inviteCode: "cryptic-night" },
+    });
+    const token = sessionCookieFrom(reg.headers["set-cookie"])!;
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/auth/seen-help",
+      cookies: { [SESSION_COOKIE]: token },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const me = await app.inject({
+      method: "GET",
+      url: "/api/auth/me",
+      cookies: { [SESSION_COOKIE]: token },
+    });
+    expect(me.json().user.seenHelpAt).toMatch(/\d{4}-\d{2}-\d{2}T/);
+    await app.close();
+  });
+
+  it("is idempotent (second call overwrites with a fresh timestamp)", async () => {
+    const { app, db } = await buildApp();
+    seedInvite(db);
+    const reg = await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { handle: "moth", password: "hunter2", inviteCode: "cryptic-night" },
+    });
+    const token = sessionCookieFrom(reg.headers["set-cookie"])!;
+    const first = await app.inject({
+      method: "POST",
+      url: "/api/auth/seen-help",
+      cookies: { [SESSION_COOKIE]: token },
+    });
+    expect(first.statusCode).toBe(200);
+    const second = await app.inject({
+      method: "POST",
+      url: "/api/auth/seen-help",
+      cookies: { [SESSION_COOKIE]: token },
+    });
+    expect(second.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("returns 401 when not authed", async () => {
+    const { app } = await buildApp();
+    const res = await app.inject({ method: "POST", url: "/api/auth/seen-help" });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("admin can clear seen-help via SQL and /me reflects the reset", async () => {
+    const { app, db } = await buildApp();
+    seedInvite(db);
+    const reg = await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { handle: "moth", password: "hunter2", inviteCode: "cryptic-night" },
+    });
+    const token = sessionCookieFrom(reg.headers["set-cookie"])!;
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/seen-help",
+      cookies: { [SESSION_COOKIE]: token },
+    });
+    // Simulate the admin-via-SQL clear path.
+    db.prepare("UPDATE users SET seen_help_at = NULL").run();
+    const me = await app.inject({
+      method: "GET",
+      url: "/api/auth/me",
+      cookies: { [SESSION_COOKIE]: token },
+    });
+    expect(me.json().user.seenHelpAt).toBeNull();
+    await app.close();
+  });
+});
+
 describe("session middleware sliding expiry", () => {
   it("touches last_seen_at and expires_at on each authed request", async () => {
     const { app, db } = await buildApp();

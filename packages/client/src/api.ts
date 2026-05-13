@@ -142,6 +142,12 @@ export async function shareBoard(
 // don't have to manage tokens.
 // -----------------------------------------------------------------
 
+/** User preferences shape. Empty today by design — the JSON
+ *  infrastructure is in place so the first real pref can land
+ *  without further plumbing. Mirrors `Prefs` on the server. */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface Prefs {}
+
 /** Public-facing user shape. Mirrors `PublicUser` on the server —
  *  never includes the password hash. */
 export type AuthUser = {
@@ -150,6 +156,10 @@ export type AuthUser = {
   email: string | null;
   isAdmin: boolean;
   createdAt: string;
+  prefs: Prefs;
+  /** ISO timestamp of when the user first dismissed the help dialog
+   *  (null = unseen, triggers auto-open on first board load). */
+  seenHelpAt: string | null;
 };
 
 /** Lift the server's `{error: "..."}` field into an HttpError message
@@ -210,5 +220,14 @@ export async function login(args: {
  *  (a stale cookie won't 4xx), so we never reject here. */
 export async function logout(): Promise<void> {
   const res = await fetch("/api/auth/logout", { method: "POST" });
+  if (!res.ok) throw new HttpError(res.status, await readErrorMessage(res));
+}
+
+/** Mark the help dialog as seen for the authed user. Called by App
+ *  when the auto-shown first-visit help is dismissed. Idempotent
+ *  server-side (just updates the timestamp); we still only call it
+ *  once per session to keep the round-trip count minimal. */
+export async function markHelpSeen(): Promise<void> {
+  const res = await fetch("/api/auth/seen-help", { method: "POST" });
   if (!res.ok) throw new HttpError(res.status, await readErrorMessage(res));
 }
