@@ -1,0 +1,30 @@
+{
+  "version": "http://ipuz.org/v2",
+  "kind": ["http://ipuz.org/crossword#1"],
+  "title": "All As",
+  "author": "test",
+  "copyright": "",
+  "dimensions": {"width": 3, "height": 3},
+  "puzzle": [
+    [1, 2, 3],
+    [4, 0, 0],
+    [5, 0, 0]
+  ],
+  "solution": [
+    ["A", "A", "A"],
+    ["A", "A", "A"],
+    ["A", "A", "A"]
+  ],
+  "clues": {
+    "Across": [
+      [1, "All As (top)"],
+      [4, "All As (middle)"],
+      [5, "All As (bottom)"]
+    ],
+    "Down": [
+      [1, "All As (left)"],
+      [2, "All As (middle)"],
+      [3, "All As (right)"]
+    ]
+  }
+}
