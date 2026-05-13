@@ -412,13 +412,80 @@ export function isPuzzleSolved(entry: StoredBoard): boolean {
  * flag). Cheap enough to call after every successful mutation
  * (~O(W·H), trivial at puzzle sizes).
  */
-function checkAndBroadcastSolved(entry: StoredBoard): void {
+function checkAndBroadcastSolved(entry: StoredBoard, source: "fill" | "reveal"): void {
   const now = isPuzzleSolved(entry);
   if (now && !entry.solved) {
     entry.solved = true;
     broadcast(entry, { type: "puzzleSolved" });
   } else if (!now && entry.solved) {
     entry.solved = false;
+  }
+  logSolveAttempt(entry, source, now);
+}
+
+/**
+ * Diagnostic log emitted after every fill / reveal. Prints to stderr
+ * (visible via `journalctl -u crossplay -e | grep solve-debug` on
+ * Joel's deployment), and is most useful when Joel + Moth think a
+ * puzzle is complete but the celebratory popup doesn't fire — the
+ * log tells you which cell is blocking and whether it's wrong or
+ * empty (and whether the wrong cell is in pencil, which `check`
+ * intentionally skips).
+ *
+ * Quiet when the puzzle is solved or when many cells are still empty;
+ * fires loudly when the board is fully filled but `isPuzzleSolved`
+ * returns false, which is the scenario worth investigating.
+ */
+function logSolveAttempt(
+  entry: StoredBoard,
+  source: "fill" | "reveal",
+  solved: boolean,
+): void {
+  if (solved) {
+    console.warn(
+      `[solve-debug] board=${entry.id} source=${source} result=SOLVED`,
+    );
+    return;
+  }
+  const empty: Array<{ row: number; col: number }> = [];
+  const wrong: Array<{
+    row: number;
+    col: number;
+    fill: string;
+    pencil: boolean;
+    expected: readonly string[] | null;
+  }> = [];
+  for (let r = 0; r < entry.state.snapshot.cells.length; r++) {
+    const row = entry.state.snapshot.cells[r]!;
+    for (let c = 0; c < row.length; c++) {
+      const cell = row[c]!;
+      if (cell.kind !== "cell") continue;
+      const sol = entry.solution[r]?.[c] ?? null;
+      if (cell.fill == null) {
+        empty.push({ row: r, col: c });
+      } else if (!fillMatchesSolution(cell.fill, sol)) {
+        wrong.push({
+          row: r,
+          col: c,
+          fill: cell.fill,
+          pencil: cell.pencil === true,
+          expected: sol,
+        });
+      }
+    }
+  }
+  // Only the "fully filled but still not solved" case is interesting
+  // for diagnosis. While there are still empty cells the player
+  // hasn't claimed to be done, so we stay quiet to keep the log
+  // readable.
+  if (empty.length > 0) return;
+  console.warn(
+    `[solve-debug] board=${entry.id} source=${source} NOT-SOLVED; wrong=${wrong.length} (no empty cells)`,
+  );
+  for (const w of wrong) {
+    console.warn(
+      `[solve-debug]   wrong (${w.row},${w.col}) fill=${JSON.stringify(w.fill)} pencil=${w.pencil} expected=${JSON.stringify(w.expected)}`,
+    );
   }
 }
 
@@ -734,7 +801,7 @@ function handleFill({ db, entry }: DispatchContext, msg: Extract<ClientMessage, 
   if (change) {
     broadcastChanges(entry, [change]);
     markDirty(db, entry.id);
-    checkAndBroadcastSolved(entry);
+    checkAndBroadcastSolved(entry, "fill");
   }
 }
 
@@ -743,7 +810,7 @@ function handleReveal({ db, entry }: DispatchContext, msg: Extract<ClientMessage
   broadcastChanges(entry, changes);
   if (changes.length > 0) {
     markDirty(db, entry.id);
-    checkAndBroadcastSolved(entry);
+    checkAndBroadcastSolved(entry, "reveal");
   }
 }
 
