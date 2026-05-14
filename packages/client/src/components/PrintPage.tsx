@@ -120,6 +120,11 @@ export function PrintPage({ boardId }: { boardId: string }) {
           {busy === "solution" ? "Generating…" : "Solution PDF"}
         </button>
       </div>
+      <p className={styles.hint}>
+        The PDF opens in a new browser tab. If nothing seems to happen, check
+        for a blocked-popup icon in your address bar, or look at your other
+        tabs — the new tab may have opened in the background.
+      </p>
       {genError && <p className={styles.error}>Couldn't generate PDF: {genError}</p>}
     </div>
   );

@@ -50,6 +50,14 @@
   cursor: progress;
 }
 
+.hint {
+  margin: 1.25rem auto 0;
+  max-width: 28rem;
+  color: #666;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
 .error {
   margin-top: 1rem;
   color: #a40000;
