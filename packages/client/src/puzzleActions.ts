@@ -29,6 +29,10 @@ export type PuzzleActions = {
   openRebus: () => void;
   showHelp: () => void;
   downloadIpuz: () => void;
+  /** Open the print-friendly view of this board in a new tab. The
+   *  print page is a standalone route at `/b/:id/print`; the user can
+   *  then hit Cmd/Ctrl-P or click the "Print" button on that page. */
+  printPuzzle: () => void;
   /** Only present for authed users. The server's share route requires
    *  membership, which anons can't have under Posture A — hiding the
    *  menu item entirely is the right UX. */

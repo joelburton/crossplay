@@ -13,9 +13,14 @@
 import { useEffect, useState } from "react";
 
 /** Discriminated union of the routes the app understands. */
-export type Route = { kind: "home" } | { kind: "board"; id: string };
+export type Route =
+  | { kind: "home" }
+  | { kind: "board"; id: string }
+  | { kind: "print"; id: string };
 
 function parsePath(pathname: string): Route {
+  const print = pathname.match(/^\/b\/([^/]+)\/print\/?$/);
+  if (print) return { kind: "print", id: decodeURIComponent(print[1]!) };
   const m = pathname.match(/^\/b\/([^/]+)\/?$/);
   if (m) return { kind: "board", id: decodeURIComponent(m[1]!) };
   return { kind: "home" };
@@ -53,4 +58,9 @@ export function navigate(to: string): void {
  *  belt-and-suspenders today). */
 export function boardPath(id: string): string {
   return `/b/${encodeURIComponent(id)}`;
+}
+
+/** Build the canonical print URL for a board id. */
+export function printPath(id: string): string {
+  return `/b/${encodeURIComponent(id)}/print`;
 }

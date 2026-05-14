@@ -1,0 +1,1 @@
+export { generateCrosswordPdf } from "./generator";

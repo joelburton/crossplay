@@ -18,6 +18,7 @@ import { ModeButton } from "./components/ModeButton";
 import { SiteIcon } from "./components/SiteIcon";
 import { UserMenu } from "./components/UserMenu";
 import { UploadForm } from "./components/UploadForm";
+import { PrintPage } from "./components/PrintPage";
 import { PuzzleView, type Mode } from "./components/PuzzleView";
 import type { Feedback } from "./feedback";
 import styles from "./App.module.css";
@@ -229,6 +230,9 @@ export function App() {
     if (route.kind === "board") {
       void loadById(route.id);
     } else {
+      // Home AND print both leave the App-level load state idle. Print
+      // does its own fetch inside PrintPage so it never touches this
+      // pipeline (no shared header / mode / feedback to set up).
       setLoad({ kind: "idle" });
     }
 
@@ -314,6 +318,13 @@ export function App() {
     return <HomePage onUploaded={onUploaded} user={auth.user} onLogout={onLogout} />;
   }
 
+  // Print route bypasses every App chrome element: no header, no auth
+  // probe, no user menu, no mode button, no menu. PrintPage runs its
+  // own fetch + render entirely; we hand off the whole document area.
+  if (route.kind === "print") {
+    return <PrintPage boardId={route.id} />;
+  }
+
   return (
     <div className={styles.app}>
       {showHeader && (
@@ -392,6 +403,24 @@ export function App() {
         )}
         {load.kind === "idle" && renderHome()}
       </main>
+      {load.kind === "loaded" && (
+        // Print-only fallback. Hidden on screen; @media print swaps it
+        // in (and hides every other direct child of .app) when the
+        // user hits Cmd/Ctrl+P from a board page. The play UI doesn't
+        // print well — direct them to the dedicated PDF route instead.
+        <aside className={styles.printNotice} aria-hidden="true">
+          <h1>Use the PDF, not browser print</h1>
+          <p>
+            The live board page doesn't print correctly — the grid and
+            clue panels are sized for a screen, not a page.
+          </p>
+          <p>
+            To get a clean printable version, open the menu (click the
+            title at the top-left) and choose <code>Print / Save as PDF</code>.
+            That opens a dedicated tab with a real PDF you can save or print.
+          </p>
+        </aside>
+      )}
     </div>
   );
 }

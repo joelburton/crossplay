@@ -191,6 +191,9 @@ export function Menu({ actions, triggerRef, onNewGame, onClose }: Props) {
             <span>Check puzzle</span>
           </button>
           <div className={styles.sep} role="separator" />
+          <button type="button" className={styles.item} onClick={run(actions.printPuzzle)}>
+            <span>Print / Save as PDF</span>
+          </button>
           <button type="button" className={styles.item} onClick={run(actions.downloadIpuz)}>
             <span>Download as .ipuz</span>
           </button>

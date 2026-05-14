@@ -1,0 +1,57 @@
+/*
+ * Print view styles. The PDF is generated client-side via jsPDF
+ * (see docs/print-pdf-plan.md) — this stylesheet only covers the
+ * minimal landing UI (title + byline + Generate button).
+ */
+
+.page {
+  max-width: 36rem;
+  margin: 4rem auto;
+  padding: 2rem;
+  font-family: system-ui, sans-serif;
+  color: #222;
+  text-align: center;
+}
+
+.heading {
+  font-size: 1.4rem;
+  margin: 0 0 0.5rem;
+}
+
+.byline {
+  margin: 0 0 1.5rem;
+  color: #555;
+  font-size: 0.95rem;
+}
+
+.button {
+  font: inherit;
+  font-size: 1rem;
+  padding: 0.6rem 1.2rem;
+  border: 1px solid #888;
+  border-radius: 4px;
+  background: #f7f7f7;
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  background: #ececec;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.error {
+  margin-top: 1rem;
+  color: #a40000;
+  font-size: 0.9rem;
+}
+
+.status {
+  text-align: center;
+  margin: 4rem 2rem;
+  font-family: system-ui, sans-serif;
+  color: #444;
+}

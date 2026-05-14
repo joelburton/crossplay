@@ -19,6 +19,7 @@ import { type ChatLine, useBoardSocket } from "../useBoardSocket";
 import { type ChatIdentity, resolveChatIdentity } from "../chatIdentity";
 import type { Feedback } from "../feedback";
 import type { PuzzleActions } from "../puzzleActions";
+import { printPath } from "../routing";
 import { Board } from "./Board";
 import { ChatIndicator } from "./ChatIndicator";
 import { ChatPanel } from "./ChatPanel";
@@ -564,6 +565,13 @@ export function PuzzleView({
         document.body.appendChild(a);
         a.click();
         a.remove();
+      },
+      printPuzzle: () => {
+        // New tab so the play state (cursor, chat, ws) stays alive in
+        // the original tab. The print page fetches the current board
+        // snapshot independently — what the user clicked from is what
+        // they get.
+        window.open(printPath(meta.id), "_blank", "noopener");
       },
       // Only authed users can share — the server enforces it, and
       // showing the menu item to anons just to have it 401 would be
