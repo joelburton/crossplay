@@ -352,6 +352,49 @@ describe("http: GET /api/boards and GET /api/boards/:id", () => {
   });
 });
 
+describe("http: GET /api/boards/:id/solution", () => {
+  let app: FastifyInstance;
+  let db: DatabaseSync;
+  let cookies: Record<string, string>;
+
+  beforeEach(async () => {
+    _clearCacheForTest();
+    ({ app, db } = await buildApp());
+    ({ cookies } = await seedAuth(app, db));
+  });
+  afterEach(async () => {
+    await app.close();
+    _clearCacheForTest();
+  });
+
+  it("returns the per-cell solution arrays", async () => {
+    seedPuzzle(db);
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { puzzleId: "test-puzzle" },
+      cookies,
+    });
+    const { boardId } = create.json() as { boardId: string };
+    // Public — same posture as the ipuz download.
+    const res = await app.inject({ method: "GET", url: `/api/boards/${boardId}/solution` });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { solution: (string[] | null)[][] };
+    expect(Array.isArray(body.solution)).toBe(true);
+    expect(body.solution.length).toBeGreaterThan(0);
+    // At least one row should contain a non-null entry (open cells exist).
+    const hasAnswer = body.solution.some((row) =>
+      row.some((cell) => Array.isArray(cell) && cell.length > 0),
+    );
+    expect(hasAnswer).toBe(true);
+  });
+
+  it("returns 404 for unknown board", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/boards/no-such/solution" });
+    expect(res.statusCode).toBe(404);
+  });
+});
+
 describe("http: GET /api/boards/:id/ipuz", () => {
   let app: FastifyInstance;
   let db: DatabaseSync;

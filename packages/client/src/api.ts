@@ -76,6 +76,19 @@ export async function fetchBoard(id: string): Promise<PuzzleState> {
   return res.json();
 }
 
+/** Fetch a board's per-cell solution arrays. Used only by the print
+ *  "answer key" route — `fetchBoard` deliberately omits the solution.
+ *  Each open cell is `[canonical, ...alternates]`; blocks / hidden
+ *  cells are `null`. Public on the server (matches the ipuz download
+ *  posture). */
+export async function fetchBoardSolution(
+  id: string,
+): Promise<{ solution: (string[] | null)[][] }> {
+  const res = await fetch(`/api/boards/${id}/solution`);
+  if (!res.ok) throw new HttpError(res.status, `fetch solution failed: ${res.status}`);
+  return res.json();
+}
+
 /** Compact entry returned by `GET /api/boards` for the home page list. */
 export type BoardSummary = {
   id: string;

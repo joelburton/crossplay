@@ -46,13 +46,14 @@ async function flushPromises() {
 }
 
 describe("PrintPage", () => {
-  it("fetches the board and renders the title + a Generate PDF button", async () => {
+  it("fetches the board and renders the title + both Generate buttons", async () => {
     vi.spyOn(api, "fetchBoard").mockResolvedValue(makePuzzle());
     render(<PrintPage boardId="b1" />);
     await flushPromises();
 
     expect(screen.getByText("Print Test")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /generate pdf/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /puzzle pdf/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /solution pdf/i })).toBeTruthy();
   });
 
   it("surfaces a friendly message on 404", async () => {

@@ -285,6 +285,17 @@ export async function registerHttpRoutes(app: FastifyInstance, opts: HttpRouteOp
         },
       );
 
+      api.get<{ Params: { id: string } }>("/boards/:id/solution", async (req, reply) => {
+        // Solution arrays for the print "answer key" PDF. Public —
+        // same posture as the ipuz download (which also exposes the
+        // solution). The play layer still goes through `GET /boards/:id`
+        // which omits solution; this is an explicit print-targeted
+        // surface so the client doesn't have to parse ipuz itself.
+        const entry = getOrLoadBoard(db, req.params.id);
+        if (!entry) return reply.code(404).send({ error: "not found" });
+        return { solution: entry.solution };
+      });
+
       api.get<{ Params: { id: string } }>("/boards/:id/ipuz", async (req, reply) => {
         // Download a board (the player's current state) as canonical ipuz.
         // Lazy-load via the in-memory cache so an active board reflects
