@@ -16,6 +16,7 @@ function makeMockDoc() {
     setFont: draw("setFont"),
     setFontSize: draw("setFontSize"),
     setFillColor: draw("setFillColor"),
+    setTextColor: draw("setTextColor"),
     setDrawColor: draw("setDrawColor"),
     setLineWidth: draw("setLineWidth"),
     text: draw("text"),

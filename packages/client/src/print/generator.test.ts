@@ -17,6 +17,7 @@ function makeMockDoc() {
     setFont: draw("setFont"),
     setFontSize: draw("setFontSize"),
     setFillColor: draw("setFillColor"),
+    setTextColor: draw("setTextColor"),
     setDrawColor: draw("setDrawColor"),
     setLineWidth: draw("setLineWidth"),
     text: draw("text"),
@@ -74,6 +75,32 @@ function makePuzzle(): PuzzleState {
   };
 }
 
+function makePencilPuzzle(): PuzzleState {
+  const cells: Cell[][] = [
+    [
+      { kind: "cell", number: 1, fill: "P", pencil: true },
+      { kind: "cell", number: 2, fill: "B" },
+    ],
+    [
+      { kind: "cell", number: 3, fill: null },
+      { kind: "cell", number: null, fill: null },
+    ],
+  ];
+  return {
+    meta: {
+      id: "p1",
+      title: "Pencil Test",
+      author: "",
+      copyright: "",
+      note: "",
+      width: 2,
+      height: 2,
+      clues: { across: [], down: [] },
+    },
+    snapshot: { version: 0, cells },
+  };
+}
+
 describe("generateCrosswordPdf", () => {
   it("returns a Blob and exercises the right jsPDF surface", async () => {
     calls.length = 0;
@@ -103,4 +130,41 @@ describe("generateCrosswordPdf", () => {
     // Output went through doc.output("blob").
     expect(calls.find((c) => c.fn === "output")).toBeTruthy();
   });
+
+  it("renders pencil fills in italic + light gray", async () => {
+    calls.length = 0;
+    const { generateCrosswordPdf } = await import("./generator");
+    await generateCrosswordPdf(makePencilPuzzle());
+
+    // Find the text() call that drew the "P" letter, and inspect the
+    // most recent setFont / setTextColor before it. Pencil → italic +
+    // gray; the regular "B" cell → bold + (no text-color override).
+    const idxP = calls.findIndex((c) => c.fn === "text" && c.args[0] === "P");
+    const idxB = calls.findIndex((c) => c.fn === "text" && c.args[0] === "B");
+    expect(idxP).toBeGreaterThan(-1);
+    expect(idxB).toBeGreaterThan(-1);
+
+    const fontBeforeP = lastBefore(idxP, "setFont");
+    expect(fontBeforeP?.args[1]).toBe("italic");
+    const colorBeforeP = lastBefore(idxP, "setTextColor");
+    // Light gray (140,140,140).
+    expect(colorBeforeP?.args).toEqual([140, 140, 140]);
+
+    const fontBeforeB = lastBefore(idxB, "setFont");
+    expect(fontBeforeB?.args[1]).toBe("bold");
+
+    // After the pencil cell is drawn we restore the black text color
+    // so subsequent cells aren't gray.
+    const restore = calls
+      .slice(idxP + 1)
+      .find((c) => c.fn === "setTextColor");
+    expect(restore?.args).toEqual([0, 0, 0]);
+  });
 });
+
+function lastBefore(idx: number, fn: string): Call | undefined {
+  for (let i = idx - 1; i >= 0; i--) {
+    if (calls[i]!.fn === fn) return calls[i];
+  }
+  return undefined;
+}

@@ -38,8 +38,10 @@ export async function generateSolutionPdf(
 }
 
 /** Build a snapshot where every open cell's `fill` is the canonical
- *  solution. `given` is intentionally stripped — on a uniformly-filled
- *  answer grid the per-given underline is noisy and not informative. */
+ *  solution. `given` and `pencil` are stripped — on a uniformly-filled
+ *  answer grid the per-given underline is noisy, and any pencil
+ *  guesses the player made shouldn't override the canonical answer's
+ *  styling. */
 function buildSolvedSnapshot(snapshot: GridSnapshot, solution: Solution): GridSnapshot {
   const cells: Cell[][] = [];
   for (let r = 0; r < snapshot.cells.length; r++) {
@@ -52,7 +54,7 @@ function buildSolvedSnapshot(snapshot: GridSnapshot, solution: Solution): GridSn
         continue;
       }
       const answer = solution[r]?.[c]?.[0] ?? null;
-      row.push({ ...cell, fill: answer, given: undefined });
+      row.push({ ...cell, fill: answer, given: undefined, pencil: undefined });
     }
     cells.push(row);
   }

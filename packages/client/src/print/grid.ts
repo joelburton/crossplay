@@ -1,9 +1,13 @@
 /**
- * Grid renderer. Draws cells, numbers, fills, and edge marks. Status
- * flags (`revealed`, `wrong`, `pencil`) are intentionally ignored —
- * the print output shows the *puzzle*, not the solver's check history.
- * `circled`, `shaded`, `given`, `number`, `fill`, and edge marks
- * (`markRight` / `markBottom`) are all preserved.
+ * Grid renderer. Draws cells, numbers, fills, and edge marks. Check-
+ * history flags (`revealed`, `wrong`) are intentionally ignored — the
+ * print output shows the puzzle, not the solver's grading history.
+ * `pencil` is a player annotation rather than a check result, so it
+ * IS preserved: pencil fills render in italic, non-bold, light gray
+ * so a mid-solve printout makes it obvious which cells are guesses
+ * (and gives ink/pencil room to overwrite them on paper). `circled`,
+ * `shaded`, `given`, `number`, `fill`, and edge marks (`markRight` /
+ * `markBottom`) are all preserved.
  */
 
 import type { jsPDF } from "jspdf";
@@ -14,6 +18,7 @@ import { FONT_SANS, NUMBER_SIZE } from "./fonts";
 
 const BLACK: [number, number, number] = [0, 0, 0];
 const SHADE_GRAY: [number, number, number] = [217, 217, 217]; // ≈ 0.85 lightness
+const PENCIL_GRAY: [number, number, number] = [140, 140, 140];
 const BORDER_WIDTH = 0.5;
 const MARK_BREAK_WIDTH = 1.5;
 // How far the edge mark extends from the cell edge along the boundary.
@@ -79,7 +84,7 @@ function drawCell(doc: jsPDF, cell: Cell, x: number, y: number, size: number): v
   }
 
   if (cell.fill) {
-    drawFill(doc, cell.fill, x, y, size, cell.given === true);
+    drawFill(doc, cell.fill, x, y, size, cell.given === true, cell.pencil === true);
   }
 
   if (cell.markRight) {
@@ -97,6 +102,7 @@ function drawFill(
   y: number,
   size: number,
   given: boolean,
+  pencil: boolean,
 ): void {
   const baseSize = size * 0.6;
   // For rebus fills (length > 1) shrink to fit cell width.
@@ -105,8 +111,12 @@ function drawFill(
     fontSize = Math.min(baseSize, (size * 0.9) / fill.length);
     fontSize = Math.max(fontSize, size * 0.18);
   }
-  doc.setFont(FONT_SANS, "bold");
+  // Pencil fills render italic + non-bold + gray so a mid-solve
+  // printout makes guesses obvious and easy to write over on paper.
+  // Regular fills (and givens) stay bold black.
+  doc.setFont(FONT_SANS, pencil ? "italic" : "bold");
   doc.setFontSize(fontSize);
+  if (pencil) doc.setTextColor(...PENCIL_GRAY);
 
   const cx = x + size / 2;
   // Vertical center: jsPDF "middle" baseline puts the geometric middle
@@ -124,6 +134,9 @@ function drawFill(
     doc.line(cx - w / 2, underY, cx + w / 2, underY);
     doc.setLineWidth(BORDER_WIDTH);
   }
+  // Restore the default text color so subsequent draws (numbers in
+  // following cells, title, clue text) don't inherit the gray.
+  if (pencil) doc.setTextColor(...BLACK);
 }
 
 function drawEdgeMark(
