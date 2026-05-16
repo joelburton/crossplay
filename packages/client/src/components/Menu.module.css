@@ -35,7 +35,12 @@
 }
 
 .info {
-  padding: 0.5rem 0.75rem 0.4rem;
+  padding: 0.5rem 0.75rem 0.6rem;
+  /* Visually separate the puzzle metadata from the action items: the
+   * per-group separators below are 1px and quite faint, so this rule
+   * is intentionally heavier (2px) with extra space on both sides. */
+  border-bottom: 2px solid #c8c8c8;
+  margin-bottom: 0.4rem;
 }
 
 .infoTitle {
@@ -68,6 +73,10 @@
   font-size: 0.9rem;
   padding: 0.4rem 0.75rem;
   cursor: pointer;
+  /* Keep each row on a single line — narrow flex columns would
+   * otherwise let "Show full rebuses" wrap mid-label. The columns
+   * grow to fit the widest item instead. */
+  white-space: nowrap;
 }
 
 .shortcut {
@@ -87,4 +96,26 @@
 
 .item:disabled:hover {
   background: none;
+}
+
+/* Two-column body. The brand bar + info block above stay full-width;
+ * the items split into a left (general / file / utilities) and right
+ * (check / reveal / clear) column with a thin divider between. When
+ * there's no active puzzle (`actions` null) only the left column
+ * renders — the menu shrinks to that single column's natural width. */
+.cols {
+  display: flex;
+  align-items: stretch;
+}
+
+.col {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 0.25rem;
+}
+
+.col + .col {
+  border-left: 1px solid #e5e5e5;
 }

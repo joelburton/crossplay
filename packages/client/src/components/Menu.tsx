@@ -25,10 +25,22 @@ type Props = {
  * Space activate the focused button natively. The first focusable item
  * is focused on mount.
  *
- * Action handlers are pulled from `actions` (a `PuzzleActions` ref —
- * see `puzzleActions.ts` for why it's a ref). When `actions` is null
- * (home page, no puzzle loaded) only "Return to main page" is shown. Disabled
- * states: "Show notes" greys out when the puzzle has no note text.
+ * Layout is two columns with a thin divider between. The left column
+ * holds share/help, mode/rebus toggles, and file-out actions, with
+ * "Back to main page" at the bottom (treated as a quit-like action,
+ * conventionally at the foot of the menu). The right column holds
+ * check / reveal / clear. The brand bar and puzzle info block span
+ * both columns. When `actions` is null (home page, no puzzle loaded)
+ * only "Back to main page" renders and the right column is omitted —
+ * the menu shrinks to the left column's natural width.
+ *
+ * Arrow-key traversal follows DOM order, so ArrowDown sweeps the left
+ * column top-to-bottom and then jumps to the top of the right column.
+ * That's not strictly "next visual row" but it's predictable and the
+ * menu is small enough that the cost is low.
+ *
+ * Disabled states: "Show notes" greys out when the puzzle has no
+ * note text.
  */
 export function Menu({ actions, triggerRef, onNewGame, onClose }: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -113,92 +125,142 @@ export function Menu({ actions, triggerRef, onNewGame, onClose }: Props) {
           )}
         </div>
       )}
-      <button type="button" className={styles.item} onClick={run(onNewGame)}>
-        Return to main page
-      </button>
-      {actions && (
-        <button type="button" className={styles.item} onClick={run(actions.clearBoard)}>
-          Clear board
-        </button>
-      )}
-      {actions && (
-        <button type="button" className={styles.item} onClick={run(actions.togglePencil)}>
-          <span>Switch to {actions.mode === "pen" ? "pencil" : "pen"}</span>
-          <span className={styles.shortcut}>⌥P</span>
-        </button>
-      )}
-      {actions && (
-        <button
-          type="button"
-          className={styles.item}
-          onClick={run(actions.toggleCollapseRebus)}
-        >
-          <span>{actions.collapseRebus ? "Show full rebuses" : "Collapse rebuses"}</span>
-        </button>
-      )}
-      {actions && (
-        <button
-          type="button"
-          className={styles.item}
-          onClick={run(actions.showNotes)}
-          disabled={!actions.meta.note}
-        >
-          <span>Show notes</span>
-          <span className={styles.shortcut}>⌥N</span>
-        </button>
-      )}
-      {actions && (
-        <button type="button" className={styles.item} onClick={run(actions.openRebus)}>
-          <span>Enter rebus</span>
-          <span className={styles.shortcut}>⇧↵</span>
-        </button>
-      )}
-      {actions && actions.openShare && (
-        <button type="button" className={styles.item} onClick={run(actions.openShare)}>
-          <span>Share with…</span>
-        </button>
-      )}
-      {actions && (
-        <button type="button" className={styles.item} onClick={run(actions.showHelp)}>
-          <span>Help</span>
-          <span className={styles.shortcut}>?</span>
-        </button>
-      )}
-      {actions && (
-        <>
-          <div className={styles.sep} role="separator" />
-          <button type="button" className={styles.item} onClick={run(actions.revealLetter)}>
-            <span>Reveal letter</span>
-            <span className={styles.shortcut}>⌥R</span>
+      <div className={styles.cols}>
+        <div className={styles.col}>
+          {actions && actions.openShare && (
+            <button
+              type="button"
+              className={styles.item}
+              onClick={run(actions.openShare)}
+            >
+              <span>Share with…</span>
+            </button>
+          )}
+          {actions && (
+            <button type="button" className={styles.item} onClick={run(actions.showHelp)}>
+              <span>Help</span>
+              <span className={styles.shortcut}>?</span>
+            </button>
+          )}
+          {actions && (
+            <>
+              <div className={styles.sep} role="separator" />
+              <button
+                type="button"
+                className={styles.item}
+                onClick={run(actions.togglePencil)}
+              >
+                <span>Switch to {actions.mode === "pen" ? "pencil" : "pen"}</span>
+                <span className={styles.shortcut}>⌥P</span>
+              </button>
+              <button
+                type="button"
+                className={styles.item}
+                onClick={run(actions.openRebus)}
+              >
+                <span>Enter rebus</span>
+                <span className={styles.shortcut}>⇧↵</span>
+              </button>
+              <button
+                type="button"
+                className={styles.item}
+                onClick={run(actions.toggleCollapseRebus)}
+              >
+                <span>
+                  {actions.collapseRebus ? "Show full rebuses" : "Collapse rebuses"}
+                </span>
+              </button>
+              <div className={styles.sep} role="separator" />
+              <button
+                type="button"
+                className={styles.item}
+                onClick={run(actions.showNotes)}
+                disabled={!actions.meta.note}
+              >
+                <span>Show notes</span>
+                <span className={styles.shortcut}>⌥N</span>
+              </button>
+              <button
+                type="button"
+                className={styles.item}
+                onClick={run(actions.printPuzzle)}
+              >
+                <span>Print / Save as PDF</span>
+              </button>
+              <button
+                type="button"
+                className={styles.item}
+                onClick={run(actions.downloadIpuz)}
+              >
+                <span>Download as .ipuz</span>
+              </button>
+              <div className={styles.sep} role="separator" />
+            </>
+          )}
+          <button type="button" className={styles.item} onClick={run(onNewGame)}>
+            Back to main page
           </button>
-          <button type="button" className={styles.item} onClick={run(actions.revealWord)}>
-            <span>Reveal word</span>
-            <span className={styles.shortcut}>⌥⇧R</span>
-          </button>
-          <button type="button" className={styles.item} onClick={run(actions.revealPuzzle)}>
-            <span>Reveal puzzle</span>
-          </button>
-          <div className={styles.sep} role="separator" />
-          <button type="button" className={styles.item} onClick={run(actions.checkLetter)}>
-            <span>Check letter</span>
-            <span className={styles.shortcut}>⌥C</span>
-          </button>
-          <button type="button" className={styles.item} onClick={run(actions.checkWord)}>
-            <span>Check word</span>
-            <span className={styles.shortcut}>⌥⇧C</span>
-          </button>
-          <button type="button" className={styles.item} onClick={run(actions.checkPuzzle)}>
-            <span>Check puzzle</span>
-          </button>
-          <div className={styles.sep} role="separator" />
-          <button type="button" className={styles.item} onClick={run(actions.printPuzzle)}>
-            <span>Print / Save as PDF</span>
-          </button>
-          <button type="button" className={styles.item} onClick={run(actions.downloadIpuz)}>
-            <span>Download as .ipuz</span>
-          </button>
-        </>
-      )}
+        </div>
+        {actions && (
+          <div className={styles.col}>
+            <button
+              type="button"
+              className={styles.item}
+              onClick={run(actions.checkLetter)}
+            >
+              <span>Check letter</span>
+              <span className={styles.shortcut}>⌥C</span>
+            </button>
+            <button
+              type="button"
+              className={styles.item}
+              onClick={run(actions.checkWord)}
+            >
+              <span>Check word</span>
+              <span className={styles.shortcut}>⌥⇧C</span>
+            </button>
+            <button
+              type="button"
+              className={styles.item}
+              onClick={run(actions.checkPuzzle)}
+            >
+              <span>Check puzzle</span>
+            </button>
+            <div className={styles.sep} role="separator" />
+            <button
+              type="button"
+              className={styles.item}
+              onClick={run(actions.revealLetter)}
+            >
+              <span>Reveal letter</span>
+              <span className={styles.shortcut}>⌥R</span>
+            </button>
+            <button
+              type="button"
+              className={styles.item}
+              onClick={run(actions.revealWord)}
+            >
+              <span>Reveal word</span>
+              <span className={styles.shortcut}>⌥⇧R</span>
+            </button>
+            <button
+              type="button"
+              className={styles.item}
+              onClick={run(actions.revealPuzzle)}
+            >
+              <span>Reveal puzzle</span>
+            </button>
+            <div className={styles.sep} role="separator" />
+            <button
+              type="button"
+              className={styles.item}
+              onClick={run(actions.clearBoard)}
+            >
+              <span>Clear board</span>
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
