@@ -55,8 +55,12 @@ Reserve "invite" for signup.
 - **Email**: nullable, no verification. Strictly for the admin's
   out-of-band use ("upgrading my server," "house party"); never used
   by the app itself.
-- **Password**: hashed with **argon2id**. Minimum length 6, no other
-  rules. No reset flow — admin sets a new hash via SQL if needed.
+- **Password**: hashed with **scrypt** (built-in `node:crypto`, no
+  native dep; see `auth.ts`). Stored as a self-describing
+  `scrypt$N$r$p$salt$key` string so future parameter bumps or a
+  migration to a different KDF can coexist with old hashes. Minimum
+  length 6, no other rules. No reset flow — admin sets a new hash
+  via SQL if needed.
 
 ## Invite codes (registration)
 

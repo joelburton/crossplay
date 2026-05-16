@@ -61,7 +61,8 @@ digraph CrossplaySchema {
       <TR><TD ALIGN="LEFT">email &nbsp;(admin-only)</TD><TD ALIGN="LEFT">TEXT?</TD></TR>
       <TR><TD ALIGN="LEFT">is_admin</TD><TD ALIGN="LEFT">INTEGER</TD></TR>
       <TR><TD ALIGN="LEFT">invite_code_used</TD><TD ALIGN="LEFT">TEXT?</TD></TR>
-      <TR><TD ALIGN="LEFT">prefs &nbsp;(reserved)</TD><TD ALIGN="LEFT">TEXT?</TD></TR>
+      <TR><TD ALIGN="LEFT">prefs &nbsp;(JSON)</TD><TD ALIGN="LEFT">TEXT?</TD></TR>
+      <TR><TD ALIGN="LEFT">seen_help_at</TD><TD ALIGN="LEFT">TEXT?</TD></TR>
       <TR><TD ALIGN="LEFT">created_at</TD><TD ALIGN="LEFT">TEXT</TD></TR>
     </TABLE>
   >];
