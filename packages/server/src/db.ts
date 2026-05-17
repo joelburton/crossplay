@@ -261,6 +261,19 @@ export const migrations: Migration[] = [
       db.exec(`ALTER TABLE users ADD COLUMN seen_help_at TEXT`);
     },
   },
+  {
+    // Per-board shared scratchpad text — a small notes / anagram
+    // scratch area both players see, with a lock model (one editor
+    // at a time, takeover by click). The text lives on the board
+    // row and rides the same debounced flush as snapshot/chat; the
+    // lock itself is in-memory only (released on disconnect, never
+    // persisted). NOT NULL DEFAULT '' so every existing board has an
+    // empty scratchpad without a backfill pass.
+    version: 8,
+    up: (db) => {
+      db.exec(`ALTER TABLE boards ADD COLUMN scratchpad_text TEXT NOT NULL DEFAULT ''`);
+    },
+  },
 ];
 
 export function openDb(path: string = process.env.DB_PATH ?? DEFAULT_DB_PATH): DatabaseSync {

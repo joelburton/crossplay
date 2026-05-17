@@ -67,6 +67,9 @@ function buildBoard(id: string): StoredBoard {
     cursorBySocket: new Map(),
     feedbackCounter: 0,
     solved: false,
+    scratchpadText: "",
+    scratchpadLock: null,
+    lastScratchpadEditAt: 0,
     dirty: false,
   };
 }
@@ -458,6 +461,131 @@ describe("ws integration", () => {
     a.ws.close();
     b.ws.close();
     await Promise.all([waitClose(a), waitClose(b)]);
+  });
+
+  it("sends an empty scratchpadState on connect", async () => {
+    const id = "int-scratch-initial";
+    _putBoardForTest(buildBoard(id));
+    const c = open(port, id);
+    await next(c, "snapshot");
+    const sp = await next(c, "scratchpadState");
+    expect(sp.text).toBe("");
+    expect(sp.lockedBy).toBeNull();
+    c.ws.close();
+    await waitClose(c);
+  });
+
+  it("scratchpad: takeover claims the lock and broadcasts to peers", async () => {
+    const id = "int-scratch-takeover";
+    _putBoardForTest(buildBoard(id));
+    const a = open(port, id);
+    const b = open(port, id);
+    await Promise.all([next(a, "snapshot"), next(b, "snapshot")]);
+    await Promise.all([next(a, "scratchpadState"), next(b, "scratchpadState")]);
+
+    send(a, { type: "scratchpadTakeover", name: "Alice", color: "#1f77b4" });
+    // Both peers (sender included) see the new lock holder.
+    const sa = await next(a, "scratchpadState");
+    const sb = await next(b, "scratchpadState");
+    expect(sa.lockedBy).toEqual({ name: "Alice", color: "#1f77b4" });
+    expect(sb.lockedBy).toEqual({ name: "Alice", color: "#1f77b4" });
+
+    a.ws.close();
+    b.ws.close();
+    await Promise.all([waitClose(a), waitClose(b)]);
+  });
+
+  it("scratchpad: edit from the holder propagates to peers", async () => {
+    const id = "int-scratch-edit";
+    _putBoardForTest(buildBoard(id));
+    const a = open(port, id);
+    const b = open(port, id);
+    await Promise.all([next(a, "snapshot"), next(b, "snapshot")]);
+    await Promise.all([next(a, "scratchpadState"), next(b, "scratchpadState")]);
+
+    send(a, { type: "scratchpadTakeover", name: "Alice", color: "#1f77b4" });
+    await Promise.all([next(a, "scratchpadState"), next(b, "scratchpadState")]);
+
+    send(a, { type: "scratchpadEdit", text: "anagram of LISTEN" });
+    const sa = await next(a, "scratchpadState");
+    const sb = await next(b, "scratchpadState");
+    expect(sa.text).toBe("anagram of LISTEN");
+    expect(sb.text).toBe("anagram of LISTEN");
+    expect(sb.lockedBy).toEqual({ name: "Alice", color: "#1f77b4" });
+
+    a.ws.close();
+    b.ws.close();
+    await Promise.all([waitClose(a), waitClose(b)]);
+  });
+
+  it("scratchpad: edits from a non-holder are silently dropped", async () => {
+    const id = "int-scratch-edit-no-lock";
+    _putBoardForTest(buildBoard(id));
+    const a = open(port, id);
+    const b = open(port, id);
+    await Promise.all([next(a, "snapshot"), next(b, "snapshot")]);
+    await Promise.all([next(a, "scratchpadState"), next(b, "scratchpadState")]);
+
+    send(a, { type: "scratchpadTakeover", name: "Alice", color: "#1f77b4" });
+    await Promise.all([next(a, "scratchpadState"), next(b, "scratchpadState")]);
+
+    // Bob doesn't have the lock — his edit should not produce a broadcast.
+    send(b, { type: "scratchpadEdit", text: "sneaky" });
+    await expect(next(a, "scratchpadState", 200)).rejects.toThrow(/timed out/);
+
+    a.ws.close();
+    b.ws.close();
+    await Promise.all([waitClose(a), waitClose(b)]);
+  });
+
+  it("scratchpad: takeover steal is rejected within the active-typing grace window", async () => {
+    const id = "int-scratch-grace";
+    _putBoardForTest(buildBoard(id));
+    const a = open(port, id);
+    const b = open(port, id);
+    await Promise.all([next(a, "snapshot"), next(b, "snapshot")]);
+    await Promise.all([next(a, "scratchpadState"), next(b, "scratchpadState")]);
+
+    send(a, { type: "scratchpadTakeover", name: "Alice", color: "#1f77b4" });
+    await Promise.all([next(a, "scratchpadState"), next(b, "scratchpadState")]);
+
+    // Alice types — sets lastScratchpadEditAt to "right now".
+    send(a, { type: "scratchpadEdit", text: "typing…" });
+    await Promise.all([next(a, "scratchpadState"), next(b, "scratchpadState")]);
+
+    // Bob attempts a steal immediately. The grace window (1s) should
+    // bounce it back as a feedback to Bob only, with no state change.
+    send(b, { type: "scratchpadTakeover", name: "Bob", color: "#ff7f0e" });
+    const fb = await next(b, "feedback");
+    expect(fb.text).toContain("Alice");
+    expect(fb.level).toBe("warning");
+    // Alice does NOT see Bob's failed steal at all.
+    await expect(next(a, "scratchpadState", 200)).rejects.toThrow(/timed out/);
+
+    a.ws.close();
+    b.ws.close();
+    await Promise.all([waitClose(a), waitClose(b)]);
+  });
+
+  it("scratchpad: lock auto-releases when the holder's socket closes", async () => {
+    const id = "int-scratch-release";
+    _putBoardForTest(buildBoard(id));
+    const a = open(port, id);
+    const b = open(port, id);
+    await Promise.all([next(a, "snapshot"), next(b, "snapshot")]);
+    await Promise.all([next(a, "scratchpadState"), next(b, "scratchpadState")]);
+
+    send(a, { type: "scratchpadTakeover", name: "Alice", color: "#1f77b4" });
+    await Promise.all([next(a, "scratchpadState"), next(b, "scratchpadState")]);
+
+    a.ws.close();
+    await waitClose(a);
+    // Bob receives a fresh state with lockedBy: null.
+    const sb = await next(b, "scratchpadState");
+    expect(sb.lockedBy).toBeNull();
+
+    b.ws.close();
+    await waitClose(b);
   });
 });
 

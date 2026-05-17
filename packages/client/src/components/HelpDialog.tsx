@@ -20,6 +20,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ["⌥M", "Open the menu (arrows to navigate, Enter to choose)"],
   ["⌥P", "Toggle pen / pencil"],
   ["⌥N", "Show puzzle notes"],
+  ["⌥S", "Open the shared scratchpad"],
   ["⌥R / ⌥⇧R", "Reveal letter / word"],
   ["⌥C / ⌥⇧C", "Check letter / word"],
   ["#", "Jump to a clue number"],

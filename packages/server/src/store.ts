@@ -68,6 +68,21 @@ export type StoredBoard = {
    *  persisted — players reconnecting to an already-solved board
    *  don't get a stale celebration. */
   solved: boolean;
+  /** Shared scratchpad text. Persists to `boards.scratchpad_text`
+   *  on the same debounced flush as the snapshot. */
+  scratchpadText: string;
+  /** In-memory: who currently holds the scratchpad edit lock. `null`
+   *  means unclaimed (next takeover succeeds without contesting).
+   *  Keyed by ws connection so a socket close auto-releases — that's
+   *  why this lives off the StoredBoard and not on `cursorBySocket`,
+   *  and why it's never written to the DB. */
+  scratchpadLock: { socket: WebSocket; name: string; color: string } | null;
+  /** `Date.now()` of the most recent successful scratchpadEdit. Used
+   *  by the takeover handler to enforce the 1s active-typing grace
+   *  window — a steal lands a hair too late and gets rejected with a
+   *  feedback instead of yanking the keyboard out from under the
+   *  current writer. */
+  lastScratchpadEditAt: number;
   /** True when the entry has unsaved snapshot/chat mutations. The flush
    *  scheduler reads and clears this. */
   dirty: boolean;
@@ -83,8 +98,10 @@ export function getOrLoadBoard(db: DatabaseSync, boardId: string): StoredBoard |
   if (existing) return existing;
 
   const row = db
-    .prepare("SELECT ipuz, snapshot, chat FROM boards WHERE id = ?")
-    .get(boardId) as { ipuz: string; snapshot: string; chat: string } | undefined;
+    .prepare("SELECT ipuz, snapshot, chat, scratchpad_text FROM boards WHERE id = ?")
+    .get(boardId) as
+    | { ipuz: string; snapshot: string; chat: string; scratchpad_text: string }
+    | undefined;
   if (!row) return undefined;
 
   const parsed = parseIpuzBuffer(boardId, Buffer.from(row.ipuz, "utf8"));
@@ -106,6 +123,13 @@ export function getOrLoadBoard(db: DatabaseSync, boardId: string): StoredBoard |
     // (which usually breaks it) will see "still not solved" and
     // re-celebration won't fire spuriously on reconnect.
     solved: false,
+    scratchpadText: row.scratchpad_text,
+    // No lock survives a cache eviction — every fresh load starts
+    // unclaimed, even if the prior in-memory holder hadn't released
+    // (their socket is necessarily gone by now since eviction
+    // happens on last-socket-disconnect).
+    scratchpadLock: null,
+    lastScratchpadEditAt: 0,
     dirty: false,
   };
   cache.set(boardId, entry);
@@ -156,10 +180,11 @@ export function flushBoard(db: DatabaseSync, boardId: string): void {
   const now = new Date().toISOString();
   const fillPercent = computeFillPercent(entry.initialSnapshot, entry.state.snapshot);
   db.prepare(
-    "UPDATE boards SET snapshot = ?, chat = ?, updated_at = ?, fill_percent = ? WHERE id = ?",
+    "UPDATE boards SET snapshot = ?, chat = ?, scratchpad_text = ?, updated_at = ?, fill_percent = ? WHERE id = ?",
   ).run(
     JSON.stringify(entry.state.snapshot),
     JSON.stringify(entry.chat),
+    entry.scratchpadText,
     now,
     fillPercent,
     boardId,

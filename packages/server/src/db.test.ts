@@ -88,7 +88,7 @@ describe("db", () => {
       ["author", "copyright", "created_at", "height", "id", "ipuz", "title", "updated_at", "width"],
     );
     expect(boardsCols.map((c) => c.name).sort()).toEqual(
-      ["author", "chat", "copyright", "created_at", "fill_percent", "id", "ipuz", "owner_id", "puzzle_id", "snapshot", "title", "updated_at"],
+      ["author", "chat", "copyright", "created_at", "fill_percent", "id", "ipuz", "owner_id", "puzzle_id", "scratchpad_text", "snapshot", "title", "updated_at"],
     );
     // fill_percent is nullable: no NOT NULL constraint, no default — a
     // freshly inserted board is "NEW" until the first flushBoard.

@@ -24,6 +24,7 @@ import { Board } from "./Board";
 import { ChatIndicator } from "./ChatIndicator";
 import { ChatPanel } from "./ChatPanel";
 import { ChatPreview } from "./ChatPreview";
+import { ScratchpadPanel, type ScratchpadLock } from "./ScratchpadPanel";
 import { ClueList } from "./ClueList";
 import { HelpDialog } from "./HelpDialog";
 import { NoteDialog } from "./NoteDialog";
@@ -260,6 +261,13 @@ export function PuzzleView({
   const [numberJumpOpen, setNumberJumpOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [solvedOpen, setSolvedOpen] = useState(false);
+  // Scratchpad UI state. `scratchpadOpen` is per-client and never
+  // synced (opening the panel for yourself shouldn't summon it on
+  // peers). The text + lock holder come from the server's
+  // `scratchpadState` broadcast.
+  const [scratchpadOpen, setScratchpadOpen] = useState(false);
+  const [scratchpadText, setScratchpadText] = useState("");
+  const [scratchpadLockedBy, setScratchpadLockedBy] = useState<ScratchpadLock | null>(null);
   // SPACE on a multi-char fill shows a read-only zoom-peek of the
   // full string (useful when collapse-rebuses is on, or when the
   // shrunk rebus is hard to read at small cell sizes). Any other
@@ -358,6 +366,13 @@ export function PuzzleView({
     onPuzzleSolved: useCallback(() => {
       setSolvedOpen(true);
     }, []),
+    onScratchpadState: useCallback(
+      (text: string, lockedBy: ScratchpadLock | null) => {
+        setScratchpadText(text);
+        setScratchpadLockedBy(lockedBy);
+      },
+      [],
+    ),
     onCursorLeft: useCallback((color: string) => {
       setRemoteCursors((prev) => {
         if (!prev.has(color)) return prev;
@@ -578,6 +593,7 @@ export function PuzzleView({
       // a worse UX than hiding it. PuzzleActions.openShare is
       // optional; Menu shows the item iff it's defined.
       openShare: authedHandle ? () => setShareOpen(true) : undefined,
+      openScratchpad: () => setScratchpadOpen(true),
     };
     return () => {
       if (actionsRef.current?.meta.id === meta.id) {
@@ -718,6 +734,11 @@ export function PuzzleView({
         if (e.code === "KeyM") {
           e.preventDefault();
           onToggleMenu?.();
+          return;
+        }
+        if (e.code === "KeyS") {
+          e.preventDefault();
+          setScratchpadOpen((cur) => !cur);
           return;
         }
       }
@@ -1145,6 +1166,22 @@ export function PuzzleView({
           onSend={sendChat}
           onClose={closeChat}
           inputRef={chatInputRef}
+        />
+      )}
+      {scratchpadOpen && (
+        <ScratchpadPanel
+          identity={identity}
+          text={scratchpadText}
+          lockedBy={scratchpadLockedBy}
+          onEdit={(text) => send({ type: "scratchpadEdit", text })}
+          onTakeover={() =>
+            send({
+              type: "scratchpadTakeover",
+              name: identity.name,
+              color: identity.color,
+            })
+          }
+          onClose={() => setScratchpadOpen(false)}
         />
       )}
       {notesOpen && meta.note && (

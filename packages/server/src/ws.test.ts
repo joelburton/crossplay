@@ -75,6 +75,9 @@ function entry(): StoredBoard {
     cursorBySocket: new Map(),
     feedbackCounter: 0,
     solved: false,
+    scratchpadText: "",
+    scratchpadLock: null,
+    lastScratchpadEditAt: 0,
     dirty: false,
   };
 }
@@ -119,6 +122,28 @@ describe("parseMessage", () => {
   it("rejects reveal word missing direction", () => {
     expect(
       parseMessage(JSON.stringify({ type: "reveal", scope: "word", row: 0, col: 0 })),
+    ).toBeNull();
+  });
+  it("parses scratchpadEdit", () => {
+    expect(parseMessage(JSON.stringify({ type: "scratchpadEdit", text: "hi" }))).toEqual({
+      type: "scratchpadEdit",
+      text: "hi",
+    });
+  });
+  it("rejects scratchpadEdit over the length cap", () => {
+    const tooLong = "x".repeat(10_001);
+    expect(parseMessage(JSON.stringify({ type: "scratchpadEdit", text: tooLong }))).toBeNull();
+  });
+  it("parses scratchpadTakeover", () => {
+    expect(
+      parseMessage(
+        JSON.stringify({ type: "scratchpadTakeover", name: "Alice", color: "#1f77b4" }),
+      ),
+    ).toEqual({ type: "scratchpadTakeover", name: "Alice", color: "#1f77b4" });
+  });
+  it("rejects scratchpadTakeover with bad color", () => {
+    expect(
+      parseMessage(JSON.stringify({ type: "scratchpadTakeover", name: "Alice", color: "red" })),
     ).toBeNull();
   });
 });

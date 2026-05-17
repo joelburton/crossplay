@@ -37,4 +37,7 @@ export type PuzzleActions = {
    *  membership, which anons can't have under Posture A — hiding the
    *  menu item entirely is the right UX. */
   openShare?: () => void;
+  /** Open the shared scratchpad panel. Per-client toggle — opening it
+   *  for yourself doesn't open it on peers. */
+  openScratchpad: () => void;
 };

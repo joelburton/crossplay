@@ -27,6 +27,7 @@ import type {
   Scope,
   ServerMessage,
 } from "@crossplay/shared";
+import { SCRATCHPAD_MAX_LEN } from "@crossplay/shared";
 import { MAX_REBUS_LEN } from "./ipuz.js";
 import { flushAndEvict, getOrLoadBoard, markDirty, type StoredBoard } from "./store.js";
 
@@ -134,6 +135,19 @@ export function parseMessage(raw: unknown): ClientMessage | null {
     const name = sanitizeName(m.name);
     if (name.length === 0 || name.length > 32 || !isHexColor(m.color)) return null;
     return { type: "hello", name, color: m.color };
+  }
+
+  if (m.type === "scratchpadEdit") {
+    if (typeof m.text !== "string") return null;
+    if (m.text.length > SCRATCHPAD_MAX_LEN) return null;
+    return { type: "scratchpadEdit", text: m.text };
+  }
+
+  if (m.type === "scratchpadTakeover") {
+    if (typeof m.name !== "string" || !isHexColor(m.color)) return null;
+    const name = sanitizeName(m.name);
+    if (name.length === 0 || name.length > 32) return null;
+    return { type: "scratchpadTakeover", name, color: m.color };
   }
 
   if (m.type === "cursorMoved") {
@@ -689,6 +703,29 @@ export function checkScopeHasPencil(
   return false;
 }
 
+// Active-typing grace for scratchpad takeover. A steal attempt that
+// arrives within this window of the current holder's last edit is
+// rejected with a warning feedback rather than yanking the lock —
+// gives the writer a chance to finish their thought without
+// confirming a takeover modal. Tuned to the typical inter-keystroke
+// gap of a person mid-thought (≥1s lull ≈ "they're done for now");
+// the client-side edit debounce is shorter than this (200ms) so
+// flurries of typing keep the lock comfortably.
+const SCRATCHPAD_TAKEOVER_GRACE_MS = 1000;
+
+/** Broadcast the current scratchpad text + lock holder to every socket
+ *  in the room. Called after any change to either (edit, takeover,
+ *  release-on-disconnect). Single message type covers both flavors of
+ *  update; the text/lock split is just two fields. */
+function broadcastScratchpadState(entry: StoredBoard): void {
+  const lock = entry.scratchpadLock;
+  broadcast(entry, {
+    type: "scratchpadState",
+    text: entry.scratchpadText,
+    lockedBy: lock ? { name: lock.name, color: lock.color } : null,
+  });
+}
+
 // 5 minutes. The "X joined" feedback fires when a hello arrives more
 // than this long after the last one with the same name. The window
 // has to be longer than any plausible silent disconnect/reconnect
@@ -890,6 +927,47 @@ function handleCursorMoved(
   }
 }
 
+function handleScratchpadEdit(
+  { db, entry, socket }: DispatchContext,
+  msg: Extract<ClientMessage, { type: "scratchpadEdit" }>,
+): void {
+  // Lock holder check: only the current holder can write. Non-holders
+  // are silently dropped (the client disables its textarea when not
+  // the holder, so this is a races-only path — e.g. an edit in flight
+  // when someone else just stole the lock).
+  if (!entry.scratchpadLock || entry.scratchpadLock.socket !== socket) return;
+  if (entry.scratchpadText === msg.text) return; // no-op
+  entry.scratchpadText = msg.text;
+  entry.lastScratchpadEditAt = Date.now();
+  markDirty(db, entry.id);
+  broadcastScratchpadState(entry);
+}
+
+function handleScratchpadTakeover(
+  { entry, socket }: DispatchContext,
+  msg: Extract<ClientMessage, { type: "scratchpadTakeover" }>,
+): void {
+  const lock = entry.scratchpadLock;
+  // Already the holder: no-op, no broadcast (would just spam everyone
+  // with their own state).
+  if (lock && lock.socket === socket) return;
+  // Active-typing grace: if someone else has the lock and edited very
+  // recently, reject the steal with a feedback to the requester only.
+  // The current holder doesn't need to know a takeover was attempted.
+  if (lock && Date.now() - entry.lastScratchpadEditAt < SCRATCHPAD_TAKEOVER_GRACE_MS) {
+    send(socket, {
+      type: "feedback",
+      id: nextFeedbackId(entry),
+      text: `${lock.name} is still typing`,
+      level: "warning",
+      autoVanishMs: 3000,
+    });
+    return;
+  }
+  entry.scratchpadLock = { socket, name: msg.name, color: msg.color };
+  broadcastScratchpadState(entry);
+}
+
 function handleHello({ entry, socket }: DispatchContext, msg: Extract<ClientMessage, { type: "hello" }>): void {
   const now = Date.now();
   // Opportunistic GC: keeps the map bounded for long-lived rooms with
@@ -924,6 +1002,8 @@ const handlers: { [K in ClientMessage["type"]]: HandlerFor<K> } = {
   showNotes: handleShowNotes,
   hello: handleHello,
   cursorMoved: handleCursorMoved,
+  scratchpadEdit: handleScratchpadEdit,
+  scratchpadTakeover: handleScratchpadTakeover,
 };
 
 function dispatchMessage(ctx: DispatchContext, msg: ClientMessage): void {
@@ -984,6 +1064,18 @@ export function registerWsRoutes(
 
       entry.sockets.add(socket);
       send(socket, { type: "snapshot", snapshot: entry.state.snapshot });
+      // Catch the new socket up on the scratchpad. Unlike chat history
+      // (which is replayed via the persisted ChatLine[] on demand if a
+      // future feature surfaces it), the scratchpad is a single text
+      // blob — one message covers initial paint + the current lock
+      // holder.
+      send(socket, {
+        type: "scratchpadState",
+        text: entry.scratchpadText,
+        lockedBy: entry.scratchpadLock
+          ? { name: entry.scratchpadLock.name, color: entry.scratchpadLock.color }
+          : null,
+      });
       // Replay each existing peer's last-known cursor to the new
       // socket. Without this, a peer whose cursor hasn't moved since
       // they connected is invisible to the joiner — their original
@@ -1064,6 +1156,14 @@ export function registerWsRoutes(
         entry.cursorBySocket.delete(socket);
         if (cursor) {
           broadcast(entry, { type: "cursorLeft", color: cursor.color });
+        }
+        // Release the scratchpad lock if this socket held it, and tell
+        // remaining peers it's now claimable. No explicit "release"
+        // gesture exists in the UI — the lock only ever changes hands
+        // via takeover or socket close.
+        if (entry.scratchpadLock?.socket === socket) {
+          entry.scratchpadLock = null;
+          broadcastScratchpadState(entry);
         }
         // Last connection out: persist + drop the cache entry. A
         // future reconnect will lazy-load it again.

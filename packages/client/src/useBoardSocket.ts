@@ -26,6 +26,10 @@ type Handlers = {
   onCursorMoved?: (row: number, col: number, color: string, name: string) => void;
   onCursorLeft?: (color: string) => void;
   onPuzzleSolved?: () => void;
+  onScratchpadState?: (
+    text: string,
+    lockedBy: { name: string; color: string } | null,
+  ) => void;
   onOpen?: () => void;
 };
 
@@ -149,6 +153,8 @@ export function useBoardSocket(boardId: string, handlers: Handlers) {
           handlersRef.current.onCursorLeft?.(msg.color);
         } else if (msg.type === "puzzleSolved") {
           handlersRef.current.onPuzzleSolved?.();
+        } else if (msg.type === "scratchpadState") {
+          handlersRef.current.onScratchpadState?.(msg.text, msg.lockedBy);
         }
       });
     }

@@ -33,6 +33,7 @@ There is no `POST /api/puzzles` — puzzles are CLI-only, never created via HTTP
 - `cursorMoved { row, col, color, name }` — peer presence broadcast (not echoed to sender). Pure presence: not persisted, not version-stamped, not replayed on reconnect.
 - `cursorLeft { color }` — broadcast on peer socket close so receivers drop that color's frame.
 - `puzzleSolved` — broadcast on the false → true transition of "every fillable cell satisfies `fillMatchesSolution`".
+- `scratchpadState { text, lockedBy: { name, color } | null }` — shared scratchpad state. Sent on connect and rebroadcast after every edit, takeover, or lock-release-on-disconnect. `lockedBy: null` means the scratchpad is unclaimed.
 - WebSocket `ping` frames every 30s; browser auto-pongs. Server tolerates 3 consecutive missed pongs before terminating (silent-disconnect window ≈ 120s). The lenience is deliberate: macOS App Nap can throttle JS in backgrounded tabs, and even side-by-side visible tabs occasionally miss a pong. A lingering ghost socket for ~2 min is cheaper UX than spurious "X joined" feedbacks every minute. Both knobs (`HEARTBEAT_INTERVAL_MS`, `MISSED_PONG_TOLERANCE`) are overridable via `WsRouteOptions` so tests can drive the path in tens of ms.
 
 Client -> server:
@@ -46,5 +47,7 @@ Client -> server:
 - `showNotes` — opens the notes dialog for everyone in the room.
 - `hello { name, color }` — sent on every ws open; powers the "X joined" feedback (debounced 5 min per name — long enough to swallow silent reconnects from proxy idle-close, browser throttling, or OS network blips).
 - `cursorMoved { row, col, color, name }` — throttled to ~80ms on the client; outbound on every cursor change and on each ws open (so peers re-see us on reconnect).
+- `scratchpadEdit { text }` — replace the shared scratchpad text. Server only honors edits from the socket that currently holds the lock; non-holder edits are silently dropped. `text` is capped at `SCRATCHPAD_MAX_LEN` (10 000 chars).
+- `scratchpadTakeover { name, color }` — claim or steal the scratchpad lock. Always succeeds when the scratchpad is unclaimed or the caller already holds it; a steal from another holder is rejected with a warning feedback if their last edit was within 1 s (active-typing grace).
 
 `cellUpdate` carries the **full new Cell**, not just a letter. Cell may have optional `revealed`, `wrong`, `pencil`, `circled`, `markRight`, `markBottom` flags. `circled` is pure presentation (author-defined theme marker), set at parse time and preserved across all mutations. Reveal/check operations bump the snapshot version once per changed cell so the client's "newer version wins" check applies all updates from a batch broadcast.

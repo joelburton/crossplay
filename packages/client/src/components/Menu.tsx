@@ -183,6 +183,14 @@ export function Menu({ actions, triggerRef, onNewGame, onClose }: Props) {
               <button
                 type="button"
                 className={styles.item}
+                onClick={run(actions.openScratchpad)}
+              >
+                <span>Scratchpad</span>
+                <span className={styles.shortcut}>⌥S</span>
+              </button>
+              <button
+                type="button"
+                className={styles.item}
                 onClick={run(actions.printPuzzle)}
               >
                 <span>Print / Save as PDF</span>

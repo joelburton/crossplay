@@ -16,6 +16,12 @@
  *  to size the rebus input. */
 export const MAX_REBUS_LEN = 8;
 
+/** Cap on the shared scratchpad text, in characters. The scratchpad is
+ *  a small notes area (anagram scratch, cryptic clue annotations); the
+ *  limit is a sanity ceiling — real usage is tiny — and gates both the
+ *  client textarea and the server's `scratchpadEdit` handler. */
+export const SCRATCHPAD_MAX_LEN = 10_000;
+
 export type Direction = "across" | "down";
 
 export type Cell =
@@ -137,7 +143,22 @@ export type ClientMessage =
   | { type: "chat"; name: string; color: string; text: string }
   | { type: "showNotes" }
   | { type: "hello"; name: string; color: string }
-  | { type: "cursorMoved"; row: number; col: number; color: string; name: string };
+  | { type: "cursorMoved"; row: number; col: number; color: string; name: string }
+  /** Replace the shared scratchpad's text. Only honored when the
+   *  sending socket currently holds the scratchpad lock; non-holder
+   *  edits are silently dropped (the client disables the textarea
+   *  when not the holder, so this is defense-in-depth). The full
+   *  text is sent, not a diff — the scratchpad is small (capped at
+   *  SCRATCHPAD_MAX_LEN) and only one writer holds the lock at a
+   *  time, so OT/CRDT complexity isn't warranted. */
+  | { type: "scratchpadEdit"; text: string }
+  /** Claim the scratchpad lock — either from no one, from yourself
+   *  (no-op), or by stealing it from the current holder. The server
+   *  rejects a steal if the current holder has edited within the
+   *  last second (active-typing grace); rejection surfaces as a
+   *  warning feedback. `name`/`color` identify the new holder for
+   *  the broadcast that follows on success. */
+  | { type: "scratchpadTakeover"; name: string; color: string };
 
 export type ServerMessage =
   | { type: "snapshot"; snapshot: GridSnapshot }
@@ -171,4 +192,14 @@ export type ServerMessage =
   | { type: "cursorMoved"; row: number; col: number; color: string; name: string }
   // Broadcast when a peer's socket closes (clean disconnect, peer close,
   // or heartbeat termination). Receivers drop that color from their map.
-  | { type: "cursorLeft"; color: string };
+  | { type: "cursorLeft"; color: string }
+  /** Authoritative scratchpad state: current text plus who (if
+   *  anyone) holds the edit lock. Sent on connect and rebroadcast
+   *  after every edit / takeover / lock-release-on-disconnect.
+   *  `lockedBy: null` means the scratchpad is unclaimed and anyone
+   *  can take it over without contesting. */
+  | {
+      type: "scratchpadState";
+      text: string;
+      lockedBy: { name: string; color: string } | null;
+    };

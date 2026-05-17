@@ -27,8 +27,9 @@
   --c-card-border-soft: #e0e0e0;
 
   /* Stacking order for floating UI. Higher = on top.
-     notes > chat indicator > chat preview > chat panel > menu. */
+     notes > chat indicator > chat preview > chat panel > scratchpad > menu. */
   --z-menu: 100;
+  --z-scratchpad: 145;
   --z-chat-panel: 150;
   --z-chat-preview: 155;
   --z-chat-indicator: 160;

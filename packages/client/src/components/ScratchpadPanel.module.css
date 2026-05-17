@@ -1,0 +1,97 @@
+.rnd {
+  z-index: var(--z-scratchpad);
+}
+
+.panel {
+  composes: card from "./Panel.module.css";
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+
+.header {
+  composes: header from "./Panel.module.css";
+  padding: 0.4rem 0.6rem;
+  background: #f7f7f7;
+}
+
+.dragHandle {
+  cursor: move;
+  user-select: none;
+}
+
+.close {
+  composes: close from "./Panel.module.css";
+  font-size: 1.2rem;
+}
+
+.close:hover {
+  background: #e8e8e8;
+}
+
+.title {
+  font-size: 0.85rem;
+  color: #555;
+  font-weight: 600;
+}
+
+.lockBar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.6rem;
+  border-bottom: 1px solid #e0e0e0;
+  background: #fafafa;
+  font-size: 0.8rem;
+  color: #444;
+}
+
+.lockText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lockHolder {
+  font-weight: 700;
+}
+
+.lockButton {
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.15rem 0.55rem;
+  border: 1px solid #999;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.lockButton:hover {
+  background: #eee;
+}
+
+/* Monospace is mandatory: anagram scratch / letter-counting use cases
+ * rely on every character being the same width. Using ui-monospace
+ * first picks up SF Mono on macOS, Cascadia on Windows, etc. */
+.textarea {
+  flex: 1;
+  min-height: 0;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  padding: 0.5rem 0.6rem;
+  border: 0;
+  resize: none;
+  outline: none;
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+  background: #fff;
+}
+
+.textarea:disabled {
+  background: #f6f6f6;
+  color: #555;
+  cursor: not-allowed;
+}
