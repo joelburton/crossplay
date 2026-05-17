@@ -110,6 +110,17 @@ export function ScratchpadPanel({
     };
   }, []);
 
+  // Window-level Escape closes the panel from anywhere — mirrors
+  // NoteDialog's listener so the same gesture works whether focus is
+  // in the textarea, on the board, or nowhere in particular.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   function onTextareaChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     if (!isHolder) return; // textarea is disabled in this state, defensive
     const next = e.target.value.slice(0, SCRATCHPAD_MAX_LEN);
@@ -119,13 +130,6 @@ export function ScratchpadPanel({
       debounceTimer.current = null;
       onEdit(next);
     }, EDIT_DEBOUNCE_MS);
-  }
-
-  function onTextareaKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      onClose();
-    }
   }
 
   function handleTakeover() {
@@ -202,7 +206,6 @@ export function ScratchpadPanel({
           value={draft}
           disabled={!isHolder}
           onChange={onTextareaChange}
-          onKeyDown={onTextareaKey}
           maxLength={SCRATCHPAD_MAX_LEN}
           spellCheck={false}
           placeholder={
