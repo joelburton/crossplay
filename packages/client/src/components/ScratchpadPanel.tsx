@@ -136,38 +136,35 @@ export function ScratchpadPanel({
     queueMicrotask(() => textareaRef.current?.focus());
   }
 
-  // Lock-bar copy + button. The three states correspond directly to
-  // the server's lock state: holder=you, holder=someone, no holder.
-  let lockContent: React.ReactNode;
+  // Lock-status copy + button, rendered inline in the title bar. The
+  // three states correspond directly to the server's lock state:
+  // holder=you, holder=someone, no holder.
+  let lockStatus: React.ReactNode;
+  let lockButton: React.ReactNode = null;
   if (isHolder) {
-    lockContent = (
+    lockStatus = (
       <>
-        <span className={styles.lockText}>
-          <span style={{ color: identity.color }}>●</span>{" "}
-          You&apos;re editing
-        </span>
+        <span style={{ color: identity.color }}>●</span> You&apos;re editing
       </>
     );
   } else if (lockedBy) {
-    lockContent = (
+    lockStatus = (
       <>
-        <span className={styles.lockText}>
-          <span style={{ color: lockedBy.color }}>●</span>{" "}
-          <span className={styles.lockHolder}>{lockedBy.name}</span> is editing
-        </span>
-        <button type="button" className={styles.lockButton} onClick={handleTakeover}>
-          Take over
-        </button>
+        <span style={{ color: lockedBy.color }}>●</span>{" "}
+        <span className={styles.lockHolder}>{lockedBy.name}</span> is editing
       </>
     );
+    lockButton = (
+      <button type="button" className={styles.lockButton} onClick={handleTakeover}>
+        Take over
+      </button>
+    );
   } else {
-    lockContent = (
-      <>
-        <span className={styles.lockText}>No one is editing</span>
-        <button type="button" className={styles.lockButton} onClick={handleTakeover}>
-          Edit
-        </button>
-      </>
+    lockStatus = <>No one is editing</>;
+    lockButton = (
+      <button type="button" className={styles.lockButton} onClick={handleTakeover}>
+        Edit
+      </button>
     );
   }
 
@@ -188,6 +185,8 @@ export function ScratchpadPanel({
       <aside className={styles.panel} aria-label="Scratchpad">
         <header className={`${styles.header} ${styles.dragHandle}`}>
           <span className={styles.title}>Scratchpad</span>
+          <span className={styles.lockText}>{lockStatus}</span>
+          {lockButton}
           <button
             type="button"
             className={styles.close}
@@ -197,7 +196,6 @@ export function ScratchpadPanel({
             ×
           </button>
         </header>
-        <div className={styles.lockBar}>{lockContent}</div>
         <textarea
           ref={textareaRef}
           className={styles.textarea}

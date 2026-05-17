@@ -11,6 +11,7 @@
   composes: header from "./Panel.module.css";
   padding: 0.4rem 0.6rem;
   background: #f7f7f7;
+  gap: 0.5rem;
 }
 
 .dragHandle {
@@ -31,17 +32,7 @@
   font-size: 0.85rem;
   color: #555;
   font-weight: 600;
-}
-
-.lockBar {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.35rem 0.6rem;
-  border-bottom: 1px solid #e0e0e0;
-  background: #fafafa;
-  font-size: 0.8rem;
-  color: #444;
+  flex-shrink: 0;
 }
 
 .lockText {
@@ -50,6 +41,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 0.8rem;
+  color: #444;
 }
 
 .lockHolder {
