@@ -274,6 +274,22 @@ export const migrations: Migration[] = [
       db.exec(`ALTER TABLE boards ADD COLUMN scratchpad_text TEXT NOT NULL DEFAULT ''`);
     },
   },
+  {
+    // Per-user stored NYT cookie jar, used by the "Get from NYT"
+    // feature to fetch a daily crossword on the user's behalf. The
+    // column holds a JSON object `{cookieName: value, ...}` matching
+    // the shape of the Python nytxw_puz tool's ~/nytxw_puz.cookies.json
+    // cache, so users can paste that file's contents straight in.
+    //
+    // No UI for setting this yet — users update via SQL. The home page
+    // hides the "Get from NYT" form unless the column is non-NULL.
+    // We never ship the cookie to the client; the public-user shape
+    // only exposes a `hasNytCookie: boolean` derived from this column.
+    version: 9,
+    up: (db) => {
+      db.exec(`ALTER TABLE users ADD COLUMN nyt_cookie TEXT`);
+    },
+  },
 ];
 
 export function openDb(path: string = process.env.DB_PATH ?? DEFAULT_DB_PATH): DatabaseSync {

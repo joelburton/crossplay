@@ -10,6 +10,7 @@ import {
 } from "../api";
 import { boardPath, navigate } from "../routing";
 import { formatRelative } from "../relativeTime";
+import { NytFetchForm } from "./NytFetchForm";
 import { SiteIcon } from "./SiteIcon";
 import { UploadForm } from "./UploadForm";
 import { UserMenu } from "./UserMenu";
@@ -323,6 +324,7 @@ export function HomePage({ onUploaded, user, onLogout }: Props) {
             Uploaded puzzles show up in <em>Your games</em> for you to keep playing.
             They aren&rsquo;t added to the <em>Puzzle library</em>, which is curated.
           </p>
+          {user.hasNytCookie && <NytFetchForm onFetched={onUploaded} />}
         </section>
       </div>
       <footer className={styles.footer}>

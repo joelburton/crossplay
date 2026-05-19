@@ -19,6 +19,13 @@ import { evictBoard, getCachedBoard, getOrLoadBoard, isBoardLive } from "./store
 import { slugify } from "./importer.js";
 import { detectFormat, parsePuzzleBuffer } from "./format.js";
 import {
+  NytAuthError,
+  NytFetchError,
+  NytNoPuzzleError,
+  fetchNytPuzzleForDate,
+  parseStoredCookieJar,
+} from "./nyt.js";
+import {
   PuzzleNotFoundError,
   addBoardMembership,
   findOrCreateBoard,
@@ -130,6 +137,96 @@ export async function registerHttpRoutes(app: FastifyInstance, opts: HttpRouteOp
             return reply.code(400).send({ error: err.message });
           }
           return reply.code(400).send({ error: `invalid .${format} file` });
+        }
+      });
+
+      api.post<{ Body: { date?: unknown } }>("/boards/fetch-nyt", async (req, reply) => {
+        // Fetch one daily NYT crossword on the user's behalf using their
+        // stored cookie jar, convert to ipuz, and stamp a fresh board
+        // (puzzle_id = NULL — same shape as the upload route). The
+        // resulting board feeds the normal play flow.
+        //
+        // Failure modes map to status codes the UI can react to:
+        //   - 401 not logged in
+        //   - 400 no stored cookie / bad date format
+        //   - 404 NYT has no Normal puzzle for that date
+        //   - 502 cookie likely expired / network / unexpected NYT body
+        if (!req.user) {
+          return reply.code(401).send({ error: "not logged in" });
+        }
+        const date = typeof req.body?.date === "string" ? req.body.date.trim() : "";
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+          return reply.code(400).send({ error: "date must be yyyy-mm-dd" });
+        }
+        let jar;
+        try {
+          jar = parseStoredCookieJar(req.user.nyt_cookie);
+        } catch (err) {
+          req.log.warn({ err }, "fetch-nyt: malformed stored cookie jar");
+          return reply
+            .code(400)
+            .send({ error: "Your stored NYT cookie is malformed. Refresh it." });
+        }
+        if (!jar) {
+          return reply
+            .code(400)
+            .send({ error: "No NYT cookie on file. Save one before fetching." });
+        }
+
+        let fetched;
+        try {
+          fetched = await fetchNytPuzzleForDate(jar, date);
+        } catch (err) {
+          if (err instanceof NytNoPuzzleError) {
+            return reply.code(404).send({ error: err.message });
+          }
+          if (err instanceof NytAuthError) {
+            return reply.code(502).send({ error: err.message });
+          }
+          if (err instanceof NytFetchError) {
+            req.log.warn({ err }, "fetch-nyt: upstream error");
+            return reply.code(502).send({ error: err.message });
+          }
+          throw err;
+        }
+
+        const id = randomUUID();
+        try {
+          // Re-stamp the puzzle's id so the saved ipuz is keyed by our
+          // board uuid, not the NYT print-date string the converter
+          // defaults to. Matches what the upload route does.
+          const state = {
+            ...fetched.state,
+            meta: { ...fetched.state.meta, id },
+          };
+          const ipuz = writeIpuz(state, fetched.solution);
+          const meta = state.meta;
+          db.exec("BEGIN");
+          try {
+            insertBoardRow({
+              db,
+              boardId: id,
+              puzzleId: null,
+              ipuz,
+              title: meta.title,
+              author: meta.author,
+              copyright: meta.copyright,
+              snapshot: JSON.stringify(state.snapshot),
+              ownerId: req.user.id,
+            });
+            addBoardMembership(db, id, req.user.id);
+            db.exec("COMMIT");
+          } catch (err) {
+            db.exec("ROLLBACK");
+            throw err;
+          }
+          return { boardId: id };
+        } catch (err) {
+          req.log.error({ err }, "fetch-nyt: failed to write board");
+          if (err instanceof IpuzUnsupportedError) {
+            return reply.code(400).send({ error: err.message });
+          }
+          throw err;
         }
       });
 

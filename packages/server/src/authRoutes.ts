@@ -61,6 +61,10 @@ export type PublicUser = {
   createdAt: string;
   prefs: Prefs;
   seenHelpAt: string | null;
+  /** Derived boolean: does the user have a stored NYT cookie jar?
+   *  Drives the home page's "Get from NYT" affordance — we never ship
+   *  the cookie itself to the client. */
+  hasNytCookie: boolean;
 };
 
 export function toPublicUser(user: UserRow, prefs: Prefs): PublicUser {
@@ -72,6 +76,7 @@ export function toPublicUser(user: UserRow, prefs: Prefs): PublicUser {
     createdAt: user.created_at,
     prefs,
     seenHelpAt: user.seen_help_at,
+    hasNytCookie: typeof user.nyt_cookie === "string" && user.nyt_cookie.length > 0,
   };
 }
 

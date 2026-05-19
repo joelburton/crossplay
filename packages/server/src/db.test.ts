@@ -125,7 +125,8 @@ describe("db", () => {
     type ColInfo = { name: string; type: string; notnull: number; pk: number };
     const usersCols = db.prepare("PRAGMA table_info(users)").all() as ColInfo[];
     // Asserts the full live shape after all migrations have run, not
-    // strictly the v4 set — `seen_help_at` arrived in v7.
+    // strictly the v4 set — `seen_help_at` arrived in v7, `nyt_cookie`
+    // in v9.
     expect(usersCols.map((c) => c.name).sort()).toEqual([
       "created_at",
       "email",
@@ -134,6 +135,7 @@ describe("db", () => {
       "id",
       "invite_code_used",
       "is_admin",
+      "nyt_cookie",
       "password_hash",
       "prefs",
       "seen_help_at",

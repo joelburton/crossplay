@@ -68,6 +68,7 @@ const testUser: api.AuthUser = {
   createdAt: "2026-05-12",
   prefs: {},
   seenHelpAt: "2026-05-12T00:00:00.000Z",
+  hasNytCookie: false,
 };
 
 describe("HomePage", () => {
@@ -368,5 +369,25 @@ describe("HomePage", () => {
     render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
     await flushPromises();
     expect(screen.getByText(/couldn't reach the server/i)).toBeTruthy();
+  });
+
+  it("hides the 'Get from NYT' form when the user has no stored cookie", async () => {
+    stubLists([], []);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    await flushPromises();
+    expect(screen.queryByRole("button", { name: /get from nyt/i })).toBeNull();
+  });
+
+  it("shows the 'Get from NYT' form when hasNytCookie is true", async () => {
+    stubLists([], []);
+    render(
+      <HomePage
+        onUploaded={() => {}}
+        user={{ ...testUser, hasNytCookie: true }}
+        onLogout={() => {}}
+      />,
+    );
+    await flushPromises();
+    expect(screen.getByRole("button", { name: /get from nyt/i })).toBeTruthy();
   });
 });

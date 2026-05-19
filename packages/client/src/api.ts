@@ -55,6 +55,20 @@ export async function uploadBoard(file: File): Promise<{ boardId: string }> {
   return res.json();
 }
 
+/** Fetch the NYT daily crossword for `date` (yyyy-mm-dd) using the
+ *  user's stored cookie jar, and create a board from it. Returns the
+ *  new board id; on failure the server's `{error}` message is surfaced
+ *  in `HttpError.message` so the UI can display it inline. */
+export async function fetchNytBoard(date: string): Promise<{ boardId: string }> {
+  const res = await fetch("/api/boards/fetch-nyt", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ date }),
+  });
+  if (!res.ok) throw new HttpError(res.status, await readErrorMessage(res));
+  return res.json();
+}
+
 /** Find-or-create a board for the given puzzle id. The server enforces
  *  one board per puzzle (will become per-(user, puzzle) once users
  *  exist). Returns the board id either way. */
@@ -173,6 +187,9 @@ export type AuthUser = {
   /** ISO timestamp of when the user first dismissed the help dialog
    *  (null = unseen, triggers auto-open on first board load). */
   seenHelpAt: string | null;
+  /** True when the user has a stored NYT cookie jar (`users.nyt_cookie`
+   *  is non-NULL). Gates the home page's "Get from NYT" affordance. */
+  hasNytCookie: boolean;
 };
 
 /** Lift the server's `{error: "..."}` field into an HttpError message

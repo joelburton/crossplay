@@ -9,7 +9,7 @@
  * loaded board doesn't leak.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -985,5 +985,237 @@ describe("boards survive their source puzzle being deleted", () => {
     expect(ipuz.statusCode).toBe(200);
     const parsed = JSON.parse(ipuz.body) as { kind?: unknown };
     expect(Array.isArray(parsed.kind)).toBe(true);
+  });
+});
+
+describe("http: POST /api/boards/fetch-nyt", () => {
+  let app: FastifyInstance;
+  let db: DatabaseSync;
+  let cookies: Record<string, string>;
+  let userId: number;
+
+  beforeEach(async () => {
+    _clearCacheForTest();
+    ({ app, db } = await buildApp());
+    ({ cookies, userId } = await seedAuth(app, db));
+  });
+  afterEach(async () => {
+    await app.close();
+    _clearCacheForTest();
+    vi.unstubAllGlobals();
+  });
+
+  /** Set a non-empty stored cookie jar for the test user. The actual
+   *  value doesn't matter — the test stubs `fetch` so the jar never
+   *  hits the network. */
+  function seedNytCookie(jar: Record<string, string> = { "NYT-S": "abc" }): void {
+    db.prepare("UPDATE users SET nyt_cookie = ? WHERE id = ?").run(
+      JSON.stringify(jar),
+      userId,
+    );
+  }
+
+  /** Minimal NYT v6 response body. One open cell + one Across clue is
+   *  enough to exercise the conversion + ipuz round-trip on the way to
+   *  the board row. */
+  function makeNytPuzzleBody() {
+    return {
+      body: [
+        {
+          dimensions: { width: 1, height: 1 },
+          cells: [{ type: 1, answer: "A", label: "1" }],
+          clues: [{ text: "first", direction: "Across", label: "1" }],
+        },
+      ],
+      title: "Test",
+      publicationDate: "2026-05-17",
+      constructors: ["Tester"],
+      copyright: "2026",
+    };
+  }
+
+  /** Stub global fetch with a per-URL routing table — `list` for the
+   *  v3 puzzles.json endpoint, `puzzle` for v6/puzzle/<id>.json. Returns
+   *  a vi.fn so individual tests can assert against call args / counts. */
+  function stubNytFetch(routes: {
+    list?: () => { status?: number; body: unknown };
+    puzzle?: () => { status?: number; body: unknown };
+  }) {
+    const fn = vi.fn(async (url: string | URL | Request) => {
+      const u = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
+      let r: { status?: number; body: unknown };
+      if (u.includes("/svc/crosswords/v3/puzzles.json")) {
+        r = routes.list?.() ?? { body: { results: [] } };
+      } else if (u.includes("/svc/crosswords/v6/puzzle/")) {
+        r = routes.puzzle?.() ?? { body: makeNytPuzzleBody() };
+      } else {
+        throw new Error(`unexpected fetch URL in test: ${u}`);
+      }
+      const status = r.status ?? 200;
+      const text = typeof r.body === "string" ? r.body : JSON.stringify(r.body);
+      return new Response(text, { status });
+    });
+    vi.stubGlobal("fetch", fn);
+    return fn;
+  }
+
+  it("creates a board and adds the caller as a member on the happy path", async () => {
+    seedNytCookie();
+    stubNytFetch({
+      list: () => ({
+        body: {
+          results: [
+            { puzzle_id: 12345, print_date: "2026-05-17", format_type: "Normal" },
+          ],
+        },
+      }),
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/boards/fetch-nyt",
+      payload: { date: "2026-05-17" },
+      cookies,
+    });
+    expect(res.statusCode).toBe(200);
+    const { boardId } = res.json() as { boardId: string };
+    expect(typeof boardId).toBe("string");
+    const row = db
+      .prepare("SELECT title, owner_id, puzzle_id FROM boards WHERE id = ?")
+      .get(boardId) as { title: string; owner_id: number; puzzle_id: string | null };
+    expect(row.owner_id).toBe(userId);
+    expect(row.puzzle_id).toBeNull(); // matches the upload-route pattern
+    expect(row.title).toMatch(/NYT Sun 5\/17\/26/);
+    const member = db
+      .prepare("SELECT 1 AS ok FROM boards_users WHERE board_id = ? AND user_id = ?")
+      .get(boardId, userId);
+    expect(member).toBeTruthy();
+  });
+
+  it("returns 401 when not logged in", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/boards/fetch-nyt",
+      payload: { date: "2026-05-17" },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("returns 400 with a clear message when the user has no stored cookie", async () => {
+    // No seedNytCookie call — column stays NULL.
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/boards/fetch-nyt",
+      payload: { date: "2026-05-17" },
+      cookies,
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toMatch(/no nyt cookie/i);
+  });
+
+  it("returns 400 when the date is missing or malformed", async () => {
+    seedNytCookie();
+    for (const payload of [{}, { date: "" }, { date: "5/17/26" }, { date: "2026-5-17" }]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/boards/fetch-nyt",
+        payload,
+        cookies,
+      });
+      expect(res.statusCode).toBe(400);
+    }
+  });
+
+  it("returns 400 when the stored cookie is malformed JSON", async () => {
+    db.prepare("UPDATE users SET nyt_cookie = ? WHERE id = ?").run(
+      "not json",
+      userId,
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/boards/fetch-nyt",
+      payload: { date: "2026-05-17" },
+      cookies,
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toMatch(/malformed/i);
+  });
+
+  it("returns 404 when NYT publishes no Normal puzzle for that date", async () => {
+    seedNytCookie();
+    stubNytFetch({ list: () => ({ body: { results: [] } }) });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/boards/fetch-nyt",
+      payload: { date: "2026-05-17" },
+      cookies,
+    });
+    expect(res.statusCode).toBe(404);
+    expect((res.json() as { error: string }).error).toMatch(/no nyt crossword/i);
+  });
+
+  it("returns 502 when NYT serves a bot challenge (non-JSON 200)", async () => {
+    seedNytCookie();
+    stubNytFetch({
+      list: () => ({ body: "<html>access denied</html>" }),
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/boards/fetch-nyt",
+      payload: { date: "2026-05-17" },
+      cookies,
+    });
+    expect(res.statusCode).toBe(502);
+    expect((res.json() as { error: string }).error).toMatch(/cookie.*expired/i);
+  });
+
+  it("returns 502 when NYT responds with 403 (cookie outright rejected)", async () => {
+    seedNytCookie();
+    stubNytFetch({
+      list: () => ({ status: 403, body: { error: "forbidden" } }),
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/boards/fetch-nyt",
+      payload: { date: "2026-05-17" },
+      cookies,
+    });
+    expect(res.statusCode).toBe(502);
+    expect((res.json() as { error: string }).error).toMatch(/rejected|expired/i);
+  });
+});
+
+describe("auth: hasNytCookie on PublicUser", () => {
+  let app: FastifyInstance;
+  let db: DatabaseSync;
+  let cookies: Record<string, string>;
+  let userId: number;
+
+  beforeEach(async () => {
+    _clearCacheForTest();
+    ({ app, db } = await buildApp());
+    ({ cookies, userId } = await seedAuth(app, db));
+  });
+  afterEach(async () => {
+    await app.close();
+    _clearCacheForTest();
+  });
+
+  it("reports hasNytCookie=false when the column is NULL", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/auth/me", cookies });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { user: { hasNytCookie: boolean } }).user.hasNytCookie).toBe(
+      false,
+    );
+  });
+
+  it("reports hasNytCookie=true once the column is populated", async () => {
+    db.prepare("UPDATE users SET nyt_cookie = ? WHERE id = ?").run(
+      '{"NYT-S":"x"}',
+      userId,
+    );
+    const res = await app.inject({ method: "GET", url: "/api/auth/me", cookies });
+    expect((res.json() as { user: { hasNytCookie: boolean } }).user.hasNytCookie).toBe(
+      true,
+    );
   });
 });

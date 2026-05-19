@@ -124,6 +124,10 @@ export type UserRow = {
   invite_code_used: string | null;
   prefs: string | null;
   seen_help_at: string | null;
+  /** Stored JSON cookie jar (`{name: value}`) for the "Get from NYT"
+   *  feature. NULL when the user hasn't pasted one in — the home page
+   *  hides the form in that case. Never sent to the client. */
+  nyt_cookie: string | null;
   created_at: string;
 };
 
