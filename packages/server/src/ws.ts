@@ -1064,11 +1064,12 @@ export function registerWsRoutes(
 
       entry.sockets.add(socket);
       send(socket, { type: "snapshot", snapshot: entry.state.snapshot });
-      // Catch the new socket up on the scratchpad. Unlike chat history
-      // (which is replayed via the persisted ChatLine[] on demand if a
-      // future feature surfaces it), the scratchpad is a single text
-      // blob — one message covers initial paint + the current lock
-      // holder.
+      // Catch the new socket up on persisted chat. The client replaces
+      // its list on receipt; live messages after this point arrive as
+      // chatMessage broadcasts.
+      send(socket, { type: "chatHistory", messages: entry.chat });
+      // Catch the new socket up on the scratchpad — a single text blob
+      // plus the current lock holder.
       send(socket, {
         type: "scratchpadState",
         text: entry.scratchpadText,

@@ -278,6 +278,27 @@ describe("ws integration", () => {
     await Promise.all([waitClose(a), waitClose(b)]);
   });
 
+  it("replays persisted chat history to a joining socket", async () => {
+    const a = open(port, puzzleId);
+    await next(a, "snapshot");
+    // Drain the (empty) initial history that arrived before we sent.
+    await next(a, "chatHistory");
+
+    send(a, { type: "chat", name: "Joel", color: "#1f77b4", text: "first" });
+    send(a, { type: "chat", name: "Joel", color: "#1f77b4", text: "second" });
+    await next(a, "chatMessage");
+    await next(a, "chatMessage");
+
+    const b = open(port, puzzleId);
+    await next(b, "snapshot");
+    const history = await next(b, "chatHistory");
+    expect(history.messages.map((m) => m.text)).toEqual(["first", "second"]);
+
+    a.ws.close();
+    b.ws.close();
+    await Promise.all([waitClose(a), waitClose(b)]);
+  });
+
   it("broadcasts a multi-character rebus fill end-to-end", async () => {
     const a = open(port, puzzleId);
     const b = open(port, puzzleId);

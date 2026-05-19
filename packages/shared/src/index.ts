@@ -177,6 +177,14 @@ export type ServerMessage =
       senderColor?: string;
     }
   | { type: "chatMessage"; name: string; color: string; text: string; ts: number }
+  /** Catch-up payload sent once to a joining socket: the full persisted
+   *  chat history for the board, oldest first. Clients should replace
+   *  (not append to) their chat list on receipt — server is
+   *  authoritative. Subsequent live messages arrive as `chatMessage`. */
+  | {
+      type: "chatHistory";
+      messages: { name: string; color: string; text: string; ts: number }[];
+    }
   | { type: "notesShown" }
   | {
       type: "feedback";

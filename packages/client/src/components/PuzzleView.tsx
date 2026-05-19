@@ -397,6 +397,12 @@ export function PuzzleView({
         return next;
       });
     }, []),
+    onChatHistory: useCallback((lines: ChatLine[]) => {
+      // Replace, don't append — server is authoritative, and this
+      // fires on every (re)connect. Doesn't touch preview / unread:
+      // historical messages aren't "new" to the user.
+      setChatMessages(lines);
+    }, []),
     onChatMessage: useCallback((line: ChatLine) => {
       setChatMessages((prev) => [...prev, line]);
 

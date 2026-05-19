@@ -21,6 +21,7 @@ type Handlers = {
     senderColor: string | undefined,
   ) => void;
   onChatMessage?: (line: ChatLine) => void;
+  onChatHistory?: (lines: ChatLine[]) => void;
   onNotesShown?: () => void;
   onFeedback?: (feedback: Feedback) => void;
   onCursorMoved?: (row: number, col: number, color: string, name: string) => void;
@@ -138,6 +139,8 @@ export function useBoardSocket(boardId: string, handlers: Handlers) {
             text: msg.text,
             ts: msg.ts,
           });
+        } else if (msg.type === "chatHistory") {
+          handlersRef.current.onChatHistory?.(msg.messages);
         } else if (msg.type === "notesShown") {
           handlersRef.current.onNotesShown?.();
         } else if (msg.type === "feedback") {
