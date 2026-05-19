@@ -18,6 +18,7 @@
  *   - NytFetchError      — everything else (network / unexpected body)
  */
 
+import { PNG } from "pngjs";
 import type { Cell, Clue, PuzzleState } from "@crossplay/shared";
 
 const LIST_API =
@@ -90,10 +91,17 @@ type NytPuzzleBody = {
   cells: NytCell[];
   clues: NytClue[];
   dimensions: { width: number; height: number };
+  /** Present when the puzzle has raster overlays — currently observed
+   *  carrying theme circles drawn on top of shaded cells, which the
+   *  per-cell `type` field can't express (its codes are mutually
+   *  exclusive). The value is a 1-based index into the response's
+   *  `assets` array. */
+  overlays?: { beforeStart?: number };
 };
 
 type NytPuzzleResponse = {
   body: NytPuzzleBody[];
+  assets?: Array<{ uri: string }>;
   publicationDate?: string;
   title?: string;
   editor?: string;
@@ -330,6 +338,142 @@ export async function fetchNytPuzzleList(
   }));
 }
 
+/** Detect circles in a NYT overlay PNG and return the set of (row, col)
+ *  cell indices each one covers.
+ *
+ *  Background: NYT's v6 cell-`type` field is mutually exclusive
+ *  (1=normal, 2=circled, 3=gray), so it can't represent a cell that is
+ *  both circled AND shaded. When a puzzle does that, NYT instead bakes
+ *  the circles into a raster overlay (`body.overlays.beforeStart`
+ *  indexes into the response's `assets` array) and composites it over
+ *  the SVG grid. We extract circle locations by flood-filling the
+ *  opaque pixels into connected components and mapping each centroid
+ *  back to a cell.
+ *
+ *  Coordinate model: NYT's SVG uses 33-pixel cells with a 3-pixel
+ *  border around the grid (viewBox `0 0 (6+33W) (6+33H)`). The overlay
+ *  PNG is a uniform scaling of that viewBox; we derive the scale from
+ *  the PNG width and known grid width. Sized correctly for any grid
+ *  (15×15 daily, 21×21 Sunday, etc.).
+ *
+ *  Tolerant of small artifacts: components under ~50 pixels are
+ *  rejected (well below a real circle's outline, which is ~700+ pixels
+ *  for a 33px-cell grid at typical NYT PNG resolution).
+ *
+ *  Exported for unit testing. */
+export function detectOverlayCircles(
+  png: PNG,
+  width: number,
+  height: number,
+): Set<string> {
+  // 33-px cells + 3-px border → viewBox span of 6+33*N.
+  const viewBoxW = 6 + 33 * width;
+  const scale = png.width / viewBoxW;
+  // Components smaller than this are noise; the smallest plausible
+  // circle outline at scale=1 (viewBox px) traces ~85 pixels (2πr for
+  // r=13.5), so even a tiny scale of 0.6 lands well above 50.
+  const MIN_COMPONENT_PIXELS = 50;
+
+  const W = png.width;
+  const H = png.height;
+  const visited = new Uint8Array(W * H);
+  const alphaAt = (x: number, y: number): number =>
+    x < 0 || x >= W || y < 0 || y >= H ? 0 : png.data[(y * W + x) * 4 + 3]!;
+
+  const cells = new Set<string>();
+  const stack: number[] = [];
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const start = y * W + x;
+      if (visited[start] || alphaAt(x, y) < 32) continue;
+      stack.length = 0;
+      stack.push(start);
+      visited[start] = 1;
+      let sumX = 0, sumY = 0, count = 0;
+      while (stack.length) {
+        const i = stack.pop()!;
+        const px = i % W;
+        const py = (i - px) / W;
+        sumX += px;
+        sumY += py;
+        count++;
+        // 4-connected neighbours; diagonal connectivity isn't needed
+        // because the circle outline is thicker than a single pixel.
+        if (px + 1 < W) {
+          const ni = i + 1;
+          if (!visited[ni] && alphaAt(px + 1, py) >= 32) { visited[ni] = 1; stack.push(ni); }
+        }
+        if (px > 0) {
+          const ni = i - 1;
+          if (!visited[ni] && alphaAt(px - 1, py) >= 32) { visited[ni] = 1; stack.push(ni); }
+        }
+        if (py + 1 < H) {
+          const ni = i + W;
+          if (!visited[ni] && alphaAt(px, py + 1) >= 32) { visited[ni] = 1; stack.push(ni); }
+        }
+        if (py > 0) {
+          const ni = i - W;
+          if (!visited[ni] && alphaAt(px, py - 1) >= 32) { visited[ni] = 1; stack.push(ni); }
+        }
+      }
+      if (count < MIN_COMPONENT_PIXELS) continue;
+      const cxSvg = sumX / count / scale;
+      const cySvg = sumY / count / scale;
+      const col = Math.round((cxSvg - 3) / 33 - 0.5);
+      const row = Math.round((cySvg - 3) / 33 - 0.5);
+      if (row < 0 || row >= height || col < 0 || col >= width) continue;
+      cells.add(`${row},${col}`);
+    }
+  }
+  return cells;
+}
+
+/** Fetch and decode a NYT overlay PNG, then run `detectOverlayCircles`.
+ *  Internal helper for the puzzle-by-id path; returns an empty set on
+ *  any non-fatal failure (decode error, network blip) since overlay
+ *  data is decorative, not load-bearing. */
+async function fetchOverlayCircles(
+  url: string,
+  jar: NytCookieJar,
+  width: number,
+  height: number,
+): Promise<Set<string>> {
+  let resp: Response;
+  try {
+    resp = await fetch(url, {
+      headers: {
+        Cookie: cookieHeader(jar),
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+          "(KHTML, like Gecko) Chrome/125.0 Safari/537.36",
+        Referer: "https://www.nytimes.com/crosswords",
+      },
+    });
+  } catch {
+    return new Set();
+  }
+  if (!resp.ok) return new Set();
+  let png: PNG;
+  try {
+    const buf = Buffer.from(await resp.arrayBuffer());
+    png = PNG.sync.read(buf);
+  } catch {
+    return new Set();
+  }
+  return detectOverlayCircles(png, width, height);
+}
+
+/** Apply a detected circle set to a cell grid in place, setting
+ *  `circled: true` on each non-block cell at the named (row, col).
+ *  Exported for testing. */
+export function applyOverlayCircles(cells: Cell[][], circled: Set<string>): void {
+  for (const key of circled) {
+    const [r, c] = key.split(",").map(Number) as [number, number];
+    const cell = cells[r]?.[c];
+    if (cell && cell.kind === "cell") cell.circled = true;
+  }
+}
+
 /** Fetch one puzzle by NYT puzzle id. Pass the `printDate` so the
  *  resulting `meta.id` falls back to a sensible string if the
  *  publication-date field is missing (rare but possible on legacy
@@ -341,7 +485,24 @@ export async function fetchNytPuzzleById(
 ): Promise<{ state: PuzzleState; solution: (string[] | null)[][] }> {
   const url = `https://www.nytimes.com/svc/crosswords/v6/puzzle/${puzzleId}.json`;
   const resp = await nytGetJson<NytPuzzleResponse>(url, jar);
-  return nytResponseToPuzzleState(resp, printDate);
+  const result = nytResponseToPuzzleState(resp, printDate);
+
+  // If the response carries a raster overlay (currently observed
+  // carrying theme circles on shaded cells), fetch + decode it and
+  // mark the indicated cells as circled. The asset index is 1-based.
+  const overlayIdx = resp.body[0]?.overlays?.beforeStart;
+  if (overlayIdx && resp.assets && resp.assets[overlayIdx - 1]?.uri) {
+    const uri = resp.assets[overlayIdx - 1]!.uri;
+    const circled = await fetchOverlayCircles(
+      uri,
+      jar,
+      resp.body[0]!.dimensions.width,
+      resp.body[0]!.dimensions.height,
+    );
+    applyOverlayCircles(result.state.snapshot.cells, circled);
+  }
+
+  return result;
 }
 
 /** Convenience: list + first-Normal-result + by-id, for the one-shot

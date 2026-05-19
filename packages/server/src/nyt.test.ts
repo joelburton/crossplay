@@ -6,12 +6,21 @@
  * conversion logic so a regression shows up with a useful test name.
  */
 
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { PNG } from "pngjs";
 import { describe, expect, it } from "vitest";
 import {
   NytFetchError,
+  applyOverlayCircles,
+  detectOverlayCircles,
   nytResponseToPuzzleState,
   parseStoredCookieJar,
 } from "./nyt.js";
+import type { Cell } from "@crossplay/shared";
+
+const FIXTURE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..", "fixtures");
 
 // Helper to assemble a flat NYT-v6-shaped response. Width/height
 // inferred from `cells.length`. Each `cell` is a partial shape — the
@@ -329,5 +338,35 @@ describe("parseStoredCookieJar", () => {
 
   it("throws when the decoded object is empty", () => {
     expect(() => parseStoredCookieJar(b64({}))).toThrow(/empty/i);
+  });
+});
+
+describe("detectOverlayCircles + applyOverlayCircles", () => {
+  // The fixture is the actual NYT overlay PNG for the 2026-04-30 daily
+  // ("Oscar Bait"), which carries six circles drawn on top of shaded
+  // theme cells in three rows (TROUT, SALMON, CHAR). The v6 cell
+  // payload's `type` field can't represent circled+shaded together, so
+  // these circles only exist in the raster overlay.
+  it("finds the six circles in the 4/30/26 overlay", () => {
+    const buf = readFileSync(resolve(FIXTURE_DIR, "nyt-overlay-salmon-trout-char.png"));
+    const png = PNG.sync.read(buf);
+    const cells = detectOverlayCircles(png, 15, 15);
+    expect(new Set(cells)).toEqual(
+      new Set(["2,11", "2,13", "4,4", "4,6", "10,11", "10,13"]),
+    );
+  });
+
+  it("unions detected circles onto an existing cell grid", () => {
+    const cells: Cell[][] = [
+      [
+        { kind: "cell", number: null, fill: null, shaded: true },
+        { kind: "block" },
+      ],
+    ];
+    applyOverlayCircles(cells, new Set(["0,0", "0,1"]));
+    // Shaded cell becomes both shaded AND circled.
+    expect(cells[0]![0]).toMatchObject({ shaded: true, circled: true });
+    // Block at (0,1) is unchanged — we never add `circled` to a block.
+    expect(cells[0]![1]).toEqual({ kind: "block" });
   });
 });
