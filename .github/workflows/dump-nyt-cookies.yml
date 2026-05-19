@@ -1,0 +1,75 @@
+# Cross-compile dump-nyt-cookies for the four common targets we ship.
+#
+# Triggers:
+#   - push / PR touching the tool: build + upload as a workflow artifact
+#     so a broken build is caught before tagging
+#   - tag matching `v*`: additionally attach the four binaries to the
+#     GitHub Release for that tag, so users can download a ready-to-run
+#     binary without cloning the repo or installing Go
+#
+# kooky is pure Go, so `CGO_ENABLED=0` lets one Linux runner build all
+# four targets — no platform-specific matrix needed.
+name: dump-nyt-cookies
+
+on:
+  # No `paths:` filter on push because `paths:` applies to tag pushes
+  # too — a release tag on a commit that didn't touch the tool would
+  # otherwise be silently skipped, defeating the whole point of the
+  # workflow. The build is cheap (~60s), so running it on every push
+  # to main is a fine trade for guaranteed release publishing.
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - "tools/dump-nyt-cookies/**"
+      - ".github/workflows/dump-nyt-cookies.yml"
+
+# softprops/action-gh-release needs write access to attach assets;
+# everything else only reads.
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/dump-nyt-cookies
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          # Pin to whatever the module declares so a Go version bump
+          # happens in one place (go.mod) instead of two.
+          go-version-file: tools/dump-nyt-cookies/go.mod
+          cache-dependency-path: tools/dump-nyt-cookies/go.sum
+
+      - name: Build all targets
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p dist
+          # -trimpath strips local paths from the binary; -ldflags="-s -w"
+          # drops the symbol + debug tables. Together they take ~7MB
+          # binaries down to ~5MB.
+          GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o dist/dump-nyt-cookies-macos-arm64 .
+          GOOS=darwin  GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/dump-nyt-cookies-macos-amd64 .
+          GOOS=linux   GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/dump-nyt-cookies-linux-amd64 .
+          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/dump-nyt-cookies-windows-amd64.exe .
+          ls -lh dist
+
+      - name: Upload as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dump-nyt-cookies-binaries
+          path: tools/dump-nyt-cookies/dist/
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: tools/dump-nyt-cookies/dist/*
+          fail_on_unmatched_files: true

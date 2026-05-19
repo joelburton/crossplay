@@ -48,6 +48,22 @@ $ npx tsx packages/server/scripts/import-puzzle.ts --force ~/puzzles/duplicate.p
 REPLACED /home/joel/puzzles/duplicate.puz -> duplicate
 ```
 
+## Fetching from the NYT
+
+If you have an active nytimes.com subscription session in your browser, Crossplay can pull the daily crossword directly into your boards — no need to find a `.puz` file somewhere first.
+
+The setup is a one-time paste of your NYT cookies:
+
+1. Download `dump-nyt-cookies` for your platform from the [latest release](https://github.com/joelburton/crossplay/releases/latest). It's a small standalone binary (~5MB) — no Python, no Go, no other runtime required.
+2. Run it on the machine where you're logged into nytimes.com. It reads cookies from any browser it recognizes (Chrome, Firefox, Safari, Edge, Brave, …) and prints a single base64-encoded line.
+3. In Crossplay: top-right user menu → **Settings…** → paste the line into the **NYT cookie** field → **Save**. The dialog shows the decoded cookies so you can sanity-check what's stored.
+
+Once a cookie is on file, the home page's upload column gains a date input + **Get from NYT** button. Pick a date, click, and the puzzle is stamped as a new game for you.
+
+Cookies expire periodically. When a fetch fails with "Your NYT cookie has likely expired…", click the inline **Update NYT cookie…** link to reopen Settings, run `dump-nyt-cookies` again, and re-paste. Re-running the binary takes a couple of seconds.
+
+The cookie is private to your account — visible only to you in Settings, never shown to other users, and only used server-side to relay the NYT's own API call on your behalf.
+
 ## Sharing dev with a friend
 
 To share with a friend without deploying anything, point a Cloudflare quick tunnel at the dev client:
@@ -90,6 +106,7 @@ Optional env vars:
 - Live chat in a draggable, resizable panel. Messages prefixed with `!` show up bold and force-open the chat for everyone — useful for "going to grab lunch" announcements.
 - Notes (the description field that comes with cryptic puzzles) viewable in a draggable panel. Opening it broadcasts to everyone, so you can spot when a partner consults the notes.
 - Supports circled theme cells (the cells the NYT draws a thin ring around to mark themers); both `.puz` and `.ipuz` round-trip them.
+- Direct NYT fetch: paste your nytimes.com cookies once (see [Fetching from the NYT](#fetching-from-the-nyt)) and grab any daily puzzle by date — no `.puz` file required.
 - A handful of keyboard shortcuts: `⌥R` / `⌥⇧R` reveal letter / word, `⌥C` / `⌥⇧C` check letter / word, `⌥N` notes, `⌥P` toggle pen/pencil, `⌥M` open the menu (arrow keys navigate, Enter chooses), `/` open chat, `Esc` close chat, `Tab` / `⇧Tab` jump between clues.
 
 ## URL options

@@ -10,16 +10,18 @@
 //
 //	go build -o dump-nyt-cookies .
 //
-// Cross-compile distributable binaries from one host (Mac shown):
+// Cross-compile distributable binaries from one host. kooky is pure
+// Go, so CGO_ENABLED=0 lets a single Linux or macOS host produce all
+// four targets. -trimpath strips local paths; -ldflags="-s -w" drops
+// the symbol + debug tables (~30% smaller binary).
 //
-//	GOOS=darwin  GOARCH=arm64 go build -o dist/dump-nyt-cookies-macos-arm64 .
-//	GOOS=darwin  GOARCH=amd64 go build -o dist/dump-nyt-cookies-macos-amd64 .
-//	GOOS=linux   GOARCH=amd64 go build -o dist/dump-nyt-cookies-linux-amd64 .
-//	GOOS=windows GOARCH=amd64 go build -o dist/dump-nyt-cookies-windows-amd64.exe .
+//	CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o dist/dump-nyt-cookies-macos-arm64 .
+//	CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/dump-nyt-cookies-macos-amd64 .
+//	CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/dump-nyt-cookies-linux-amd64 .
+//	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/dump-nyt-cookies-windows-amd64.exe .
 //
-// Whether the cross-builds actually work without a C toolchain
-// depends on whether kooky's per-platform paths need cgo — we'll
-// find out at build time.
+// CI does the same thing on tag pushes — see
+// .github/workflows/dump-nyt-cookies.yml.
 package main
 
 import (
