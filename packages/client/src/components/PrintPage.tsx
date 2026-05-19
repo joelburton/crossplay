@@ -10,8 +10,10 @@
  *     answer key with wordplay explanations in `meta.note`.
  *
  * Both buttons lazy-import the jsPDF-based print module, build a Blob,
- * and open it in a new tab — the user's browser handles preview /
- * save / print from there. See docs/print-pdf-plan.md.
+ * and trigger a download — the browser saves it and the user opens
+ * it from their downloads. (We used to open the blob in a new tab,
+ * but that gets blocked / backgrounded on Safari and Firefox.)
+ * See docs/print-pdf-plan.md.
  */
 
 import { useEffect, useState } from "react";
@@ -25,6 +27,22 @@ type LoadState =
   | { kind: "error"; message: string };
 
 type BusyKind = "puzzle" | "solution" | null;
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function pdfFilename(title: string, suffix: "puzzle" | "solution") {
+  const base = title.trim().replace(/[\\/:*?"<>|]+/g, "").replace(/\s+/g, " ").trim() || "crossword";
+  return `${base} — ${suffix}.pdf`;
+}
 
 export function PrintPage({ boardId }: { boardId: string }) {
   const [load, setLoad] = useState<LoadState>({ kind: "loading" });
@@ -68,8 +86,7 @@ export function PrintPage({ boardId }: { boardId: string }) {
     try {
       const { generateCrosswordPdf } = await import("../print");
       const blob = await generateCrosswordPdf(puzzle);
-      const url = URL.createObjectURL(blob);
-      window.open(url, "_blank", "noopener");
+      downloadBlob(blob, pdfFilename(puzzle.meta.title, "puzzle"));
     } catch (err) {
       setGenError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -86,8 +103,7 @@ export function PrintPage({ boardId }: { boardId: string }) {
         fetchBoardSolution(boardId),
       ]);
       const blob = await generateSolutionPdf(puzzle, solution);
-      const url = URL.createObjectURL(blob);
-      window.open(url, "_blank", "noopener");
+      downloadBlob(blob, pdfFilename(puzzle.meta.title, "solution"));
     } catch (err) {
       setGenError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -121,9 +137,7 @@ export function PrintPage({ boardId }: { boardId: string }) {
         </button>
       </div>
       <p className={styles.hint}>
-        The PDF opens in a new browser tab. If nothing seems to happen, check
-        for a blocked-popup icon in your address bar, or look at your other
-        tabs — the new tab may have opened in the background.
+        The PDF will be saved to your Downloads folder.
       </p>
       {genError && <p className={styles.error}>Couldn't generate PDF: {genError}</p>}
     </div>
