@@ -1184,6 +1184,179 @@ describe("http: POST /api/boards/fetch-nyt", () => {
   });
 });
 
+describe("auth: POST /api/auth/nyt-cookie", () => {
+  let app: FastifyInstance;
+  let db: DatabaseSync;
+  let cookies: Record<string, string>;
+  let userId: number;
+
+  beforeEach(async () => {
+    _clearCacheForTest();
+    ({ app, db } = await buildApp());
+    ({ cookies, userId } = await seedAuth(app, db));
+  });
+  afterEach(async () => {
+    await app.close();
+    _clearCacheForTest();
+  });
+
+  /** Build base64-of-JSON for the route's `{cookie}` body. Mirrors
+   *  what dump-nyt-cookies emits. */
+  function b64(obj: unknown): string {
+    return Buffer.from(JSON.stringify(obj), "utf8").toString("base64");
+  }
+
+  it("saves a base64-encoded cookie blob and returns the decoded jar", async () => {
+    const payload = { cookie: b64({ "NYT-S": "abc", "nyt-a": "xyz" }) };
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/auth/nyt-cookie",
+      payload,
+      cookies,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      hasNytCookie: boolean;
+      cookie: Record<string, string> | null;
+    };
+    expect(body.hasNytCookie).toBe(true);
+    expect(body.cookie).toEqual({ "NYT-S": "abc", "nyt-a": "xyz" });
+    const stored = (
+      db.prepare("SELECT nyt_cookie FROM users WHERE id = ?").get(userId) as {
+        nyt_cookie: string | null;
+      }
+    ).nyt_cookie;
+    expect(stored).toBe(payload.cookie);
+  });
+
+  it("clears the column when cookie is null and reports hasNytCookie=false", async () => {
+    db.prepare("UPDATE users SET nyt_cookie = ? WHERE id = ?").run("preexisting", userId);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/auth/nyt-cookie",
+      payload: { cookie: null },
+      cookies,
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { hasNytCookie: boolean }).hasNytCookie).toBe(false);
+    const stored = (
+      db.prepare("SELECT nyt_cookie FROM users WHERE id = ?").get(userId) as {
+        nyt_cookie: string | null;
+      }
+    ).nyt_cookie;
+    expect(stored).toBeNull();
+  });
+
+  it("treats empty string the same as null (clears)", async () => {
+    db.prepare("UPDATE users SET nyt_cookie = ? WHERE id = ?").run("preexisting", userId);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/auth/nyt-cookie",
+      payload: { cookie: "" },
+      cookies,
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { hasNytCookie: boolean }).hasNytCookie).toBe(false);
+  });
+
+  it("rejects a base64 string that decodes to non-JSON with a clear message", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/auth/nyt-cookie",
+      payload: { cookie: Buffer.from("hello world").toString("base64") },
+      cookies,
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toMatch(/valid JSON/i);
+  });
+
+  it("rejects when the decoded jar is empty", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/auth/nyt-cookie",
+      payload: { cookie: b64({}) },
+      cookies,
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toMatch(/empty/i);
+  });
+
+  it("returns 401 when not logged in", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/auth/nyt-cookie",
+      payload: { cookie: b64({ "NYT-S": "abc" }) },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+describe("auth: GET /api/auth/nyt-cookie", () => {
+  let app: FastifyInstance;
+  let db: DatabaseSync;
+  let cookies: Record<string, string>;
+  let userId: number;
+
+  beforeEach(async () => {
+    _clearCacheForTest();
+    ({ app, db } = await buildApp());
+    ({ cookies, userId } = await seedAuth(app, db));
+  });
+  afterEach(async () => {
+    await app.close();
+    _clearCacheForTest();
+  });
+
+  it("returns the decoded jar when the column is populated", async () => {
+    // Round-trip via the POST route so we exercise the actual storage
+    // format (base64), not a hand-crafted DB write.
+    const b64 = Buffer.from(JSON.stringify({ "NYT-S": "abc" })).toString("base64");
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/nyt-cookie",
+      payload: { cookie: b64 },
+      cookies,
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/auth/nyt-cookie",
+      cookies,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ cookie: { "NYT-S": "abc" } });
+  });
+
+  it("returns {cookie: null} when the column is NULL", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/auth/nyt-cookie",
+      cookies,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ cookie: null });
+  });
+
+  it("surfaces a parse error when the stored value is malformed", async () => {
+    // Sneak past the POST-time validation by writing directly to the DB,
+    // simulating a corrupted / legacy-shape row.
+    db.prepare("UPDATE users SET nyt_cookie = ? WHERE id = ?").run("not json", userId);
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/auth/nyt-cookie",
+      cookies,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { cookie: unknown; error?: string };
+    expect(body.cookie).toBeNull();
+    expect(body.error).toMatch(/valid JSON|object of/i);
+  });
+
+  it("returns 401 when not logged in", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/auth/nyt-cookie" });
+    expect(res.statusCode).toBe(401);
+  });
+});
+
 describe("auth: hasNytCookie on PublicUser", () => {
   let app: FastifyInstance;
   let db: DatabaseSync;

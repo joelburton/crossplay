@@ -365,26 +365,68 @@ export async function fetchNytPuzzleForDate(
   return { state, solution, printDate: entry.printDate, puzzleId: entry.puzzleId };
 }
 
-/** Parse a `users.nyt_cookie` column value into a jar. Tolerates the
- *  column being NULL / empty (returns null) and surfaces a clear
- *  message when the JSON is malformed. */
+/** Parse a `users.nyt_cookie` column value into a jar. Accepts two
+ *  shapes:
+ *    - raw JSON object (back-compat — what we stored before the
+ *      dump-nyt-cookies tool started emitting base64)
+ *    - base64-of-JSON (the new tool's output)
+ *  Detects by looking at the first non-whitespace character: `{`
+ *  routes to JSON parsing; anything else is treated as base64. NULL
+ *  / empty returns null (column unset). Throws `NytFetchError` with
+ *  a user-targeted message on any failure so the UI can surface it
+ *  inline. */
 export function parseStoredCookieJar(raw: string | null | undefined): NytCookieJar | null {
   if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  let jsonText: string;
+  if (trimmed.startsWith("{")) {
+    jsonText = trimmed;
+  } else {
+    // Buffer.from(s, "base64") silently ignores whitespace AND
+    // silently ignores invalid characters, so a wholly bogus paste
+    // can decode to a tiny garbage buffer that then fails JSON.parse.
+    // That's fine — the next step's error message ("decoded base64
+    // wasn't valid JSON") tells the user the right thing.
+    let decoded: Buffer;
+    try {
+      decoded = Buffer.from(trimmed, "base64");
+    } catch {
+      throw new NytFetchError(
+        "Couldn't decode the base64 string — make sure you copied the full output of dump-nyt-cookies.",
+      );
+    }
+    if (decoded.length === 0) {
+      throw new NytFetchError(
+        "The pasted value looks empty after base64 decoding. Copy the full output of dump-nyt-cookies and try again.",
+      );
+    }
+    jsonText = decoded.toString("utf8");
+  }
+
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(jsonText);
   } catch {
-    throw new NytFetchError("stored NYT cookie is not valid JSON");
+    throw new NytFetchError(
+      "The cookie value didn't decode to valid JSON — make sure you copied the entire dump-nyt-cookies output.",
+    );
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new NytFetchError("stored NYT cookie must be a JSON object of {name: value}");
+    throw new NytFetchError(
+      "The cookie value must be a JSON object of {name: value} pairs.",
+    );
   }
   const out: NytCookieJar = {};
   for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
     if (typeof v !== "string") {
-      throw new NytFetchError(`stored NYT cookie value for '${k}' is not a string`);
+      throw new NytFetchError(`Cookie value for '${k}' is not a string.`);
     }
     out[k] = v;
+  }
+  if (Object.keys(out).length === 0) {
+    throw new NytFetchError("The decoded cookie jar is empty.");
   }
   return out;
 }

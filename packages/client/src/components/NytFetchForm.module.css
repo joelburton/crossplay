@@ -48,3 +48,22 @@
   max-width: 14rem;
   overflow-wrap: anywhere;
 }
+
+/* Styled like a hyperlink: minimal visual weight so it doesn't compete
+   with the primary "Get from NYT" button above the error, but obviously
+   actionable. Sits directly below the error message. */
+.linkButton {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0.1rem 0 0;
+  font: inherit;
+  font-size: 0.85rem;
+  color: #1452a8;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.linkButton:hover {
+  color: #0e3b7a;
+}

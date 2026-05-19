@@ -312,10 +312,28 @@ export function App() {
   //   - anon: LandingPage.
   //   - user: HomePage.
   // The board route bypasses this entirely — URLs are public.
+  // Patch the in-memory user shape when the Settings dialog flips
+  // hasNytCookie. Keeps the home page's NYT-fetch form in sync without
+  // a /me round-trip.
+  const onNytCookieChanged = useCallback(
+    (hasNytCookie: boolean) => {
+      if (auth.kind !== "user") return;
+      setAuth({ kind: "user", user: { ...auth.user, hasNytCookie } });
+    },
+    [auth],
+  );
+
   function renderHome() {
     if (auth.kind === "loading") return null;
     if (auth.kind === "anon") return <LandingPage onAuthed={onAuthed} />;
-    return <HomePage onUploaded={onUploaded} user={auth.user} onLogout={onLogout} />;
+    return (
+      <HomePage
+        onUploaded={onUploaded}
+        user={auth.user}
+        onLogout={onLogout}
+        onNytCookieChanged={onNytCookieChanged}
+      />
+    );
   }
 
   // Print route bypasses every App chrome element: no header, no auth
@@ -371,7 +389,12 @@ export function App() {
         // Rendered at the App level, not inside the header, because
         // it's fixed-positioned anyway (a tab stuck to the top-right
         // of the viewport). Same component on the home page.
-        <UserMenu handle={auth.user.handle} onLogout={onLogout} />
+        <UserMenu
+          handle={auth.user.handle}
+          onLogout={onLogout}
+          hasNytCookie={auth.user.hasNytCookie}
+          onNytCookieChanged={onNytCookieChanged}
+        />
       )}
       <main className={styles.main}>
         {load.kind === "loading" && <p>Loading…</p>}

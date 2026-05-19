@@ -74,7 +74,7 @@ const testUser: api.AuthUser = {
 describe("HomePage", () => {
   it("hides the puzzle library section when the puzzles list is empty", async () => {
     stubLists([], []);
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
     // Scope to <h2> so we don't false-match the upload hint's italic
     // mention of "Puzzle library".
@@ -87,7 +87,7 @@ describe("HomePage", () => {
 
   it("shows the puzzle library section and a populated games list", async () => {
     stubLists([puzzle("p1", "First")], [board("b1", "MyBoard")]);
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
     expect(screen.getByRole("heading", { name: "Puzzle library" })).toBeTruthy();
     expect(screen.getByText("First")).toBeTruthy();
@@ -97,7 +97,7 @@ describe("HomePage", () => {
   it("two-step delete: × shows Delete?, confirm calls deleteBoard and removes the row", async () => {
     stubLists([], [board("b1", "Doomed")]);
     const del = vi.spyOn(api, "deleteBoard").mockResolvedValue({ deleted: true });
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
 
     // Initial state: × icon only.
@@ -119,7 +119,7 @@ describe("HomePage", () => {
   it("Esc dismisses the delete confirm without calling deleteBoard", async () => {
     stubLists([], [board("b1", "Survives")]);
     const del = vi.spyOn(api, "deleteBoard").mockResolvedValue({ deleted: true });
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
 
     fireEvent.click(screen.getByLabelText("Delete Survives"));
@@ -134,7 +134,7 @@ describe("HomePage", () => {
 
   it("mousedown outside the confirm button dismisses it", async () => {
     stubLists([], [board("b1", "Survives")]);
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
 
     fireEvent.click(screen.getByLabelText("Delete Survives"));
@@ -155,7 +155,7 @@ describe("HomePage", () => {
     });
     vi.spyOn(api, "deleteBoard").mockReturnValue(delPromise);
 
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
 
     fireEvent.click(screen.getByLabelText("Delete InFlight"));
@@ -179,7 +179,7 @@ describe("HomePage", () => {
     const stubs = stubLists([], initial);
     vi.spyOn(api, "deleteBoard").mockRejectedValue(new Error("boom"));
 
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
 
     fireEvent.click(screen.getByLabelText("Delete Saved"));
@@ -197,7 +197,7 @@ describe("HomePage", () => {
     const create = vi
       .spyOn(api, "createBoard")
       .mockResolvedValue({ boardId: "new-board" });
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
 
     await userEvent.click(screen.getByText("Pick me"));
@@ -209,49 +209,49 @@ describe("HomePage", () => {
 
   it("renders 'NEW' for a board with a null fillPercent", async () => {
     stubLists([], [board("b1", "FreshBoard", { fillPercent: null })]);
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
     expect(screen.getByText("NEW")).toBeTruthy();
   });
 
   it("renders 'N%' for a partially-filled board", async () => {
     stubLists([], [board("b1", "InProgress", { fillPercent: 42 })]);
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
     expect(screen.getByText("42%")).toBeTruthy();
   });
 
   it("renders '100%' for a fully-filled board", async () => {
     stubLists([], [board("b1", "Done", { fillPercent: 100 })]);
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
     expect(screen.getByText("100%")).toBeTruthy();
   });
 
   it("renders the 'Playing with …' subline when members[] is non-empty", async () => {
     stubLists([], [board("b1", "Shared", { members: ["moth", "sue"] })]);
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
     expect(screen.getByText(/Playing with moth, sue/)).toBeTruthy();
   });
 
   it("does NOT render the 'Playing with' subline for a solo board", async () => {
     stubLists([], [board("b1", "Solo")]);
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
     expect(screen.queryByText(/Playing with/)).toBeNull();
   });
 
   it("renders the 'live' badge when isLive is true", async () => {
     stubLists([], [board("b1", "Live", { isLive: true })]);
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
     expect(screen.getByText("live")).toBeTruthy();
   });
 
   it("does NOT render the 'live' badge for an idle board", async () => {
     stubLists([], [board("b1", "Idle", { isLive: false })]);
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
     expect(screen.queryByText("live")).toBeNull();
   });
@@ -261,7 +261,7 @@ describe("HomePage", () => {
       [puzzle("p1", "Sunday Times"), puzzle("p2", "Monday Mini"), puzzle("p3", "Friday Themeless")],
       [],
     );
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
 
     expect(screen.getByText("Sunday Times")).toBeTruthy();
@@ -284,7 +284,7 @@ describe("HomePage", () => {
       ],
       [],
     );
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
 
     await userEvent.type(screen.getByLabelText("Filter puzzle library"), "times");
@@ -302,7 +302,7 @@ describe("HomePage", () => {
       ],
       [],
     );
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
 
     const input = screen.getByLabelText("Filter puzzle library");
@@ -315,7 +315,7 @@ describe("HomePage", () => {
 
   it("shows 'no puzzles match' when the puzzle filter has zero hits", async () => {
     stubLists([puzzle("p1", "Sunday")], []);
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
 
     await userEvent.type(screen.getByLabelText("Filter puzzle library"), "xxxx");
@@ -330,7 +330,7 @@ describe("HomePage", () => {
       [],
       [board("b1", "Alpha"), board("b2", "Beta")],
     );
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
 
     const input = screen.getByLabelText("Filter your games");
@@ -347,7 +347,7 @@ describe("HomePage", () => {
 
   it("hides the Your-games filter input when the list is empty", async () => {
     stubLists([], []);
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
     expect(screen.queryByLabelText("Filter your games")).toBeNull();
     // Original empty-state copy still shows.
@@ -356,7 +356,7 @@ describe("HomePage", () => {
 
   it("renders the centered hero (icon + Crossplay wordmark)", async () => {
     stubLists([], []);
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
     // The wordmark is an h1 — distinct from the section headings.
     const h1 = screen.getByRole("heading", { level: 1, name: "Crossplay" });
@@ -366,14 +366,14 @@ describe("HomePage", () => {
   it("shows a load-error banner when either fetch fails", async () => {
     vi.spyOn(api, "fetchPuzzles").mockRejectedValue(new Error("nope"));
     vi.spyOn(api, "fetchBoards").mockResolvedValue([]);
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
     expect(screen.getByText(/couldn't reach the server/i)).toBeTruthy();
   });
 
   it("hides the 'Get from NYT' form when the user has no stored cookie", async () => {
     stubLists([], []);
-    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} />);
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} />);
     await flushPromises();
     expect(screen.queryByRole("button", { name: /get from nyt/i })).toBeNull();
   });
@@ -385,6 +385,7 @@ describe("HomePage", () => {
         onUploaded={() => {}}
         user={{ ...testUser, hasNytCookie: true }}
         onLogout={() => {}}
+        onNytCookieChanged={() => {}}
       />,
     );
     await flushPromises();

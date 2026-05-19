@@ -24,6 +24,10 @@ type Props = {
   /** Log out + return to landing page. Provided by App so HomePage
    *  doesn't have to know the routing details. */
   onLogout: () => void;
+  /** Forwarded to UserMenu/SettingsDialog so saving or clearing the
+   *  NYT cookie can update App's in-memory user shape (and thus
+   *  toggle the NYT-fetch form below the upload zone). */
+  onNytCookieChanged: (hasNytCookie: boolean) => void;
 };
 
 function formatFillPercent(pct: number | null): string {
@@ -59,7 +63,7 @@ function matchesQuery(
  * Both fetches fall through to `[]` on failure rather than surfacing an
  * error — the upload form keeps the page useful either way.
  */
-export function HomePage({ onUploaded, user, onLogout }: Props) {
+export function HomePage({ onUploaded, user, onLogout, onNytCookieChanged }: Props) {
   const [puzzles, setPuzzles] = useState<PuzzleSummary[] | null>(null);
   const [boards, setBoards] = useState<BoardSummary[] | null>(null);
   // Set when one or both list fetches fail (e.g. dev server isn't
@@ -159,7 +163,12 @@ export function HomePage({ onUploaded, user, onLogout }: Props) {
           Fixed-positioned by its own CSS, so no wrapper needed.
           Today the only item is "Log out"; future account actions
           (Preferences, Change password, …) slot in here. */}
-      <UserMenu handle={user.handle} onLogout={onLogout} />
+      <UserMenu
+        handle={user.handle}
+        onLogout={onLogout}
+        hasNytCookie={user.hasNytCookie}
+        onNytCookieChanged={onNytCookieChanged}
+      />
       <div className={styles.hero}>
         <SiteIcon className={styles.heroIcon} />
         <h1 className={styles.heroTitle}>Crossplay</h1>
@@ -324,7 +333,13 @@ export function HomePage({ onUploaded, user, onLogout }: Props) {
             Uploaded puzzles show up in <em>Your games</em> for you to keep playing.
             They aren&rsquo;t added to the <em>Puzzle library</em>, which is curated.
           </p>
-          {user.hasNytCookie && <NytFetchForm onFetched={onUploaded} />}
+          {user.hasNytCookie && (
+            <NytFetchForm
+              onFetched={onUploaded}
+              hasNytCookie={user.hasNytCookie}
+              onNytCookieChanged={onNytCookieChanged}
+            />
+          )}
         </section>
       </div>
       <footer className={styles.footer}>

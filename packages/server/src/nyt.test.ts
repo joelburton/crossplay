@@ -278,29 +278,56 @@ describe("nytResponseToPuzzleState: validation", () => {
 });
 
 describe("parseStoredCookieJar", () => {
+  /** Shorthand for the canonical paste shape: base64-of-JSON. */
+  const b64 = (obj: unknown) =>
+    Buffer.from(JSON.stringify(obj), "utf8").toString("base64");
+
   it("returns null for null/empty input (covers the column-is-NULL case)", () => {
     expect(parseStoredCookieJar(null)).toBeNull();
     expect(parseStoredCookieJar("")).toBeNull();
+    expect(parseStoredCookieJar("   ")).toBeNull();
     expect(parseStoredCookieJar(undefined)).toBeNull();
   });
 
-  it("returns a jar for a valid JSON object of strings", () => {
+  it("accepts raw JSON (back-compat shape for already-stored values)", () => {
     expect(parseStoredCookieJar('{"NYT-S": "abc", "nyt-a": "xyz"}')).toEqual({
       "NYT-S": "abc",
       "nyt-a": "xyz",
     });
   });
 
-  it("throws on malformed JSON", () => {
-    expect(() => parseStoredCookieJar("not json")).toThrow(NytFetchError);
+  it("accepts base64-of-JSON (the dump-nyt-cookies output shape)", () => {
+    expect(parseStoredCookieJar(b64({ "NYT-S": "abc" }))).toEqual({ "NYT-S": "abc" });
   });
 
-  it("throws when the root isn't a plain object", () => {
-    expect(() => parseStoredCookieJar("[]")).toThrow(NytFetchError);
-    expect(() => parseStoredCookieJar('"plain string"')).toThrow(NytFetchError);
+  it("tolerates whitespace / newlines inside the base64 (terminal-wrap paste)", () => {
+    // Inject newlines every 30 chars to simulate a terminal that
+    // wrapped the long line during selection.
+    const raw = b64({ "NYT-S": "abc", "nyt-a": "xyz" });
+    const wrapped = raw.match(/.{1,30}/g)!.join("\n");
+    expect(parseStoredCookieJar(wrapped)).toEqual({ "NYT-S": "abc", "nyt-a": "xyz" });
+  });
+
+  it("throws with a user-friendly message on base64 that isn't JSON", () => {
+    // Valid base64, but decodes to "hello world" (not a JSON object).
+    const garbage = Buffer.from("hello world").toString("base64");
+    expect(() => parseStoredCookieJar(garbage)).toThrow(/valid JSON/i);
+  });
+
+  it("throws on a malformed raw-JSON paste", () => {
+    expect(() => parseStoredCookieJar("{not: json}")).toThrow(NytFetchError);
+  });
+
+  it("throws when the decoded value isn't a plain object", () => {
+    expect(() => parseStoredCookieJar(b64([]))).toThrow(/object of/i);
+    expect(() => parseStoredCookieJar(b64("just a string"))).toThrow(/object of/i);
   });
 
   it("throws when a value isn't a string", () => {
-    expect(() => parseStoredCookieJar('{"NYT-S": 123}')).toThrow(NytFetchError);
+    expect(() => parseStoredCookieJar(b64({ "NYT-S": 123 }))).toThrow(/not a string/i);
+  });
+
+  it("throws when the decoded object is empty", () => {
+    expect(() => parseStoredCookieJar(b64({}))).toThrow(/empty/i);
   });
 });

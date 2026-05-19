@@ -16,6 +16,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { parseStoredCookieJar } from "./nyt.js";
 import {
   MIN_PASSWORD_LENGTH,
   type Prefs,
@@ -219,5 +220,66 @@ export function registerAuthRoutes(app: FastifyInstance, db: DatabaseSync): void
     if (!req.user) return reply.code(401).send({ error: "not logged in" });
     markHelpSeen(db, req.user.id);
     return { ok: true };
+  });
+
+  // GET /nyt-cookie — return the caller's currently-stored NYT cookie
+  // jar, decoded into `{name: value}` form for display in the Settings
+  // dialog. Returns `{cookie: null}` when the column is unset. The user
+  // is the owner of their own cookie, so we're not leaking anything by
+  // echoing it back; never include cookies in any *other* user's
+  // response surface.
+  //
+  // If the stored value somehow can't be parsed (DB corruption, an old
+  // shape we don't recognize), surface a clear error along with
+  // `cookie: null` so the dialog can prompt the user to re-paste.
+  app.get("/nyt-cookie", async (req, reply) => {
+    if (!req.user) return reply.code(401).send({ error: "not logged in" });
+    if (!req.user.nyt_cookie) return { cookie: null };
+    try {
+      const jar = parseStoredCookieJar(req.user.nyt_cookie);
+      return { cookie: jar };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "malformed stored cookie";
+      return { cookie: null, error: msg };
+    }
+  });
+
+  // POST /nyt-cookie — save (or clear) the caller's NYT cookie blob.
+  // Body shape: `{cookie: string | null}`. A non-empty string is
+  // validated by `parseStoredCookieJar` BEFORE write (rejects unparseable
+  // base64, non-object JSON, empty jars, etc.) so the user gets a
+  // useful inline message — never a "looks saved, but the next fetch
+  // breaks". `null` or empty-string clears the column.
+  // Returns `{hasNytCookie, cookie}` so the client can update its in-
+  // memory user shape AND the Settings dialog's display without a
+  // second round-trip.
+  app.post("/nyt-cookie", async (req, reply) => {
+    if (!req.user) return reply.code(401).send({ error: "not logged in" });
+    const body = req.body as { cookie?: unknown } | null;
+    if (!body || typeof body !== "object") {
+      return reply.code(400).send({ error: "missing body" });
+    }
+    const cookie = body.cookie;
+    if (cookie === null || cookie === undefined || cookie === "") {
+      db.prepare("UPDATE users SET nyt_cookie = NULL WHERE id = ?").run(req.user.id);
+      return { hasNytCookie: false, cookie: null };
+    }
+    if (typeof cookie !== "string") {
+      return reply.code(400).send({ error: "cookie must be a string or null" });
+    }
+    let jar;
+    try {
+      // parseStoredCookieJar throws NytFetchError with a user-facing
+      // message on any shape failure. The route just relays that.
+      jar = parseStoredCookieJar(cookie);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "invalid cookie";
+      return reply.code(400).send({ error: msg });
+    }
+    db.prepare("UPDATE users SET nyt_cookie = ? WHERE id = ?").run(
+      cookie.trim(),
+      req.user.id,
+    );
+    return { hasNytCookie: true, cookie: jar };
   });
 }

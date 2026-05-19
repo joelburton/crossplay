@@ -261,3 +261,45 @@ export async function markHelpSeen(): Promise<void> {
   const res = await fetch("/api/auth/seen-help", { method: "POST" });
   if (!res.ok) throw new HttpError(res.status, await readErrorMessage(res));
 }
+
+/** Type of the decoded cookie jar the server hands back — same shape
+ *  it accepts at write time, sans the base64 wrapping. */
+export type NytCookieJar = Record<string, string>;
+
+/** Fetch the caller's stored NYT cookie jar for display in the
+ *  Settings dialog. `cookie: null` means the column is unset.
+ *  `error` is present when the stored value somehow failed to parse
+ *  (rare — the POST validates on write); the UI surfaces it so the
+ *  user knows to re-paste. */
+export async function fetchNytCookie(): Promise<{
+  cookie: NytCookieJar | null;
+  error?: string;
+}> {
+  const res = await fetch("/api/auth/nyt-cookie");
+  if (!res.ok) throw new HttpError(res.status, await readErrorMessage(res));
+  return (await res.json()) as { cookie: NytCookieJar | null; error?: string };
+}
+
+/** Save (or clear) the caller's NYT cookie blob. `cookie` is the
+ *  base64-of-JSON string emitted by the dump-nyt-cookies binary;
+ *  `null` clears the stored value. Server validates before writing
+ *  and surfaces a user-facing message on parse failure, which lands
+ *  in `HttpError.message`. Returns the post-save state — both the
+ *  boolean flag (for App's in-memory user shape) and the decoded jar
+ *  (for the Settings dialog's display, so it doesn't need a second
+ *  GET after a successful POST). */
+export async function saveNytCookie(cookie: string | null): Promise<{
+  hasNytCookie: boolean;
+  cookie: NytCookieJar | null;
+}> {
+  const res = await fetch("/api/auth/nyt-cookie", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ cookie }),
+  });
+  if (!res.ok) throw new HttpError(res.status, await readErrorMessage(res));
+  return (await res.json()) as {
+    hasNytCookie: boolean;
+    cookie: NytCookieJar | null;
+  };
+}
