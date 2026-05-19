@@ -51,25 +51,26 @@ font files to load.
 ### Small puzzles (width ≤ 16)
 
 ```
-+--------+--------+   12 units
-|     TITLE       |
-+--------+--------+
-|  GRID  | Clue 2 |
-| (6)    | (6)    |
-+--------+        |
-| Clue 1 |        |
-| (6)    |        |
-+--------+--------+
++----+----+----+----+   12 units
+|       TITLE       |
++---------+----+----+
+|  GRID   | C3 | C4 |
+| (6)     | (3)| (3)|
++----+----+    |    |
+| C1 | C2 |    |    |
+| (3)| (3)|    |    |
++----+----+----+----+
 ```
 
-Two clue regions:
+Four clue regions:
 
-- **Clue region 1**: 6 units wide × `(content_h − title_h − grid_h − row_gap)` tall.
-  Position: lower-left, immediately below the grid.
-- **Clue region 2**: 6 units wide × `(content_h − title_h)` tall.
-  Position: right half, full content height under the title.
+- **C1**: 3 wide × `(content_h − title_h − grid_h − row_gap)` tall. Lower-left, below grid.
+- **C2**: 3 wide × same height. Lower-mid, below grid.
+- **C3**: 3 wide × `(content_h − title_h)` tall. Full-height under the title.
+- **C4**: 3 wide × same height. Rightmost full-height column.
 
-Flow order: region 1 → region 2.
+Flow order: C1 → C2 → C3 → C4. Four narrow columns let a daily
+15×15 with typical clue counts fit on a single page.
 
 ### Large puzzles (width ≥ 17)
 
@@ -99,7 +100,7 @@ When clues exceed page 1, subsequent pages drop the title and grid
 entirely and use the column widths of the chosen layout, full content
 height per column. Flow continues in reading order:
 
-- **Small**: 2 columns × 6 units wide, full content height.
+- **Small**: 4 columns × 3 units wide, full content height.
 - **Large**: 3 columns × 4 units wide, full content height.
 
 Same `flow order: leftmost → rightmost`; advance to a new page when
@@ -219,7 +220,7 @@ for each item:
 ```
 
 When advancing to a fresh page, use the **continuation column count**
-for the puzzle's chosen layout (2 cols for small, 3 cols for large).
+for the puzzle's chosen layout (4 cols for small, 3 cols for large).
 
 ## UI flow
 

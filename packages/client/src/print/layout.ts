@@ -3,9 +3,12 @@
  * returns a description of the page-1 regions (title block, grid,
  * clue regions) and the continuation-column count for overflow pages.
  *
- * 12-unit horizontal grid. Small puzzles (width ≤ 16) get a 6-6 split
- * — grid in the upper-left, two clue regions. Large puzzles (≥ 17)
- * get an 8-4 split with three clue regions. See docs/print-pdf-plan.md.
+ * 12-unit horizontal grid. Small puzzles (width ≤ 16) use four
+ * 3-unit columns: the grid spans cols 1+2 in the upper-left, and the
+ * clues flow c1 → c2 (below the grid) → c3 → c4 (full-height). The
+ * narrow columns let a daily 15×15 with typical clue counts fit on a
+ * single page. Large puzzles (≥ 17) get an 8-4 split with three clue
+ * regions. See docs/print-pdf-plan.md.
  */
 
 export type Rect = { x: number; y: number; w: number; h: number };
@@ -85,37 +88,32 @@ export function computeLayout(puzzleWidth: number): Layout {
   // under the grid.
 
   if (size === "small") {
-    // Grid: left 6 units, square (limited by 6-unit width or remaining
-    // height — for our puzzle range the width is the binding constraint).
+    // Four 3-unit columns. Grid spans cols 1+2 (left 6 units); the
+    // square side is bound by that width for our puzzle range.
     const gridRegionW = 6 * UNIT - COL_GAP / 2;
     const gridRectMax: Rect = { x: CONTENT_LEFT, y: rowTop, w: gridRegionW, h: rowHeight };
     const side = gridSide(gridRectMax);
     const gridRect: Rect = { x: CONTENT_LEFT, y: rowTop, w: side, h: side };
 
-    // Region 1: below the grid, 6 units wide. Region 2: right 6 units,
-    // full height under the title.
-    const region1Top = rowTop + side + ROW_GAP;
-    const region1H = CONTENT_BOTTOM - region1Top;
-    const region1: Rect = {
-      x: CONTENT_LEFT,
-      y: region1Top,
-      w: gridRegionW,
-      h: Math.max(0, region1H),
-    };
-    const region2X = CONTENT_LEFT + 6 * UNIT + COL_GAP / 2;
-    const region2: Rect = {
-      x: region2X,
-      y: rowTop,
-      w: CONTENT_RIGHT - region2X,
-      h: rowHeight,
-    };
+    const belowTop = rowTop + side + ROW_GAP;
+    const belowH = Math.max(0, CONTENT_BOTTOM - belowTop);
+    // Each of the 4 columns is 3 units wide, separated by COL_GAP.
+    const colW = 3 * UNIT - COL_GAP / 2;
+    // C1, C2: below the grid (left half). C3, C4: full-height (right half).
+    const c1: Rect = { x: CONTENT_LEFT, y: belowTop, w: colW, h: belowH };
+    const c2X = CONTENT_LEFT + 3 * UNIT + COL_GAP / 2;
+    const c2: Rect = { x: c2X, y: belowTop, w: colW, h: belowH };
+    const c3X = CONTENT_LEFT + 6 * UNIT + COL_GAP / 2;
+    const c3: Rect = { x: c3X, y: rowTop, w: colW, h: rowHeight };
+    const c4X = CONTENT_LEFT + 9 * UNIT + COL_GAP / 2;
+    const c4: Rect = { x: c4X, y: rowTop, w: CONTENT_RIGHT - c4X, h: rowHeight };
 
     return {
       size,
       titleRect,
       gridRect,
-      regions: [region1, region2],
-      continuationCols: 2,
+      regions: [c1, c2, c3, c4],
+      continuationCols: 4,
     };
   }
 

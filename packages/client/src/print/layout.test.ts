@@ -40,19 +40,24 @@ describe("computeLayout (small, 15x15)", () => {
     // Width should be ≤ 6 units.
     expect(layout.gridRect.w).toBeLessThanOrEqual(6 * UNIT);
   });
-  it("produces exactly two clue regions", () => {
-    expect(layout.regions).toHaveLength(2);
+  it("produces four clue regions (c1, c2 below grid; c3, c4 full-height)", () => {
+    expect(layout.regions).toHaveLength(4);
+    const [c1, c2, c3, c4] = layout.regions;
+    // c1, c2 share a top edge below the grid.
+    expect(c1!.y).toBe(c2!.y);
+    expect(c1!.y).toBe(layout.gridRect.y + layout.gridRect.h + 12); // ROW_GAP
+    expect(c1!.x).toBe(MARGIN);
+    expect(c2!.x).toBeGreaterThan(c1!.x + c1!.w - 1);
+    // c3, c4 are full-height under the title block.
+    expect(c3!.y).toBe(MARGIN + TITLE_BLOCK_H);
+    expect(c4!.y).toBe(MARGIN + TITLE_BLOCK_H);
+    expect(c3!.x).toBeGreaterThan(MARGIN + 6 * UNIT - 1);
+    expect(c4!.x).toBeGreaterThan(c3!.x + c3!.w - 1);
+    expect(c3!.h).toBe(CONTENT.h - TITLE_BLOCK_H);
+    expect(c4!.h).toBe(CONTENT.h - TITLE_BLOCK_H);
   });
-  it("region 1 sits below the grid; region 2 spans the right half", () => {
-    const [r1, r2] = layout.regions;
-    expect(r1!.x).toBe(MARGIN);
-    expect(r1!.y).toBe(layout.gridRect.y + layout.gridRect.h + 12); // ROW_GAP
-    expect(r2!.x).toBeGreaterThan(MARGIN + 6 * UNIT - 1);
-    expect(r2!.y).toBe(MARGIN + TITLE_BLOCK_H);
-    expect(r2!.h).toBe(CONTENT.h - TITLE_BLOCK_H);
-  });
-  it("sets continuationCols to 2", () => {
-    expect(layout.continuationCols).toBe(2);
+  it("sets continuationCols to 4", () => {
+    expect(layout.continuationCols).toBe(4);
   });
 });
 
