@@ -15,7 +15,10 @@ import { NytFetchForm } from "./NytFetchForm";
 import { SiteIcon } from "./SiteIcon";
 import { UploadForm } from "./UploadForm";
 import { UserMenu } from "./UserMenu";
+import pkg from "../../package.json";
 import styles from "./HomePage.module.css";
+
+const VERSION = pkg.version;
 
 type Props = {
   onUploaded: (boardId: string) => void;
@@ -368,7 +371,7 @@ export function HomePage({
         >
           Source
         </a>{" "}
-        · AGPL-3.0
+        · AGPL-3.0 · v{VERSION}
       </footer>
     </div>
   );
