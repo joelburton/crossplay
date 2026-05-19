@@ -84,14 +84,27 @@ function saveStoredAnonName(name: string): void {
  * their account handle. Anons get a `Rando<NN>` that's persisted to
  * localStorage so the same browser stays the same anon identity
  * across reloads.
+ *
+ * `preferredColor` (when set in the authed user's prefs) overrides
+ * the deterministic name-hash color. Anons can't set a preference
+ * today — they get the name-hash color regardless.
  */
-export function resolveChatIdentity(authedHandle: string | null): ChatIdentity {
-  if (authedHandle && authedHandle.trim().length > 0) {
-    return makeIdentity(authedHandle.trim());
+export function resolveChatIdentity(
+  authedHandle: string | null,
+  preferredColor: string | null = null,
+): ChatIdentity {
+  const base = (() => {
+    if (authedHandle && authedHandle.trim().length > 0) {
+      return makeIdentity(authedHandle.trim());
+    }
+    const stored = loadStoredAnonName();
+    if (stored) return makeIdentity(stored);
+    const fresh = randomAnonName();
+    saveStoredAnonName(fresh);
+    return makeIdentity(fresh);
+  })();
+  if (preferredColor && /^#[0-9a-f]{6}$/i.test(preferredColor)) {
+    return { ...base, color: preferredColor.toLowerCase() };
   }
-  const stored = loadStoredAnonName();
-  if (stored) return makeIdentity(stored);
-  const fresh = randomAnonName();
-  saveStoredAnonName(fresh);
-  return makeIdentity(fresh);
+  return base;
 }

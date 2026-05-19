@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fetchNytBoard } from "../api";
+import { type Prefs, fetchNytBoard } from "../api";
 import { SettingsDialog } from "./SettingsDialog";
 import styles from "./NytFetchForm.module.css";
 
@@ -13,6 +13,10 @@ type Props = {
    *  the user re-pastes (or clears) the cookie from the inline
    *  Settings affordance below. */
   onNytCookieChanged: (hasNytCookie: boolean) => void;
+  /** Forwarded to SettingsDialog so the color picker reflects the
+   *  user's current preference when opened from the inline link. */
+  prefs: Prefs;
+  onPrefsChanged: (prefs: Prefs) => void;
 };
 
 /** Today as `yyyy-mm-dd` in the *user's* local time. The NYT publishes
@@ -32,7 +36,13 @@ function todayLocalIso(): string {
  * stored cookie jar (`hasNytCookie`). The server holds the cookie;
  * this form just sends a date and gets back a board id.
  */
-export function NytFetchForm({ onFetched, hasNytCookie, onNytCookieChanged }: Props) {
+export function NytFetchForm({
+  onFetched,
+  hasNytCookie,
+  onNytCookieChanged,
+  prefs,
+  onPrefsChanged,
+}: Props) {
   const [date, setDate] = useState(todayLocalIso);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,6 +99,8 @@ export function NytFetchForm({ onFetched, hasNytCookie, onNytCookieChanged }: Pr
         <SettingsDialog
           hasNytCookie={hasNytCookie}
           onSaved={onNytCookieChanged}
+          prefs={prefs}
+          onPrefsChanged={onPrefsChanged}
           onClose={() => setSettingsOpen(false)}
         />
       )}

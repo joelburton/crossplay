@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   type AuthUser,
   type BoardSummary,
+  type Prefs,
   type PuzzleSummary,
   createBoard,
   deleteBoard,
@@ -28,6 +29,8 @@ type Props = {
    *  NYT cookie can update App's in-memory user shape (and thus
    *  toggle the NYT-fetch form below the upload zone). */
   onNytCookieChanged: (hasNytCookie: boolean) => void;
+  /** Bubbles up Settings-dialog prefs updates (color, etc.) to App. */
+  onPrefsChanged: (prefs: Prefs) => void;
 };
 
 function formatFillPercent(pct: number | null): string {
@@ -63,7 +66,13 @@ function matchesQuery(
  * Both fetches fall through to `[]` on failure rather than surfacing an
  * error — the upload form keeps the page useful either way.
  */
-export function HomePage({ onUploaded, user, onLogout, onNytCookieChanged }: Props) {
+export function HomePage({
+  onUploaded,
+  user,
+  onLogout,
+  onNytCookieChanged,
+  onPrefsChanged,
+}: Props) {
   const [puzzles, setPuzzles] = useState<PuzzleSummary[] | null>(null);
   const [boards, setBoards] = useState<BoardSummary[] | null>(null);
   // Set when one or both list fetches fail (e.g. dev server isn't
@@ -168,6 +177,8 @@ export function HomePage({ onUploaded, user, onLogout, onNytCookieChanged }: Pro
         onLogout={onLogout}
         hasNytCookie={user.hasNytCookie}
         onNytCookieChanged={onNytCookieChanged}
+        prefs={user.prefs}
+        onPrefsChanged={onPrefsChanged}
       />
       <div className={styles.hero}>
         <SiteIcon className={styles.heroIcon} />
@@ -338,6 +349,8 @@ export function HomePage({ onUploaded, user, onLogout, onNytCookieChanged }: Pro
               onFetched={onUploaded}
               hasNytCookie={user.hasNytCookie}
               onNytCookieChanged={onNytCookieChanged}
+              prefs={user.prefs}
+              onPrefsChanged={onPrefsChanged}
             />
           )}
         </section>

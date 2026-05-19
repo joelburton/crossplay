@@ -169,11 +169,14 @@ export async function shareBoard(
 // don't have to manage tokens.
 // -----------------------------------------------------------------
 
-/** User preferences shape. Empty today by design — the JSON
- *  infrastructure is in place so the first real pref can land
- *  without further plumbing. Mirrors `Prefs` on the server. */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface Prefs {}
+/** User preferences shape. Mirrors `Prefs` on the server. All fields
+ *  optional; missing keys fall back to client-side defaults (today
+ *  that means the deterministic name-hash color in chatIdentity.ts). */
+export interface Prefs {
+  /** Override the deterministic name-hash color used in chat /
+   *  cursor / sender flash. `#rrggbb` lowercase hex. */
+  color?: string;
+}
 
 /** Public-facing user shape. Mirrors `PublicUser` on the server —
  *  never includes the password hash. */
@@ -278,6 +281,21 @@ export async function fetchNytCookie(): Promise<{
   const res = await fetch("/api/auth/nyt-cookie");
   if (!res.ok) throw new HttpError(res.status, await readErrorMessage(res));
   return (await res.json()) as { cookie: NytCookieJar | null; error?: string };
+}
+
+/** Update one or more user preferences. Pass `null` for any key to
+ *  reset it to its default. Returns the post-merge prefs so the
+ *  caller can patch its local user shape without a /me round-trip. */
+export async function savePrefs(
+  patch: Record<string, string | null>,
+): Promise<{ prefs: Prefs }> {
+  const res = await fetch("/api/auth/prefs", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new HttpError(res.status, await readErrorMessage(res));
+  return (await res.json()) as { prefs: Prefs };
 }
 
 /** Save (or clear) the caller's NYT cookie blob. `cookie` is the

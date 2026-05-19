@@ -323,6 +323,17 @@ export function App() {
     [auth],
   );
 
+  // Patch prefs after the Settings dialog updates them. Color changes
+  // take effect on the next board mount; this just keeps the local
+  // user shape consistent.
+  const onPrefsChanged = useCallback(
+    (prefs: AuthUser["prefs"]) => {
+      if (auth.kind !== "user") return;
+      setAuth({ kind: "user", user: { ...auth.user, prefs } });
+    },
+    [auth],
+  );
+
   function renderHome() {
     if (auth.kind === "loading") return null;
     if (auth.kind === "anon") return <LandingPage onAuthed={onAuthed} />;
@@ -332,6 +343,7 @@ export function App() {
         user={auth.user}
         onLogout={onLogout}
         onNytCookieChanged={onNytCookieChanged}
+        onPrefsChanged={onPrefsChanged}
       />
     );
   }
@@ -394,6 +406,8 @@ export function App() {
           onLogout={onLogout}
           hasNytCookie={auth.user.hasNytCookie}
           onNytCookieChanged={onNytCookieChanged}
+          prefs={auth.user.prefs}
+          onPrefsChanged={onPrefsChanged}
         />
       )}
       <main className={styles.main}>
@@ -420,6 +434,7 @@ export function App() {
             onToggleMenu={() => setMenuOpen((o) => !o)}
             onNewGame={onNewGame}
             authedHandle={auth.kind === "user" ? auth.user.handle : null}
+            preferredColor={auth.kind === "user" ? auth.user.prefs.color ?? null : null}
             seenHelp={seenHelp}
             onHelpSeen={onHelpSeen}
           />

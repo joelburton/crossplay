@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { Prefs } from "../api";
 import { SettingsDialog } from "./SettingsDialog";
 import styles from "./UserMenu.module.css";
 
@@ -13,6 +14,11 @@ type Props = {
    *  dialog. Carries the new value so the parent can patch its
    *  in-memory user shape. */
   onNytCookieChanged: (hasNytCookie: boolean) => void;
+  /** Current prefs, forwarded to the dialog so it can show the
+   *  currently-selected color in the picker. */
+  prefs: Prefs;
+  /** Bubbled up to App after a successful prefs save. */
+  onPrefsChanged: (prefs: Prefs) => void;
 };
 
 /**
@@ -25,7 +31,14 @@ type Props = {
  * has arrow-key traversal across many entries; here there's almost
  * always just one item, so Enter / Esc / click is enough.
  */
-export function UserMenu({ handle, onLogout, hasNytCookie, onNytCookieChanged }: Props) {
+export function UserMenu({
+  handle,
+  onLogout,
+  hasNytCookie,
+  onNytCookieChanged,
+  prefs,
+  onPrefsChanged,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -125,6 +138,8 @@ export function UserMenu({ handle, onLogout, hasNytCookie, onNytCookieChanged }:
         <SettingsDialog
           hasNytCookie={hasNytCookie}
           onSaved={onNytCookieChanged}
+          prefs={prefs}
+          onPrefsChanged={onPrefsChanged}
           onClose={() => setSettingsOpen(false)}
         />
       )}

@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { type NytCookieJar, fetchNytCookie, saveNytCookie } from "../api";
+import {
+  type NytCookieJar,
+  type Prefs,
+  fetchNytCookie,
+  saveNytCookie,
+  savePrefs,
+} from "../api";
+import { CHAT_PALETTE } from "../chatIdentity";
 import styles from "./SettingsDialog.module.css";
 
 type Props = {
@@ -10,6 +17,11 @@ type Props = {
    *  the new boolean so the parent can patch its in-memory user
    *  shape and toggle the NYT-fetch form on the home page. */
   onSaved: (hasNytCookie: boolean) => void;
+  /** Current preferences. Used to pre-select the color swatch. */
+  prefs: Prefs;
+  /** Bubbled up after a successful prefs save. Carries the post-merge
+   *  Prefs so App can patch its in-memory user shape. */
+  onPrefsChanged: (prefs: Prefs) => void;
   onClose: () => void;
 };
 
@@ -32,12 +44,25 @@ type LoadState =
  *
  * Modeled on `HelpDialog`: backdrop + card, Esc / outside-click close.
  */
-export function SettingsDialog({ hasNytCookie, onSaved, onClose }: Props) {
+export function SettingsDialog({
+  hasNytCookie,
+  onSaved,
+  prefs,
+  onPrefsChanged,
+  onClose,
+}: Props) {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  // Currently-selected color (controlled by the swatch grid). Pending
+  // until the user clicks OK — closing via Cancel/Esc/× discards it
+  // and the stored pref is unchanged. `null` means "use the
+  // deterministic name-hash default."
+  const [color, setColor] = useState<string | null>(prefs.color ?? null);
+  const initialColor = prefs.color ?? null;
+  const colorDirty = color !== initialColor;
   // Tracks the live "what's currently stored" state, kept in sync
   // with the server: fetched on mount when hasNytCookie was true,
   // updated optimistically after a successful save/clear. Starts as
@@ -90,19 +115,34 @@ export function SettingsDialog({ hasNytCookie, onSaved, onClose }: Props) {
 
   async function onSave() {
     const trimmed = value.trim();
-    if (!trimmed) {
-      setError("Paste the output of dump-nyt-cookies first.");
+    if (!trimmed && !colorDirty) {
+      // Nothing to do; OK shouldn't have been enabled. Defensive
+      // no-op so a force-click can't error.
+      onClose();
       return;
     }
     setBusy(true);
     setError(null);
     setStatus(null);
     try {
-      const { hasNytCookie: now, cookie } = await saveNytCookie(trimmed);
-      onSaved(now);
-      setLoad({ kind: "loaded", cookie });
-      setValue("");
-      setStatus(`Saved. ${cookie ? Object.keys(cookie).length : 0} cookies stored.`);
+      // Cookie first so a real-world auth error (expired cookie,
+      // malformed paste) surfaces before we touch prefs — if the
+      // cookie save fails, we leave the color pref alone too so the
+      // user can fix the cookie input and resubmit both.
+      if (trimmed) {
+        const { hasNytCookie: now } = await saveNytCookie(trimmed);
+        onSaved(now);
+        // Clear the buffer so a retry after a *later* failure (e.g.
+        // color save) doesn't re-POST the cookie a second time. The
+        // server would tolerate it, but the user-visible flow is
+        // cleaner if each successful piece doesn't re-fire.
+        setValue("");
+      }
+      if (colorDirty) {
+        const { prefs: merged } = await savePrefs({ color });
+        onPrefsChanged(merged);
+      }
+      onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "save failed");
     } finally {
@@ -153,6 +193,53 @@ export function SettingsDialog({ hasNytCookie, onSaved, onClose }: Props) {
         </header>
         <div className={styles.body}>
           <section>
+            <h3>Color</h3>
+            <p className={styles.help}>
+              Your color in chat, cursor presence, and the brief flash when
+              other players see your letters land. Pick one or use the
+              default (chosen from your handle).
+            </p>
+            <div
+              className={styles.swatches}
+              role="radiogroup"
+              aria-label="Player color"
+            >
+              {CHAT_PALETTE.map((c) => {
+                const selected = color === c;
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    aria-label={`Color ${c}`}
+                    className={
+                      selected ? `${styles.swatch} ${styles.swatchOn}` : styles.swatch
+                    }
+                    style={{ background: c }}
+                    onClick={() => setColor(c)}
+                    disabled={busy}
+                  />
+                );
+              })}
+              <button
+                type="button"
+                role="radio"
+                aria-checked={color === null}
+                className={
+                  color === null
+                    ? `${styles.swatchDefault} ${styles.swatchOn}`
+                    : styles.swatchDefault
+                }
+                onClick={() => setColor(null)}
+                disabled={busy}
+              >
+                Default
+              </button>
+            </div>
+          </section>
+
+          <section className={styles.section}>
             <h3>NYT cookie</h3>
             <p className={styles.status}>
               {hasStored ? (
@@ -208,24 +295,36 @@ export function SettingsDialog({ hasNytCookie, onSaved, onClose }: Props) {
             {error && <p className={styles.error}>{error}</p>}
             {status && <p className={styles.statusOk}>{status}</p>}
             <div className={styles.buttons}>
+              {/* Destructive action lives on the left, separated by an
+                  auto-margin from the Cancel / OK pair so a stray click
+                  isn't right next to OK. Only rendered when there's
+                  something to clear. */}
+              {hasStored && (
+                <button
+                  type="button"
+                  className={styles.destructive}
+                  onClick={() => void onClear()}
+                  disabled={busy}
+                >
+                  Clear NYT cookie
+                </button>
+              )}
+              <button
+                type="button"
+                className={styles.secondary}
+                onClick={onClose}
+                disabled={busy}
+              >
+                Cancel
+              </button>
               <button
                 type="button"
                 className={styles.primary}
                 onClick={() => void onSave()}
-                disabled={busy || !value.trim()}
+                disabled={busy || (!value.trim() && !colorDirty)}
               >
-                {busy ? "Saving…" : "Save"}
+                {busy ? "Saving…" : "OK"}
               </button>
-              {hasStored && (
-                <button
-                  type="button"
-                  className={styles.secondary}
-                  onClick={() => void onClear()}
-                  disabled={busy}
-                >
-                  Clear
-                </button>
-              )}
             </div>
           </section>
         </div>

@@ -136,16 +136,28 @@ export type UserRow = {
  *  for ergonomics — preferences evolve fast, adding one shouldn't
  *  require a migration, and access pattern is always "load all prefs
  *  for one user" which JSON handles cleanly. See
- *  `docs/user-preferences-backlog.md` for the column-vs-JSON rationale.
- *
- *  Empty today by design — Joel set up the machinery before the first
- *  real preference lands so the wire shape and helpers are ready. */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface Prefs {}
+ *  `docs/user-preferences-backlog.md` for the column-vs-JSON rationale. */
+export interface Prefs {
+  /** Override the deterministic name-hash color used in chat / cursor
+   *  presence / sender flash. Stored as `#rrggbb` lowercase hex. When
+   *  unset, the client falls back to `colorForName(handle)` — the
+   *  existing eight-color hash mapping. */
+  color?: string;
+}
 
 /** Defaults merged into whatever's stored. Adding a new pref means:
  *  add a key here, add a key to `Prefs`, ship. No migration. */
 export const DEFAULT_PREFS: Prefs = {};
+
+/** Validate a user-supplied color string. Accepts `#rrggbb` only (no
+ *  shorthand, no named colors) — keeps the rendering predictable and
+ *  storage-uniform. Returns the lowercased canonical form, or null on
+ *  any malformed input. */
+export function validateColor(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  if (!/^#[0-9a-fA-F]{6}$/.test(value)) return null;
+  return value.toLowerCase();
+}
 
 /** Read + merge a user's preferences with the defaults. Always
  *  returns a fully-populated object — callers don't need to handle

@@ -78,6 +78,12 @@ type Props = {
   /** Logged-in user's handle, if any. Used as the default chat name
    *  when there's no localStorage override and no `?name=` param. */
   authedHandle?: string | null;
+  /** Logged-in user's preferred color (`#rrggbb`) if they've set one
+   *  in Settings. Overrides the deterministic name-hash color. Read
+   *  once at mount — same posture as the handle (changing it mid-
+   *  board would require renegotiating presence/sender flash, so
+   *  changes take effect on next board load). */
+  preferredColor?: string | null;
   /** Has the player ever dismissed the help dialog? `undefined` means
    *  "auth still resolving — don't decide yet"; `false` triggers the
    *  one-shot auto-open of HelpDialog (and `onHelpSeen`); `true` is a
@@ -211,6 +217,7 @@ export function PuzzleView({
   onToggleMenu,
   onNewGame,
   authedHandle,
+  preferredColor,
   seenHelp,
   onHelpSeen,
 }: Props) {
@@ -227,11 +234,20 @@ export function PuzzleView({
     () => initialCursor(puzzle.snapshot.cells) ?? { row: 0, col: 0, dir: "across" },
   );
 
-  // Identity is fixed at mount: account handle for authed users,
-  // a stable Rando<NN> (persisted in localStorage) for anons. No
+  // Name is fixed at mount: account handle for authed users, a
+  // stable Rando<NN> (persisted in localStorage) for anons. No
   // in-session rename — the cognitive cost of an account-handle ≠
   // chat-name split wasn't paying for itself (see chatIdentity.ts).
-  const [identity] = useState<ChatIdentity>(() => resolveChatIdentity(authedHandle ?? null));
+  // Color, on the other hand, is reactive — picking a new color in
+  // Settings should update presence bubbles, the chat header, and
+  // sender-flash on outgoing fills without a board reload.
+  const [identityName] = useState<string>(
+    () => resolveChatIdentity(authedHandle ?? null, preferredColor ?? null).name,
+  );
+  const identity = useMemo<ChatIdentity>(
+    () => resolveChatIdentity(identityName, preferredColor ?? null),
+    [identityName, preferredColor],
+  );
   const identityRef = useRef(identity);
   identityRef.current = identity;
   const [chatOpen, setChatOpen] = useState(false);

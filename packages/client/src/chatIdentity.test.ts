@@ -117,4 +117,26 @@ describe("resolveChatIdentity", () => {
     // Authed call shouldn't overwrite the anon slot.
     expect(localStorage.getItem("crossplay.anonName")).toBe(seeded);
   });
+
+  it("uses preferredColor to override the name-hash default", () => {
+    const id = resolveChatIdentity("Moth", "#3b82f6");
+    expect(id.name).toBe("Moth");
+    expect(id.color).toBe("#3b82f6");
+  });
+
+  it("lowercases the preferredColor for canonical storage", () => {
+    expect(resolveChatIdentity("Moth", "#3B82F6").color).toBe("#3b82f6");
+  });
+
+  it("ignores a malformed preferredColor and falls back to the hash default", () => {
+    for (const bad of ["red", "#abc", "#12345g", "not a color"]) {
+      const id = resolveChatIdentity("Moth", bad);
+      expect(id.color).toBe(colorForName("Moth"));
+    }
+  });
+
+  it("falls back to the hash default when preferredColor is null or missing", () => {
+    expect(resolveChatIdentity("Moth", null).color).toBe(colorForName("Moth"));
+    expect(resolveChatIdentity("Moth").color).toBe(colorForName("Moth"));
+  });
 });

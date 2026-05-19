@@ -1392,3 +1392,94 @@ describe("auth: hasNytCookie on PublicUser", () => {
     );
   });
 });
+
+describe("auth: PATCH /api/auth/prefs", () => {
+  let app: FastifyInstance;
+  let db: DatabaseSync;
+  let cookies: Record<string, string>;
+  let userId: number;
+
+  beforeEach(async () => {
+    _clearCacheForTest();
+    ({ app, db } = await buildApp());
+    ({ cookies, userId } = await seedAuth(app, db));
+  });
+  afterEach(async () => {
+    await app.close();
+    _clearCacheForTest();
+  });
+
+  it("stores a valid #rrggbb color and returns the merged prefs", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/auth/prefs",
+      payload: { color: "#3B82F6" },
+      cookies,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ prefs: { color: "#3b82f6" } });
+    // Round-trip via /me to confirm the public-user shape carries it.
+    const me = await app.inject({ method: "GET", url: "/api/auth/me", cookies });
+    expect((me.json() as { user: { prefs: { color?: string } } }).user.prefs.color)
+      .toBe("#3b82f6");
+  });
+
+  it("rejects malformed colors with a clear message", async () => {
+    for (const bad of ["red", "#abc", "#12345g", "not a color", 123]) {
+      const res = await app.inject({
+        method: "PATCH",
+        url: "/api/auth/prefs",
+        payload: { color: bad },
+        cookies,
+      });
+      expect(res.statusCode).toBe(400);
+      expect((res.json() as { error: string }).error).toMatch(/#rrggbb/i);
+    }
+  });
+
+  it("clears the pref when color is null (drops from stored JSON)", async () => {
+    // Set, then clear, then verify it doesn't come back.
+    await app.inject({
+      method: "PATCH",
+      url: "/api/auth/prefs",
+      payload: { color: "#ff0000" },
+      cookies,
+    });
+    const cleared = await app.inject({
+      method: "PATCH",
+      url: "/api/auth/prefs",
+      payload: { color: null },
+      cookies,
+    });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json()).toEqual({ prefs: {} });
+    // Stored JSON should not contain the key (so the default merge
+    // resolves to undefined).
+    const stored = (
+      db.prepare("SELECT prefs FROM users WHERE id = ?").get(userId) as {
+        prefs: string | null;
+      }
+    ).prefs;
+    expect(stored).not.toContain("color");
+  });
+
+  it("ignores unknown keys (forward-compat with newer clients)", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/auth/prefs",
+      payload: { color: "#ff0000", unknownPref: "value" },
+      cookies,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ prefs: { color: "#ff0000" } });
+  });
+
+  it("returns 401 when not logged in", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/auth/prefs",
+      payload: { color: "#3b82f6" },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});

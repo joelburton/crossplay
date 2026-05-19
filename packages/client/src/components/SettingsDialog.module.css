@@ -57,6 +57,68 @@
   color: var(--c-text);
 }
 
+/* Visual gap between sections inside the same dialog body. The first
+   section sits flush; subsequent ones get a rule + padding. */
+.section {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* Color picker — eight palette swatches + a "Default" pill. Inline
+   flex so the row wraps gracefully if the dialog narrows. */
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin: 0.4rem 0 0.4rem;
+}
+
+.swatch {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  /* No background here — set inline per swatch. */
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+
+.swatch:hover:not(:disabled) {
+  /* Subtle ring on hover; clearer ring on selected via .swatchOn. */
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.swatchDefault {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.7rem;
+  height: 1.75rem;
+  border-radius: 0.875rem;
+  border: 2px solid transparent;
+  background: #f5f5f5;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+
+.swatchDefault:hover:not(:disabled) {
+  background: #ececec;
+}
+
+/* Selection indicator: a darker ring around the chosen swatch. Works
+   on both colored circles and the Default pill. */
+.swatchOn {
+  border-color: var(--c-text, #222);
+}
+
+.swatch:disabled,
+.swatchDefault:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .status,
 .help {
   margin: 0.3rem 0 0.6rem;
@@ -138,7 +200,8 @@
 }
 
 .primary,
-.secondary {
+.secondary,
+.destructive {
   font: inherit;
   padding: 0.4rem 1rem;
   border: 1px solid #888;
@@ -158,14 +221,35 @@
 
 .secondary {
   background: #f5f5f5;
+  /* Push Cancel + OK to the right edge; Clear NYT cookie (when
+     rendered) stays on the left, separated by the auto margin. */
+  margin-left: auto;
+}
+
+/* When there's no destructive button, .secondary is the first child
+   and the auto-margin would shove it right against OK — clear it so
+   the pair sits flush left, like a normal two-button row. */
+.secondary:first-child {
+  margin-left: 0;
 }
 
 .secondary:hover:not(:disabled) {
   background: #ececec;
 }
 
+.destructive {
+  background: #fff5f5;
+  color: #a31621;
+  border-color: #d99;
+}
+
+.destructive:hover:not(:disabled) {
+  background: #ffe8e8;
+}
+
 .primary:disabled,
-.secondary:disabled {
+.secondary:disabled,
+.destructive:disabled {
   cursor: default;
   opacity: 0.6;
 }

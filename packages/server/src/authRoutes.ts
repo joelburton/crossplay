@@ -32,7 +32,9 @@ import {
   inviteCodeExists,
   isExpired,
   markHelpSeen,
+  setUserPrefs,
   touchSession,
+  validateColor,
   validateHandle,
   verifyPassword,
 } from "./auth.js";
@@ -242,6 +244,42 @@ export function registerAuthRoutes(app: FastifyInstance, db: DatabaseSync): void
       const msg = err instanceof Error ? err.message : "malformed stored cookie";
       return { cookie: null, error: msg };
     }
+  });
+
+  // PATCH /prefs — merge the supplied partial Prefs into the caller's
+  // stored prefs JSON. Each known key has its own validator; unknown
+  // keys are silently ignored (forward-compat with older clients).
+  // Passing `null` for a key resets that pref to its default (key is
+  // removed from the stored JSON).
+  //
+  // Returns the post-merge prefs so the client can update its local
+  // user shape without a /me round-trip.
+  app.patch("/prefs", async (req, reply) => {
+    if (!req.user) return reply.code(401).send({ error: "not logged in" });
+    const body = req.body as Record<string, unknown> | null;
+    if (!body || typeof body !== "object") {
+      return reply.code(400).send({ error: "missing body" });
+    }
+    const partial: Partial<Prefs> = {};
+    if ("color" in body) {
+      const raw = body.color;
+      if (raw === null || raw === "") {
+        // Explicit clear — `undefined` survives the merge but
+        // JSON.stringify drops it from the stored blob, returning the
+        // user to the deterministic-from-name default.
+        partial.color = undefined;
+      } else {
+        const ok = validateColor(raw);
+        if (!ok) {
+          return reply
+            .code(400)
+            .send({ error: "color must be #rrggbb hex or null to reset" });
+        }
+        partial.color = ok;
+      }
+    }
+    setUserPrefs(db, req.user.id, partial);
+    return { prefs: getUserPrefs(db, req.user.id) };
   });
 
   // POST /nyt-cookie — save (or clear) the caller's NYT cookie blob.
