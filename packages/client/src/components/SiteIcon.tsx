@@ -2,9 +2,11 @@ type Props = { className?: string };
 
 /**
  * Inline-SVG site logo: a 5×5 mini grid with the four corner blocks
- * blacked out and a red heart in the center. Used both in the header
- * (sized via the parent's `font-size` plus an `em`-based class) and as
- * the standalone `public/icon.svg` favicon.
+ * blacked out and a red heart in the center. Used in the header
+ * (sized via the parent's `font-size` plus an `em`-based class). The
+ * same artwork is mirrored in `public/icon.svg` (the favicon) and
+ * rasterized into the `public/apple-touch-icon*.png` set for iOS
+ * home-screen use; keep all three in sync if the design changes.
  */
 export function SiteIcon({ className }: Props) {
   return (
