@@ -191,6 +191,14 @@ export function HomePage({
       <div className={styles.wrap}>
         {puzzles && puzzles.length > 0 && (() => {
           const filtered = puzzles.filter((p) => matchesQuery(p, puzzleFilter));
+          // Puzzle ids the user already has a board for — drives the
+          // corner flag on the puzzle card. Recomputed per render; the
+          // lists are small (hundreds at most).
+          const haveBoardFor = new Set(
+            (boards ?? [])
+              .map((b) => b.puzzleId)
+              .filter((id): id is string => id !== null),
+          );
           return (
             <section className={`${styles.section} ${styles.listSection}`}>
               <h2 className={styles.heading}>Puzzle library</h2>
@@ -215,6 +223,13 @@ export function HomePage({
                           void createBoard(p.id).then(({ boardId }) => navigate(boardPath(boardId)));
                         }}
                       >
+                        {haveBoardFor.has(p.id) && (
+                          <span
+                            className={styles.haveBoardFlag}
+                            aria-label="You have a game on this puzzle"
+                            title="You have a game on this puzzle"
+                          />
+                        )}
                         <span className={styles.gameTitle}>{p.title || "Untitled"}</span>
                         <span className={styles.gameMeta}>
                           {p.author && <span>by {p.author}</span>}

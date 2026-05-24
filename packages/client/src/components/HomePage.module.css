@@ -184,6 +184,7 @@
 }
 
 .game {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
@@ -195,6 +196,21 @@
   border-radius: 6px;
   cursor: pointer;
   font: inherit;
+  overflow: hidden;
+}
+
+/* Triangular corner flag in the puzzle library, shown when the user
+ * already has a board on that puzzle. Same green as the "live" badge
+ * so the "you've played / you're playing" cue reads consistently. */
+.haveBoardFlag {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1.4rem;
+  height: 1.4rem;
+  background: #2a7;
+  clip-path: polygon(100% 0, 100% 100%, 0 0);
+  pointer-events: none;
 }
 
 .game:hover {
