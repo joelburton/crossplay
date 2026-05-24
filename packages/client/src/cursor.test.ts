@@ -4,10 +4,12 @@ import {
   activeClueNumber,
   advanceAfterFill,
   clueStarts,
+  findWordEnd,
   findWordStart,
   firstOpenCell,
   initialCursor,
   jumpClue,
+  jumpWordEdge,
   moveCursor,
   retreatForBackspace,
   wordCells,
@@ -91,6 +93,68 @@ describe("findWordStart", () => {
     expect(findWordStart(g2, 0, 2, "across")).toEqual({ row: 0, col: 2 });
     const g3 = grid(["...", "#..", "..."]);
     expect(findWordStart(g3, 2, 0, "down")).toEqual({ row: 2, col: 0 });
+  });
+});
+
+describe("findWordEnd", () => {
+  const g = grid(["...", "...", "..."]);
+  it("walks to right edge for across", () => {
+    expect(findWordEnd(g, 1, 0, "across")).toEqual({ row: 1, col: 2 });
+  });
+  it("walks to bottom edge for down", () => {
+    expect(findWordEnd(g, 0, 1, "down")).toEqual({ row: 2, col: 1 });
+  });
+  it("stops just before a block", () => {
+    const g2 = grid(["..#", "...", "..."]);
+    expect(findWordEnd(g2, 0, 0, "across")).toEqual({ row: 0, col: 1 });
+    const g3 = grid(["...", "..#", "..."]);
+    expect(findWordEnd(g3, 0, 2, "down")).toEqual({ row: 0, col: 2 });
+  });
+});
+
+describe("jumpWordEdge", () => {
+  it("jumps to word start within the cursor direction (Shift+Left)", () => {
+    const g = grid(["...", "...", "..."]);
+    expect(jumpWordEdge(g, { row: 1, col: 2, dir: "across" }, "ArrowLeft")).toEqual({
+      row: 1,
+      col: 0,
+      dir: "across",
+    });
+  });
+  it("jumps to word end within the cursor direction (Shift+Right)", () => {
+    const g = grid(["...", "...", "..."]);
+    expect(jumpWordEdge(g, { row: 1, col: 0, dir: "across" }, "ArrowRight")).toEqual({
+      row: 1,
+      col: 2,
+      dir: "across",
+    });
+  });
+  it("stops at the block, not the grid edge", () => {
+    const g = grid([".#.", "...", "..."]);
+    expect(jumpWordEdge(g, { row: 0, col: 2, dir: "across" }, "ArrowLeft")).toEqual({
+      row: 0,
+      col: 2,
+      dir: "across",
+    });
+    expect(jumpWordEdge(g, { row: 1, col: 0, dir: "across" }, "ArrowRight")).toEqual({
+      row: 1,
+      col: 2,
+      dir: "across",
+    });
+  });
+  it("Shift+Up/Down flip dir to down and jump along the down word", () => {
+    const g = grid(["...", "...", "..."]);
+    // Cursor is across at (1,1); Shift+Up flips to down and jumps to top of column.
+    expect(jumpWordEdge(g, { row: 1, col: 1, dir: "across" }, "ArrowUp")).toEqual({
+      row: 0,
+      col: 1,
+      dir: "down",
+    });
+    expect(jumpWordEdge(g, { row: 1, col: 1, dir: "across" }, "ArrowDown")).toEqual({
+      row: 2,
+      col: 1,
+      dir: "down",
+    });
   });
 });
 

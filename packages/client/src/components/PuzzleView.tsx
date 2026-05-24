@@ -11,6 +11,7 @@ import {
   findCellByNumber,
   initialCursor,
   jumpClue,
+  jumpWordEdge,
   moveCursor,
   retreatForBackspace,
   wordCells,
@@ -800,7 +801,12 @@ export function PuzzleView({
       if (ARROWS.has(e.key)) {
         e.preventDefault();
         onActivity?.();
-        setCursor((cur) => moveCursor(cells, cur, e.key as ArrowKey));
+        const key = e.key as ArrowKey;
+        if (e.shiftKey) {
+          setCursor((cur) => jumpWordEdge(cells, cur, key));
+        } else {
+          setCursor((cur) => moveCursor(cells, cur, key));
+        }
         return;
       }
       if (e.key === "Tab") {

@@ -7,6 +7,7 @@ type Props = {
 
 const SHORTCUTS: Array<[string, string]> = [
   ["←↑→↓", "Move cursor (perpendicular arrow rotates direction)"],
+  ["⇧←↑→↓", "Jump to word start / end (perpendicular flips direction)"],
   ["Tab / ⇧Tab", "Next / previous clue"],
   ["Letter", "Fill the current cell"],
   ["Backspace", "Erase and step back (clears a whole rebus in one press)"],

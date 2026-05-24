@@ -235,6 +235,51 @@ function step(dir: Direction): { dr: number; dc: number } {
   return dir === "across" ? { dr: 0, dc: 1 } : { dr: 1, dc: 0 };
 }
 
+/** Walk forward to the last cell of the word containing `(row, col)` in
+ *  `dir`. Mirror of `findWordStart`. If `(row, col)` is a block, returns
+ *  the same coords — callers should guard with `isOpen` first. */
+export function findWordEnd(
+  cells: Cell[][],
+  row: number,
+  col: number,
+  dir: Direction,
+): CellPos {
+  const { dr, dc } = step(dir);
+  let r = row;
+  let c = col;
+  while (isOpen(cells, r + dr, c + dc)) {
+    r += dr;
+    c += dc;
+  }
+  return { row: r, col: c };
+}
+
+/**
+ * Shift+arrow jump-to-word-edge. The arrow's axis picks which word
+ * the jump operates on (Left/Right → across, Up/Down → down); if that
+ * axis differs from the current cursor dir, dir flips to match. Within
+ * the chosen axis, Left/Up jump to the word's start and Right/Down to
+ * its end.
+ *
+ * If the cursor isn't on an open cell (shouldn't happen — PuzzleView's
+ * invariant), returns the cursor unchanged aside from the dir flip.
+ */
+export function jumpWordEdge(
+  cells: Cell[][],
+  cursor: Cursor,
+  key: ArrowKey,
+): Cursor {
+  const { dir } = DELTA[key];
+  if (!isOpen(cells, cursor.row, cursor.col)) {
+    return { ...cursor, dir };
+  }
+  const toEnd = key === "ArrowRight" || key === "ArrowDown";
+  const edge = toEnd
+    ? findWordEnd(cells, cursor.row, cursor.col, dir)
+    : findWordStart(cells, cursor.row, cursor.col, dir);
+  return { row: edge.row, col: edge.col, dir };
+}
+
 /**
  * Advance the cursor by one cell after the user types a letter.
  *
