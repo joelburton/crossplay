@@ -278,7 +278,7 @@ describe("PuzzleView happy path", () => {
     expect(fills).toEqual([]);
   });
 
-  it("SPACE on a multi-char cell opens a read-only zoom-peek; arrow dismisses it", () => {
+  it("⇧SPACE on a cell opens a read-only zoom-peek; arrow dismisses it", () => {
     const puzzle = makePuzzle();
     // Pre-fill cell (0,0) with a rebus value so the peek has something
     // to show.
@@ -295,16 +295,16 @@ describe("PuzzleView happy path", () => {
     const ws = FakeWebSocket.instances[0]!;
     act(() => ws.emitOpen());
 
-    // Press space; the peek box renders with the full fill.
+    // Press ⇧space; the peek box renders with the full fill.
     act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: " " }));
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", shiftKey: true }));
     });
     // Two nodes will read "BLOCK": the underlying cell + the peek
     // overlay. We only care that at least one peek-style node exists.
     const matches = screen.getAllByText("BLOCK");
     expect(matches.length).toBeGreaterThanOrEqual(2);
 
-    // SPACE should not have sent a fill.
+    // ⇧SPACE should not have sent a fill.
     expect(ws.sent.filter((m) => (m as { type: string }).type === "fill")).toEqual([]);
 
     // Arrow dismisses the peek (and moves the cursor).
@@ -312,6 +312,37 @@ describe("PuzzleView happy path", () => {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
     });
     expect(screen.getAllByText("BLOCK")).toHaveLength(1);
+  });
+
+  it("bare SPACE advances the cursor one cell in the current direction, no fill sent", () => {
+    const puzzle = makePuzzle();
+    render(
+      <PuzzleView
+        puzzle={puzzle}
+        mode="pen"
+        onToggleMode={() => {}}
+        collapseRebus={false}
+        onToggleCollapseRebus={() => {}}
+      />,
+    );
+    const ws = FakeWebSocket.instances[0]!;
+    act(() => ws.emitOpen());
+
+    // Cursor starts at (0,0) across. Bare space should advance to (0,1).
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: " " }));
+    });
+    expect(ws.sent.filter((m) => (m as { type: string }).type === "fill")).toEqual([]);
+    // Typing a letter now should land at (0,1), proving the cursor moved.
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "A" }));
+    });
+    const fills = ws.sent.filter((m) => (m as { type: string }).type === "fill") as Array<{
+      row: number;
+      col: number;
+    }>;
+    expect(fills).toHaveLength(1);
+    expect({ row: fills[0]!.row, col: fills[0]!.col }).toEqual({ row: 0, col: 1 });
   });
 
   it("collapseRebus renders only the first letter of multi-char fills", () => {
@@ -333,9 +364,9 @@ describe("PuzzleView happy path", () => {
     expect(screen.queryByText("BLOCK")).toBeNull();
     expect(screen.getByText("B")).toBeTruthy();
 
-    // SPACE peek still shows the full string (collapse is display-only).
+    // ⇧SPACE peek still shows the full string (collapse is display-only).
     act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: " " }));
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", shiftKey: true }));
     });
     expect(screen.getByText("BLOCK")).toBeTruthy();
   });

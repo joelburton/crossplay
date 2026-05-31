@@ -13,7 +13,8 @@ const SHORTCUTS: Array<[string, string]> = [
   ["Backspace", "Erase and step back (clears a whole rebus in one press)"],
   ["⇧Backspace", "Clear the current word"],
   ["⇧Enter", "Open the rebus overlay over the focused cell"],
-  ["Space", "Zoom-peek a multi-letter cell (read-only)"],
+  ["Space", "Step one cell forward in the current direction"],
+  ["⇧Space", "Zoom-peek the current cell (read-only)"],
   ["|", "Cycle right-edge mark: break → hyphen → none"],
   ["_", "Cycle bottom-edge mark: break → hyphen → none"],
   ["/", "Open chat (or focus its input if already open)"],
@@ -97,8 +98,8 @@ export function HelpDialog({ onClose }: Props) {
               square containing <strong>HEART</strong>). Press <strong>⇧Enter</strong>{" "}
               to open the multi-letter input over the current cell, type your answer,
               and press <strong>Enter</strong> to commit (<strong>Esc</strong>{" "}
-              cancels). Use <strong>Space</strong> on a rebus cell to zoom in if it's
-              hard to read. The menu's <em>Collapse rebuses</em> toggle shrinks them
+              cancels). Use <strong>⇧Space</strong> on any cell to zoom in if its
+              fill is hard to read. The menu's <em>Collapse rebuses</em> toggle shrinks them
               to their first letter while keeping the full answer underneath.
             </p>
           </section>

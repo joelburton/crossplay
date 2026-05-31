@@ -9,7 +9,7 @@ import styles from "./Cell.module.css";
 // graze the cell edge; min() means a 1-char fill never grows past
 // the default; max() keeps long answers above a readable floor so
 // they don't disappear into a pixel. Long rebuses are still hard to
-// read at rest — use Space (peek) or the collapse-rebuses preference
+// read at rest — use ⇧Space (peek) or the collapse-rebuses preference
 // to see them full size. Translate is dropped on multi-char so the
 // text stays centered.
 const REBUS_MIN_EM = 0.22;

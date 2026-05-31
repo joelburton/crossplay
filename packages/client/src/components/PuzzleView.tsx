@@ -766,15 +766,18 @@ export function PuzzleView({
         }
       }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      // Spacebar: peek at a multi-char rebus fill in the same overlay
-      // box used for editing, but read-only. Does NOT take focus, so
-      // any subsequent navigation key still flows through this handler
-      // — and we dismiss the peek at the top of every other branch.
-      if (e.key === " ") {
+      // Shift+Space: peek at the current cell's fill in the same
+      // overlay box used for editing, but read-only. Works on any
+      // cell (empty, single-letter, or rebus). Does NOT take focus,
+      // so any subsequent navigation key still flows through this
+      // handler — and we dismiss the peek at the top of every other
+      // branch. Bare Space falls through to the "advance one cell"
+      // branch below.
+      if (e.key === " " && e.shiftKey) {
         e.preventDefault();
         const { row, col } = cursor;
         const cell = cells[row]?.[col];
-        if (cell?.kind === "cell" && cell.fill && cell.fill.length > 1) {
+        if (cell?.kind === "cell") {
           setZoomPeek(true);
         }
         return;
@@ -782,6 +785,14 @@ export function PuzzleView({
       // For every other handled key, drop the peek so it doesn't
       // linger over the new cursor position.
       setZoomPeek(false);
+      // Bare Space: step one cell forward in the current direction,
+      // same stop-at-word-edge semantics as typing a letter.
+      if (e.key === " ") {
+        e.preventDefault();
+        onActivity?.();
+        setCursor((cur) => advanceAfterFill(cells, cur));
+        return;
+      }
       // Shift+Enter opens the rebus overlay over the focused cell. The
       // overlay takes focus immediately, so subsequent keystrokes hit it
       // instead of this handler (the INPUT bail above). Bare Enter is a
@@ -1071,7 +1082,7 @@ export function PuzzleView({
   const zoomPeekValue = (() => {
     if (!zoomPeek) return null;
     const c = cells[cursor.row]?.[cursor.col];
-    return c?.kind === "cell" && c.fill && c.fill.length > 1 ? c.fill : null;
+    return c?.kind === "cell" ? (c.fill ?? "") : null;
   })();
 
   return (
