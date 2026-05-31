@@ -313,6 +313,27 @@ describe("HomePage", () => {
     expect(screen.getByText("Untitled B")).toBeTruthy();
   });
 
+  it("filters the puzzle library by id/slug", async () => {
+    stubLists(
+      [
+        { id: "20260506", title: "Daily", author: "x", copyright: "", width: 5, height: 5 },
+        { id: "2026-05-06", title: "Daily (dup)", author: "x", copyright: "", width: 5, height: 5 },
+        { id: "nyt2", title: "Other", author: "x", copyright: "", width: 5, height: 5 },
+      ],
+      [],
+    );
+    render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} onPrefsChanged={() => {}} />);
+    await flushPromises();
+
+    await userEvent.type(screen.getByLabelText("Filter puzzle library"), "2026-05");
+    await flushPromises();
+
+    // Only the slug containing the literal needle survives.
+    expect(screen.queryByText("Daily")).toBeNull();
+    expect(screen.getByText("Daily (dup)")).toBeTruthy();
+    expect(screen.queryByText("Other")).toBeNull();
+  });
+
   it("shows 'no puzzles match' when the puzzle filter has zero hits", async () => {
     stubLists([puzzle("p1", "Sunday")], []);
     render(<HomePage onUploaded={() => {}} user={testUser} onLogout={() => {}} onNytCookieChanged={() => {}} onPrefsChanged={() => {}} />);

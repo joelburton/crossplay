@@ -41,17 +41,21 @@ function formatFillPercent(pct: number | null): string {
   return `${pct}%`;
 }
 
-/** Case-insensitive substring match against title + author + copyright.
- *  Copyright is in the haystack so a player can type "times" to find
- *  every NYT puzzle, etc. Both lists share the predicate so they feel
- *  consistent. */
+/** Case-insensitive substring match against id + title + author +
+ *  copyright. Copyright is in the haystack so a player can type
+ *  "times" to find every NYT puzzle; id is in there so curators can
+ *  find a library puzzle by its slug (handy when the dedup script
+ *  names a slug and you want to see it in the UI). For boards the
+ *  id is an opaque UUID — harmless to include but rarely useful.
+ *  Both lists share the predicate so they feel consistent. */
 function matchesQuery(
-  item: { title: string; author: string; copyright: string },
+  item: { id: string; title: string; author: string; copyright: string },
   q: string,
 ): boolean {
   if (!q) return true;
   const needle = q.toLowerCase();
   return (
+    item.id.toLowerCase().includes(needle) ||
     item.title.toLowerCase().includes(needle) ||
     item.author.toLowerCase().includes(needle) ||
     item.copyright.toLowerCase().includes(needle)
