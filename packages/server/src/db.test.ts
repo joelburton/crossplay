@@ -85,7 +85,7 @@ describe("db", () => {
     const boardsCols = db.prepare("PRAGMA table_info(boards)").all() as ColInfo[];
 
     expect(puzzlesCols.map((c) => c.name).sort()).toEqual(
-      ["author", "copyright", "created_at", "height", "id", "ipuz", "title", "updated_at", "width"],
+      ["author", "content_hash", "copyright", "created_at", "height", "id", "ipuz", "title", "updated_at", "width"],
     );
     expect(boardsCols.map((c) => c.name).sort()).toEqual(
       ["author", "chat", "copyright", "created_at", "fill_percent", "id", "ipuz", "owner_id", "puzzle_id", "scratchpad_text", "snapshot", "title", "updated_at"],
@@ -206,8 +206,10 @@ describe("db", () => {
     // Lazy-import to avoid a cycle at module load (the test only needs
     // these for the fixture import; the real code paths don't touch
     // them directly in this test).
-    const { importPuzzle } = await import("./importer.js");
     const { parseIpuzBuffer } = await import("./ipuz.js");
+    const { writeIpuz } = await import("./ipuz.js");
+    const { parsePuzzleBuffer, detectFormat } = await import("./format.js");
+    const { readFileSync } = await import("node:fs");
     const { dirname, resolve } = await import("node:path");
     const { fileURLToPath } = await import("node:url");
     const FIXTURE = resolve(
@@ -222,16 +224,18 @@ describe("db", () => {
       expect(userVersion(db)).toBe(2);
 
       // Stand up two boards in the v2 schema (no fill_percent column,
-      // no owner_id column — both come in later migrations). Skip
-      // findOrCreateBoard / insertBoardRow here because they're the
-      // *current* code and would try to write columns the v2 schema
-      // doesn't have.
-      importPuzzle({ db, path: FIXTURE, force: false });
-      const puzzleIpuz = (
-        db
-          .prepare("SELECT ipuz FROM puzzles WHERE id = ?")
-          .get("sunday-sample") as { ipuz: string }
-      ).ipuz;
+      // no owner_id column — both come in later migrations). Don't use
+      // importPuzzle / insertPuzzleRow / insertBoardRow here because
+      // they're the *current* code and would try to write columns
+      // (content_hash, owner_id, fill_percent, …) the v2 schema
+      // doesn't have. Parse the fixture by hand instead.
+      const buf = readFileSync(FIXTURE);
+      const { state, solution } = parsePuzzleBuffer(
+        "sunday-sample",
+        buf,
+        detectFormat(FIXTURE, buf),
+      );
+      const puzzleIpuz = writeIpuz(state, solution);
       const parsedPuzzle = parseIpuzBuffer("sunday-sample", Buffer.from(puzzleIpuz, "utf8"));
       const initialSnapshotJson = JSON.stringify(parsedPuzzle.state.snapshot);
       const untouchedId = "untouched-board";

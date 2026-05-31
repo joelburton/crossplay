@@ -290,6 +290,27 @@ export const migrations: Migration[] = [
       db.exec(`ALTER TABLE users ADD COLUMN nyt_cookie TEXT`);
     },
   },
+  {
+    // Library-side dedup: a SHA-256 over the puzzle's solving content
+    // (solution grid + given mask + normalized clue text), so reprints
+    // with cosmetic differences — different title, edited copyright,
+    // re-encoded notes — collide. New imports compute it in
+    // `insertPuzzleRow` and a duplicate surfaces as a hard error.
+    //
+    // The column is nullable + UNIQUE rather than NOT NULL because
+    // the backfill is a separate step (`scripts/backfill-puzzle-hashes.ts`)
+    // — that script is meant to be run by hand in dev and in prod, and
+    // can also report content collisions in pre-existing data. SQLite
+    // treats NULLs as distinct under UNIQUE so multiple un-backfilled
+    // rows coexist; once backfilled, the index enforces dedup.
+    version: 10,
+    up: (db) => {
+      db.exec(`
+        ALTER TABLE puzzles ADD COLUMN content_hash TEXT;
+        CREATE UNIQUE INDEX puzzles_content_hash ON puzzles (content_hash);
+      `);
+    },
+  },
 ];
 
 export function openDb(path: string = process.env.DB_PATH ?? DEFAULT_DB_PATH): DatabaseSync {
