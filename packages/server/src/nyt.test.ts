@@ -14,7 +14,9 @@ import { describe, expect, it } from "vitest";
 import {
   NytFetchError,
   applyOverlayCircles,
+  applyOverlayMarkings,
   detectOverlayCircles,
+  detectOverlayMarkings,
   nytResponseToPuzzleState,
   parseStoredCookieJar,
 } from "./nyt.js";
@@ -368,5 +370,62 @@ describe("detectOverlayCircles + applyOverlayCircles", () => {
     expect(cells[0]![0]).toMatchObject({ shaded: true, circled: true });
     // Block at (0,1) is unchanged — we never add `circled` to a block.
     expect(cells[0]![1]).toEqual({ kind: "block" });
+  });
+});
+
+describe("detectOverlayMarkings: bars", () => {
+  // The fixture is the actual NYT overlay PNG for the 2026-04-02 daily
+  // ("WTVEW | EHERE / TT SHIPS SAILED" — a barred Thursday). Eight
+  // vertical bars sit on inter-cell boundaries; the per-cell `type`
+  // field can't express bars at all, so they only exist in the raster
+  // overlay.
+  it("finds the eight vertical bars in the 4/2/26 overlay", () => {
+    const buf = readFileSync(resolve(FIXTURE_DIR, "nyt-overlay-bars-2026-04-02.png"));
+    const png = PNG.sync.read(buf);
+    const m = detectOverlayMarkings(png, 15, 15);
+    expect(m.circles).toEqual(new Set());
+    expect(m.barsBottom).toEqual(new Set());
+    // "r,c" is the LEFT cell — bar is on its right edge.
+    expect(m.barsRight).toEqual(
+      new Set([
+        "2,0", "2,1",   // row 16: two close bars
+        "4,2", "4,7",   // row 22: bars next to "22" and before "24"
+        "7,4", "7,7",   // row 35: bars between 36/37 and further right
+        "10,0", "10,9", // row 50: bar between 50/51, bar far right
+      ]),
+    );
+  });
+
+  it("the circle-only fixture decodes as circles with no spurious bars", () => {
+    // Regression guard: a roughly-square circle outline must not get
+    // misclassified as a bar by the aspect-ratio test.
+    const buf = readFileSync(resolve(FIXTURE_DIR, "nyt-overlay-salmon-trout-char.png"));
+    const png = PNG.sync.read(buf);
+    const m = detectOverlayMarkings(png, 15, 15);
+    expect(m.circles.size).toBe(6);
+    expect(m.barsRight).toEqual(new Set());
+    expect(m.barsBottom).toEqual(new Set());
+  });
+
+  it("applyOverlayMarkings sets markRight/markBottom 'break' on the named cells", () => {
+    const cells: Cell[][] = [
+      [
+        { kind: "cell", number: null, fill: null },
+        { kind: "cell", number: null, fill: null },
+      ],
+      [
+        { kind: "cell", number: null, fill: null },
+        { kind: "block" },
+      ],
+    ];
+    applyOverlayMarkings(cells, {
+      circles: new Set(),
+      barsRight: new Set(["0,0"]),
+      barsBottom: new Set(["0,1", "1,1"]),
+    });
+    expect(cells[0]![0]).toMatchObject({ markRight: "break" });
+    expect(cells[0]![1]).toMatchObject({ markBottom: "break" });
+    // Block at (1,1) is unchanged — we never write marks onto a block.
+    expect(cells[1]![1]).toEqual({ kind: "block" });
   });
 });
