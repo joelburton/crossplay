@@ -645,12 +645,27 @@ export function PuzzleView({
             setExplainState({ kind: "error", message: "Explain isn't configured on this server." });
             return;
           }
-          setExplainState({
-            kind: "error",
-            message: status === 502
-              ? "The AI didn't return a usable explanation. Try again later."
-              : `Could not fetch explanation (${msg}).`,
-          });
+          // 502 covers three sub-cases from the server. The
+          // `msg` is the server's `reason` (logged in full to the
+          // console by explainClueRequest):
+          //   no_text — model returned an empty / safety-blocked
+          //     candidate; usually transient, sometimes the clue
+          //     itself trips the filter
+          //   api_error — fetch / HTTP / non-JSON response from
+          //     Gemini; could be a real outage or misconfig
+          //   missing_scratchpad_tag — should be impossible after
+          //     the lenient parser, but kept for completeness
+          let message: string;
+          if (status === 502 && msg === "no_text") {
+            message = "The AI returned no answer for this clue. Open the console for details.";
+          } else if (status === 502 && msg === "api_error") {
+            message = "Couldn't reach the AI. Check the server log for details.";
+          } else if (status === 502) {
+            message = `AI failure (${msg}). See console for details.`;
+          } else {
+            message = `Could not fetch explanation (${msg}).`;
+          }
+          setExplainState({ kind: "error", message });
         },
       );
     },

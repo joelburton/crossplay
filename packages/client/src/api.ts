@@ -113,19 +113,26 @@ export async function explainClueRequest(
   if (!res.ok) {
     // 400 → no_note (puzzle lacks notes), 409 → incomplete | wrong,
     // 502 → gemini failure, 503 → not configured. The body carries
-    // either `error` or `reason`; we put whichever exists into the
-    // message so the caller can branch.
-    let detail = `${res.status}`;
+    // some subset of `{error, reason, detail}`; pick the
+    // most-specific available for the HttpError message, and log
+    // the whole payload to the console so transient model failures
+    // are debuggable without dropping into the server terminal.
+    let body: { error?: unknown; reason?: unknown; detail?: unknown } = {};
     try {
-      const body = (await res.json()) as { error?: unknown; reason?: unknown };
-      const m = typeof body.reason === "string" ? body.reason
-        : typeof body.error === "string" ? body.error
-        : null;
-      if (m) detail = m;
+      body = (await res.json()) as typeof body;
     } catch {
       // body wasn't JSON
     }
-    throw new HttpError(res.status, detail);
+    const reason = typeof body.reason === "string" ? body.reason : null;
+    const error = typeof body.error === "string" ? body.error : null;
+    // eslint-disable-next-line no-console
+    console.warn("[explain] request failed", {
+      status: res.status,
+      error,
+      reason,
+      detail: body.detail,
+    });
+    throw new HttpError(res.status, reason ?? error ?? `${res.status}`);
   }
   return (await res.json()) as ExplainClueResponse;
 }
