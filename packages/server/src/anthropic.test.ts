@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { splitScratchpad } from "./gemini.js";
+import { splitScratchpad } from "./anthropic.js";
 
 describe("splitScratchpad", () => {
   it("splits cleanly when the closing tag is present", () => {
@@ -12,7 +12,7 @@ describe("splitScratchpad", () => {
     expect(res.explanation).toMatch(/\*\*Definition:\*\* cat/);
   });
 
-  it("accepts text without a scratchpad tag (Gemini 3.x often skips it)", () => {
+  it("accepts text without a scratchpad tag (model skipped it)", () => {
     const res = splitScratchpad("**Definition:** cat. **Wordplay:** charade.");
     expect(res.ok).toBe(true);
     if (!res.ok) return;

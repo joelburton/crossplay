@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.104.1",
     "@crossplay/shared": "*",
     "@fastify/cookie": "^11.0.2",
     "@fastify/multipart": "^9.0.0",

@@ -34,7 +34,7 @@ import {
   listBoards,
 } from "./boards.js";
 import { resolveClueForExplain, sliceNoteForClue } from "./clueAnswer.js";
-import { explainClue, isGeminiConfigured } from "./gemini.js";
+import { explainClue, isAnthropicConfigured } from "./anthropic.js";
 
 /** In-memory cache for the Explain feature. Key: SHA-256 of
  *  `clueText|answer|note`; value: cleaned explanation + scratchpad.
@@ -432,7 +432,7 @@ export async function registerHttpRoutes(app: FastifyInstance, opts: HttpRouteOp
         // correctly filled — the latter checked server-side because
         // the solution is server-only. Anon callers are fine: same
         // public posture as the board play page (Posture A).
-        if (!isGeminiConfigured()) {
+        if (!isAnthropicConfigured()) {
           return reply.code(503).send({ error: "explain not configured" });
         }
         const entry = getOrLoadBoard(db, req.params.id);
@@ -490,11 +490,11 @@ export async function registerHttpRoutes(app: FastifyInstance, opts: HttpRouteOp
           // browser dev tools.
           req.log.error(
             { reason: result.reason, detail: result.detail },
-            "gemini explain-clue failed",
+            "anthropic explain-clue failed",
           );
           return reply
             .code(502)
-            .send({ error: "gemini_error", reason: result.reason, detail: result.detail });
+            .send({ error: "llm_error", reason: result.reason, detail: result.detail });
         }
         explainCache.set(key, {
           explanation: result.explanation,

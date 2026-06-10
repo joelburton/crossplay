@@ -1,24 +1,24 @@
 /**
- * Minimal Gemini REST client for the Explain-clue feature.
+ * Claude API client for the Explain-clue feature.
  *
- * No SDK — one POST to `generativelanguage.googleapis.com`. The system
- * prompt + few-shot examples are baked here; the user template is
- * filled per request. The response is split on `</scratchpad>` so the
- * caller can show only the cleaned explanation while keeping the
- * scratchpad available behind a "Show reasoning" toggle.
+ * Uses the official `@anthropic-ai/sdk` Messages API. The system
+ * prompt + four few-shot exchanges form a stable prefix that's
+ * marked with `cache_control` so subsequent calls in the cache TTL
+ * window read it back at ~0.1× input cost — that's load-bearing for
+ * staying inside the Pro plan's $20 monthly credit at non-trivial
+ * volume. See `shared/prompt-caching.md` in the claude-api skill.
  *
  * Config:
- *   GEMINI_API_KEY  required; when unset, callers should treat the
- *                   feature as disabled (route returns 503).
- *   GEMINI_MODEL    optional; defaults to `gemini-3.5-flash`. Override
- *                   without a code change if Google ships a newer
- *                   free-tier Flash.
+ *   ANTHROPIC_API_KEY  required; when unset, callers should treat the
+ *                      feature as disabled (route returns 503).
+ *   ANTHROPIC_MODEL    optional; defaults to `claude-sonnet-4-6`.
+ *                      Override without a code change to bump models.
  */
 
-const ENDPOINT_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
-const DEFAULT_MODEL = "gemini-3.5-flash";
-const REQUEST_TIMEOUT_MS = 20_000;
-const MAX_OUTPUT_TOKENS = 1200;
+import Anthropic from "@anthropic-ai/sdk";
+
+const DEFAULT_MODEL = "claude-sonnet-4-6";
+const MAX_OUTPUT_TOKENS = 2048;
 
 export type ExplainCallInput = {
   clueText: string;
@@ -29,7 +29,7 @@ export type ExplainCallInput = {
 
 export type ExplainCallResult =
   | { ok: true; explanation: string; scratchpad: string }
-  | { ok: false; reason: "missing_scratchpad_tag" | "api_error" | "no_text"; detail?: string };
+  | { ok: false; reason: "api_error" | "no_text" | "missing_scratchpad_tag"; detail?: string };
 
 const SYSTEM_PROMPT = `You are a patient, expert cryptic crossword tutor. Your job is to EXPLAIN how a clue yields its answer — NOT to solve it. The correct answer is always given to you and is authoritative. Never dispute it, never re-derive a different answer; your task is to show, clearly and correctly, how the clue produces THAT answer.
 
@@ -90,15 +90,12 @@ Respond in exactly this structure, in plain prose (no preamble):
 
 Keep it tight — a few sentences per part. If, after working it through in the scratchpad, a clue is genuinely ambiguous or you're not certain of the exact parse, say so plainly in the final explanation ("The likely parse is…") rather than asserting a shaky derivation with false confidence. A tentative, honest reading is better than a confident wrong one.`;
 
-/** Few-shot exchanges prepended to the live request. Each example is
- *  one user turn + one model turn, matching the exact shape that
- *  `buildUserMessage` produces and the structure the system prompt
- *  asks the model to return. The four examples cover anagram +
- *  container/charade + multi-piece charade + &lit — the mechanisms
- *  the model most often misparses — and are real verified Nation
- *  clues. */
-const FEW_SHOTS: { role: "user" | "model"; text: string }[] = [
-  // --- Example 1: container/insertion ---
+/** Few-shot exchanges prepended to the live request. Real verified
+ *  Nation clues covering anagram, container, multi-piece charade,
+ *  and &lit — the mechanisms the model most often misparses. The
+ *  format mirrors `buildUserMessage` exactly so the model treats
+ *  these as the canonical input pattern. */
+const FEW_SHOTS: { role: "user" | "assistant"; text: string }[] = [
   {
     role: "user",
     text: `Clue: Take too much in Asian politician's home (5)
@@ -108,7 +105,7 @@ Setter's note: 10 AB(OD)E
 Explain how this clue yields the answer.`,
   },
   {
-    role: "model",
+    role: "assistant",
     text: `<scratchpad>
 Definition: "home" → ABODE.
 Wordplay: "take too much" → OD (overdose). "Asian politician" → ABE (Shinzo Abe, late Japanese PM). "in" places OD inside ABE → AB(OD)E.
@@ -119,7 +116,6 @@ Verify letter-for-letter: A-B-O-D-E = ABODE (5 letters). Matches.
 **Indicators:** "in" is the insertion indicator.`,
   },
 
-  // --- Example 2: anagram ---
   {
     role: "user",
     text: `Clue: Weird bionic tuna is preparing to hatch (10)
@@ -129,7 +125,7 @@ Setter's note: 12 anag.
 Explain how this clue yields the answer.`,
   },
   {
-    role: "model",
+    role: "assistant",
     text: `<scratchpad>
 Definition: "preparing to hatch" → INCUBATION.
 Wordplay: anagram of "bionic tuna" (B, I, O, N, I, C, T, U, N, A — 10 letters) → INCUBATION (I, N, C, U, B, A, T, I, O, N — 10 letters).
@@ -141,7 +137,6 @@ Indicator: "Weird".
 **Indicators:** "Weird" is the anagram indicator.`,
   },
 
-  // --- Example 3: multi-piece charade (first-letter + anagram) ---
   {
     role: "user",
     text: `Clue: Leader of caliphate slyly hoards head coverings worn by women in Iraq (7)
@@ -151,7 +146,7 @@ Setter's note: 5 C + HADORS (anag.)
 Explain how this clue yields the answer.`,
   },
   {
-    role: "model",
+    role: "assistant",
     text: `<scratchpad>
 Definition: "head coverings worn by women in Iraq" → CHADORS.
 Wordplay: "Leader of caliphate" → first letter C. "slyly" is an anagram indicator on "hoards" (H, O, A, R, D, S → H, A, D, O, R, S). Charade joins them: C + HADORS = CHADORS.
@@ -162,7 +157,6 @@ Verify: 1 + 6 = 7 letters. Matches.
 **Indicators:** "Leader of" picks the first letter; "slyly" is the anagram indicator.`,
   },
 
-  // --- Example 4: &lit. ---
   {
     role: "user",
     text: `Clue: A couple of bards! (5)
@@ -172,7 +166,7 @@ Setter's note: 25 POE + T.S. (&lit.)
 Explain how this clue yields the answer.`,
   },
   {
-    role: "model",
+    role: "assistant",
     text: `<scratchpad>
 Definition: the whole clue. POETS = bards, and the wordplay literally produces a pair of bards.
 Wordplay (also the whole clue): POE (Edgar Allan Poe, a bard) + T.S. (T.S. Eliot, a bard) = POETS. A literal "couple of bards."
@@ -197,68 +191,65 @@ function buildUserMessage(input: ExplainCallInput): string {
   return lines.join("\n");
 }
 
-export function isGeminiConfigured(): boolean {
-  return !!process.env.GEMINI_API_KEY;
+let cachedClient: Anthropic | null = null;
+function getClient(): Anthropic | null {
+  if (!process.env.ANTHROPIC_API_KEY) return null;
+  if (!cachedClient) cachedClient = new Anthropic();
+  return cachedClient;
+}
+
+export function isAnthropicConfigured(): boolean {
+  return !!process.env.ANTHROPIC_API_KEY;
 }
 
 export async function explainClue(input: ExplainCallInput): Promise<ExplainCallResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return { ok: false, reason: "api_error", detail: "GEMINI_API_KEY unset" };
-  const model = process.env.GEMINI_MODEL || DEFAULT_MODEL;
-  const url = `${ENDPOINT_BASE}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const client = getClient();
+  if (!client) return { ok: false, reason: "api_error", detail: "ANTHROPIC_API_KEY unset" };
+  const model = process.env.ANTHROPIC_MODEL || DEFAULT_MODEL;
 
-  const contents: { role: "user" | "model"; parts: { text: string }[] }[] = [];
-  for (const ex of FEW_SHOTS) {
-    contents.push({ role: ex.role, parts: [{ text: ex.text }] });
-  }
-  contents.push({ role: "user", parts: [{ text: buildUserMessage(input) }] });
+  // Render order is tools → system → messages. Anchoring
+  // `cache_control` on the last few-shot assistant turn caches the
+  // whole stable prefix (system + every few-shot) up to but not
+  // including the dynamic per-clue user message. ~2.5K tokens of
+  // prefix beats Sonnet 4.6's 2048-token cache minimum.
+  const messages: Anthropic.MessageParam[] = FEW_SHOTS.map((shot, i) => {
+    const isLastFewShot = i === FEW_SHOTS.length - 1;
+    return {
+      role: shot.role,
+      content: [
+        isLastFewShot
+          ? { type: "text", text: shot.text, cache_control: { type: "ephemeral" } }
+          : { type: "text", text: shot.text },
+      ],
+    };
+  });
+  messages.push({ role: "user", content: buildUserMessage(input) });
 
-  const body = {
-    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-    contents,
-    generationConfig: {
-      temperature: 0.3,
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
-    },
-  };
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  let res: Response;
+  let response: Anthropic.Message;
   try {
-    res = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
+    response = await client.messages.create({
+      model,
+      max_tokens: MAX_OUTPUT_TOKENS,
+      system: SYSTEM_PROMPT,
+      messages,
     });
   } catch (err) {
+    if (err instanceof Anthropic.APIError) {
+      return { ok: false, reason: "api_error", detail: `${err.status}: ${err.message}` };
+    }
     return { ok: false, reason: "api_error", detail: err instanceof Error ? err.message : String(err) };
-  } finally {
-    clearTimeout(timer);
   }
 
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    return { ok: false, reason: "api_error", detail: `HTTP ${res.status}: ${detail.slice(0, 500)}` };
-  }
-
-  let payload: unknown;
-  try {
-    payload = await res.json();
-  } catch (err) {
-    return { ok: false, reason: "api_error", detail: "non-JSON response" };
-  }
-
-  const text = extractText(payload);
+  const text = response.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("")
+    .trim();
   if (!text) {
-    // Surface the raw payload so a refusal / finishReason / safety
-    // block is visible — otherwise "no_text" gives no clue what
-    // happened.
     return {
       ok: false,
       reason: "no_text",
-      detail: JSON.stringify(payload).slice(0, 800),
+      detail: `stop_reason=${response.stop_reason}; usage=${JSON.stringify(response.usage)}`,
     };
   }
   const split = splitScratchpad(text);
@@ -266,39 +257,13 @@ export async function explainClue(input: ExplainCallInput): Promise<ExplainCallR
   return split;
 }
 
-/** Pull the first candidate's first text part. Gemini's response shape:
- *  `{candidates: [{content: {parts: [{text: "..."}]}}]}`. */
-function extractText(payload: unknown): string | null {
-  if (typeof payload !== "object" || payload == null) return null;
-  const candidates = (payload as { candidates?: unknown }).candidates;
-  if (!Array.isArray(candidates) || candidates.length === 0) return null;
-  const first = candidates[0];
-  if (typeof first !== "object" || first == null) return null;
-  const content = (first as { content?: unknown }).content;
-  if (typeof content !== "object" || content == null) return null;
-  const parts = (content as { parts?: unknown }).parts;
-  if (!Array.isArray(parts)) return null;
-  const texts: string[] = [];
-  for (const p of parts) {
-    if (typeof p === "object" && p != null) {
-      const t = (p as { text?: unknown }).text;
-      if (typeof t === "string") texts.push(t);
-    }
-  }
-  const joined = texts.join("").trim();
-  return joined || null;
-}
-
 /** Split on `</scratchpad>`. Both sides trimmed.
  *
  *  If the tag is absent we accept the response with an empty
- *  scratchpad rather than rejecting it: newer Gemini models follow
- *  "reason privately" by literally not emitting visible reasoning,
- *  producing a clean Definition/Wordplay/Indicators block directly.
- *  The popover hides the "Show reasoning" link when scratchpad is
- *  empty, so the UX still degrades gracefully — and the original
- *  "never leak raw working" concern doesn't apply when there is no
- *  working to leak. */
+ *  scratchpad rather than rejecting it: well-behaved models follow
+ *  the system prompt and always emit the block, but on the off
+ *  chance one omits it the popover still shows the explanation —
+ *  it just hides the "Show reasoning" link. */
 export function splitScratchpad(text: string): ExplainCallResult {
   const closeIdx = text.indexOf("</scratchpad>");
   if (closeIdx === -1) {
