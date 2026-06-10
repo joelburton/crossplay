@@ -20,8 +20,9 @@ import { registerAuthMiddleware } from "./authRoutes.js";
 import { openDb } from "./db.js";
 import { registerHttpRoutes } from "./http.js";
 import { insertPuzzleRow } from "./importer.js";
+import { parseIpuzBuffer } from "./ipuz.js";
 import { parsePuzBuffer } from "./puzzle.js";
-import { _clearCacheForTest } from "./store.js";
+import { _clearCacheForTest, getOrLoadBoard } from "./store.js";
 
 const FIXTURE_DIR = resolve(import.meta.dirname, "..", "fixtures");
 
@@ -1481,5 +1482,200 @@ describe("auth: PATCH /api/auth/prefs", () => {
       payload: { color: "#3b82f6" },
     });
     expect(res.statusCode).toBe(401);
+  });
+});
+
+describe("http: POST /api/boards/:id/explain-clue", () => {
+  let app: FastifyInstance;
+  let db: DatabaseSync;
+  let cookies: Record<string, string>;
+  let boardWithNoteId: string;
+  let boardWithoutNoteId: string;
+
+  beforeEach(async () => {
+    _clearCacheForTest();
+    // Clear any inherited GEMINI_API_KEY so the unset-key test is
+    // genuinely "unset" (developers may have it in their shell env).
+    delete process.env.GEMINI_API_KEY;
+    ({ app, db } = await buildApp());
+    ({ cookies } = await seedAuth(app, db));
+
+    // Board with a setter's note → cryptic. Sunday-sample's fixture
+    // includes a `notes` field (see fixtures/sunday-sample.ipuz).
+    seedPuzzle(db, "sunday");
+    const r1 = await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { puzzleId: "sunday" },
+      cookies,
+    });
+    boardWithNoteId = (r1.json() as { boardId: string }).boardId;
+
+    // Board with no note (all-a.ipuz omits the notes field). Insert
+    // directly via the importer helper to keep the test self-contained.
+    const allABuf = readFileSync(resolve(FIXTURE_DIR, "all-a.ipuz"));
+    const parsed = parseIpuzBuffer("alla", allABuf);
+    insertPuzzleRow({ db, id: "alla", state: parsed.state, solution: parsed.solution, replaceIfExists: false });
+    const r2 = await app.inject({
+      method: "POST",
+      url: "/api/boards",
+      payload: { puzzleId: "alla" },
+      cookies,
+    });
+    boardWithoutNoteId = (r2.json() as { boardId: string }).boardId;
+  });
+
+  afterEach(async () => {
+    await app.close();
+    _clearCacheForTest();
+    vi.unstubAllGlobals();
+    delete process.env.GEMINI_API_KEY;
+  });
+
+  it("returns 503 when GEMINI_API_KEY is unset", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/boards/${boardWithNoteId}/explain-clue`,
+      payload: { number: 1, direction: "across" },
+    });
+    expect(res.statusCode).toBe(503);
+  });
+
+  it("returns 400 when the puzzle has no note (gating fails)", async () => {
+    process.env.GEMINI_API_KEY = "stub";
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/boards/${boardWithoutNoteId}/explain-clue`,
+      payload: { number: 1, direction: "across" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe("no_note");
+  });
+
+  it("returns 400 on malformed request body", async () => {
+    process.env.GEMINI_API_KEY = "stub";
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/boards/${boardWithNoteId}/explain-clue`,
+      payload: { number: "not-a-number", direction: "sideways" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("returns 409 incomplete when the clue is empty", async () => {
+    process.env.GEMINI_API_KEY = "stub";
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/boards/${boardWithNoteId}/explain-clue`,
+      payload: { number: 1, direction: "across" },
+    });
+    expect(res.statusCode).toBe(409);
+    expect((res.json() as { reason: string }).reason).toBe("incomplete");
+  });
+
+  it("returns 409 wrong when the clue is fully but incorrectly filled", async () => {
+    process.env.GEMINI_API_KEY = "stub";
+    // Directly mutate the cached snapshot to fill 1-Across with the
+    // wrong letters. We have to mirror the cell shape (kind, number,
+    // fill) — the live snapshot is what resolveClueForExplain reads.
+    const entry = getOrLoadBoard(db, boardWithNoteId);
+    if (!entry) throw new Error("board not loaded");
+    // Find 1-Across cells: row of cell with number === 1, walking right.
+    const cells = entry.state.snapshot.cells;
+    let r1 = -1, c1 = -1;
+    outer: for (let r = 0; r < cells.length; r++) {
+      for (let c = 0; c < cells[r]!.length; c++) {
+        const cell = cells[r]![c]!;
+        if (cell.kind === "cell" && cell.number === 1) {
+          r1 = r; c1 = c; break outer;
+        }
+      }
+    }
+    expect(r1).toBeGreaterThanOrEqual(0);
+    let cc = c1;
+    while (cc < cells[r1]!.length) {
+      const cell = cells[r1]![cc]!;
+      if (cell.kind !== "cell") break;
+      // Z is almost certainly not the actual solution letter at every
+      // cell of 1-Across; if it ever IS, swap to a different letter.
+      cell.fill = "Z";
+      cc++;
+    }
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/boards/${boardWithNoteId}/explain-clue`,
+      payload: { number: 1, direction: "across" },
+    });
+    expect(res.statusCode).toBe(409);
+    expect((res.json() as { reason: string }).reason).toBe("wrong");
+  });
+
+  it("returns the cleaned explanation on a correct fill (Gemini mocked)", async () => {
+    process.env.GEMINI_API_KEY = "stub";
+
+    // Stub global fetch so the Gemini call returns a canned response
+    // shaped like the real API. Only one call is expected; we don't
+    // bother with route matching.
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    text:
+                      "<scratchpad>verify CAT spells the answer</scratchpad>\n**Definition:** Furry pet.\n**Wordplay:** charade.",
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    // Fill 1-Across with the canonical solution letters so the
+    // server's correctness gate passes.
+    const entry = getOrLoadBoard(db, boardWithNoteId);
+    if (!entry) throw new Error("board not loaded");
+    const cells = entry.state.snapshot.cells;
+    let r1 = -1, c1 = -1;
+    outer: for (let r = 0; r < cells.length; r++) {
+      for (let c = 0; c < cells[r]!.length; c++) {
+        const cell = cells[r]![c]!;
+        if (cell.kind === "cell" && cell.number === 1) {
+          r1 = r; c1 = c; break outer;
+        }
+      }
+    }
+    let cc = c1;
+    while (cc < cells[r1]!.length) {
+      const cell = cells[r1]![cc]!;
+      if (cell.kind !== "cell") break;
+      const sol = entry.solution[r1]?.[cc];
+      cell.fill = (sol && sol[0]) ?? null;
+      cc++;
+    }
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/boards/${boardWithNoteId}/explain-clue`,
+      payload: { number: 1, direction: "across" },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { explanation: string; scratchpad: string; note: string };
+    expect(body.explanation).toMatch(/Definition:/);
+    expect(body.scratchpad).toMatch(/verify CAT/);
+    // body.note is the *sliced* per-clue note. The sunday-sample
+    // fixture's note is freeform prose (no ACROSS/DOWN sections),
+    // so slicing returns "" by design — we never leak the whole
+    // block. A separate sliceNoteForClue test covers the
+    // happy-path extraction.
+    expect(body.note).toBe("");
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });

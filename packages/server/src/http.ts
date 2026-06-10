@@ -9,7 +9,7 @@
  * the upload route depends on it.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { FastifyInstance } from "fastify";
 import { findUserByHandle, validateHandle } from "./auth.js";
@@ -33,6 +33,19 @@ import {
   insertBoardRow,
   listBoards,
 } from "./boards.js";
+import { resolveClueForExplain, sliceNoteForClue } from "./clueAnswer.js";
+import { explainClue, isGeminiConfigured } from "./gemini.js";
+
+/** In-memory cache for the Explain feature. Key: SHA-256 of
+ *  `clueText|answer|note`; value: cleaned explanation + scratchpad.
+ *  Deterministic given (clue, answer, note), so once computed a
+ *  re-open is instant. Lives only for the server process — no DB
+ *  table, by design (see project plan). */
+const explainCache = new Map<string, { explanation: string; scratchpad: string }>();
+
+function explainCacheKey(clueText: string, answer: string, note: string): string {
+  return createHash("sha256").update(`${clueText}|${answer}|${note}`).digest("hex");
+}
 
 export type HttpRouteOptions = {
   /** Shared sqlite handle. */
@@ -407,6 +420,91 @@ export async function registerHttpRoutes(app: FastifyInstance, opts: HttpRouteOp
           .header("content-type", "application/json; charset=utf-8")
           .header("content-disposition", `attachment; filename="${stem}.ipuz"`);
         return json;
+      });
+
+      api.post<{
+        Params: { id: string };
+        Body: { number?: unknown; direction?: unknown };
+      }>("/boards/:id/explain-clue", async (req, reply) => {
+        // Explain a cryptic clue by asking Gemini to JUSTIFY the
+        // known answer. Gated by the puzzle having a setter's note
+        // (proxy for "cryptic") and by the clue being fully &
+        // correctly filled — the latter checked server-side because
+        // the solution is server-only. Anon callers are fine: same
+        // public posture as the board play page (Posture A).
+        if (!isGeminiConfigured()) {
+          return reply.code(503).send({ error: "explain not configured" });
+        }
+        const entry = getOrLoadBoard(db, req.params.id);
+        if (!entry) return reply.code(404).send({ error: "not found" });
+        const note = entry.state.meta.note ?? "";
+        if (note.trim().length === 0) {
+          return reply.code(400).send({ error: "no_note" });
+        }
+        const number = typeof req.body?.number === "number" ? req.body.number : NaN;
+        const direction = req.body?.direction;
+        if (
+          !Number.isFinite(number) ||
+          (direction !== "across" && direction !== "down")
+        ) {
+          return reply.code(400).send({ error: "bad_request" });
+        }
+        const resolved = resolveClueForExplain(entry, number, direction);
+        if (!resolved.ok) {
+          return reply.code(404).send({ error: resolved.reason });
+        }
+        const ctx = resolved.context;
+        if (!ctx.allFilled) {
+          return reply.code(409).send({ reason: "incomplete" });
+        }
+        if (!ctx.fillCorrect) {
+          return reply.code(409).send({ reason: "wrong" });
+        }
+
+        // Slice the full setter's note down to just this clue's
+        // entry — the full block lists every clue and would spoil
+        // the rest of the puzzle in the popover. If slicing fails
+        // (note doesn't match the ACROSS/DOWN format), we send no
+        // note rather than the whole block.
+        const clueNote = sliceNoteForClue(note, number, direction);
+
+        const key = explainCacheKey(ctx.clueText, ctx.answer, clueNote);
+        const cached = explainCache.get(key);
+        if (cached) {
+          return {
+            explanation: cached.explanation,
+            scratchpad: cached.scratchpad,
+            note: clueNote,
+          };
+        }
+        const result = await explainClue({
+          clueText: ctx.clueText,
+          answer: ctx.answer,
+          enumeration: ctx.enumeration,
+          note: clueNote,
+        });
+        if (!result.ok) {
+          // Surface the detail in the server log AND in the response
+          // body so misconfiguration (wrong model name, bad key, body
+          // shape rejected) is debuggable from either terminal or
+          // browser dev tools.
+          req.log.error(
+            { reason: result.reason, detail: result.detail },
+            "gemini explain-clue failed",
+          );
+          return reply
+            .code(502)
+            .send({ error: "gemini_error", reason: result.reason, detail: result.detail });
+        }
+        explainCache.set(key, {
+          explanation: result.explanation,
+          scratchpad: result.scratchpad,
+        });
+        return {
+          explanation: result.explanation,
+          scratchpad: result.scratchpad,
+          note: clueNote,
+        };
       });
     },
     { prefix: "/api" },

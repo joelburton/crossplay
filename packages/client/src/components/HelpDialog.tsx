@@ -25,6 +25,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ["⌥S", "Open the shared scratchpad"],
   ["⌥R / ⌥⇧R", "Reveal letter / word"],
   ["⌥C / ⌥⇧C", "Check letter / word"],
+  ["⌥X", "Explain this clue (cryptic puzzles)"],
   ["#", "Jump to a clue number"],
   ["?", "Open this help"],
 ];

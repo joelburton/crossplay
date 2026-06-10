@@ -90,6 +90,46 @@ export async function fetchBoard(id: string): Promise<PuzzleState> {
   return res.json();
 }
 
+/** Ask the server for a cryptic-clue explanation. The server gates on
+ *  the puzzle having a setter's note, on the clue being fully filled,
+ *  and on the fill being correct — failures surface as HttpError with
+ *  a meaningful `message` so the caller can map to a feedback. */
+export type ExplainClueResponse = {
+  explanation: string;
+  scratchpad: string;
+  note: string;
+};
+
+export async function explainClueRequest(
+  boardId: string,
+  number: number,
+  direction: "across" | "down",
+): Promise<ExplainClueResponse> {
+  const res = await fetch(`/api/boards/${boardId}/explain-clue`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ number, direction }),
+  });
+  if (!res.ok) {
+    // 400 → no_note (puzzle lacks notes), 409 → incomplete | wrong,
+    // 502 → gemini failure, 503 → not configured. The body carries
+    // either `error` or `reason`; we put whichever exists into the
+    // message so the caller can branch.
+    let detail = `${res.status}`;
+    try {
+      const body = (await res.json()) as { error?: unknown; reason?: unknown };
+      const m = typeof body.reason === "string" ? body.reason
+        : typeof body.error === "string" ? body.error
+        : null;
+      if (m) detail = m;
+    } catch {
+      // body wasn't JSON
+    }
+    throw new HttpError(res.status, detail);
+  }
+  return (await res.json()) as ExplainClueResponse;
+}
+
 /** Fetch a board's per-cell solution arrays. Used only by the print
  *  "answer key" route — `fetchBoard` deliberately omits the solution.
  *  Each open cell is `[canonical, ...alternates]`; blocks / hidden

@@ -16,6 +16,7 @@ import {
   retreatForBackspace,
   wordCells,
 } from "../cursor";
+import { HttpError, explainClueRequest } from "../api";
 import { type ChatLine, useBoardSocket } from "../useBoardSocket";
 import { type ChatIdentity, resolveChatIdentity } from "../chatIdentity";
 import type { Feedback } from "../feedback";
@@ -27,6 +28,7 @@ import { ChatPanel } from "./ChatPanel";
 import { ChatPreview } from "./ChatPreview";
 import { ScratchpadPanel, type ScratchpadLock } from "./ScratchpadPanel";
 import { ClueList } from "./ClueList";
+import { ExplainPopover, type ExplainState } from "./ExplainPopover";
 import { HelpDialog } from "./HelpDialog";
 import { NoteDialog } from "./NoteDialog";
 import { NumberJumpDialog } from "./NumberJumpDialog";
@@ -310,6 +312,27 @@ export function PuzzleView({
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
+  // Anchor for the Explain popover — the board element. The popover
+  // overlays the grid (the user doesn't need to see cells while
+  // reading the explanation) and is centered horizontally within it,
+  // so a narrow viewport scrolling below the fold doesn't push the
+  // popover out of view.
+  const explainAnchorRef = useRef<HTMLDivElement | null>(null);
+  // Explain popover state. `null` = closed; otherwise the discriminated
+  // union from ExplainPopover.tsx — opens immediately in `loading`
+  // when the user hits Alt+X so they see "Waiting for AI…" while the
+  // API call runs. Per-user (no broadcast); each player can explore
+  // different clues independently.
+  const [explainState, setExplainState] = useState<ExplainState | null>(null);
+  // Per-clue cache for the current session. Keyed by `${number}:${dir}`;
+  // re-opening the same clue is instant. Cleared on board reload (new
+  // PuzzleView mount).
+  const explainCacheRef = useRef<Map<string, { explanation: string; scratchpad: string; note: string }>>(
+    new Map(),
+  );
+  // Suppresses double-fires from the same Alt+X press if the popover
+  // is already open. Cleared when the popover closes.
+  const explainOpenRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -551,6 +574,89 @@ export function PuzzleView({
     send({ type: "showNotes" });
   }, [meta.note, meta.id, send, onFeedback]);
 
+  const closeExplain = useCallback(() => {
+    setExplainState(null);
+    explainOpenRef.current = false;
+  }, []);
+
+  // Alt+X. Gating order: (1) puzzle must have a setter's note (proxy
+  // for "cryptic"); (2) cursor must be on a clue; (3) clue must be
+  // fully filled and correct — the latter checked server-side because
+  // the solution lives there. The popover opens immediately in
+  // `loading` so the user sees "Waiting for AI…" while the API call
+  // runs; server errors update the popover (or close it + emit a
+  // feedback for the fill-incomplete/wrong cases).
+  const triggerExplainClue = useCallback(
+    (number: number, direction: "across" | "down") => {
+      if (!meta.note || meta.note.trim().length === 0) {
+        onFeedback?.({
+          id: `explain-no-note-${meta.id}-${Date.now()}`,
+          text: "Explain requires a note",
+          level: "info",
+          autoVanishMs: 2500,
+        });
+        return;
+      }
+      if (explainOpenRef.current) return;
+      explainOpenRef.current = true;
+
+      const key = `${number}:${direction}`;
+      const cached = explainCacheRef.current.get(key);
+      if (cached) {
+        setExplainState({
+          kind: "ok",
+          explanation: cached.explanation,
+          scratchpad: cached.scratchpad,
+          note: cached.note,
+        });
+        return;
+      }
+
+      setExplainState({ kind: "loading" });
+      explainClueRequest(meta.id, number, direction).then(
+        (res) => {
+          explainCacheRef.current.set(key, res);
+          setExplainState({
+            kind: "ok",
+            explanation: res.explanation,
+            scratchpad: res.scratchpad,
+            note: res.note,
+          });
+        },
+        (err: unknown) => {
+          // Server contract:
+          //   400 no_note  — caught client-side above; shouldn't fire
+          //   409 incomplete | wrong — fill problem; close popover + feedback
+          //   502/503 — Gemini failure / not configured — keep popover with error
+          const status = err instanceof HttpError ? err.status : 0;
+          const msg = err instanceof Error ? err.message : "unknown";
+          if (status === 409) {
+            setExplainState(null);
+            explainOpenRef.current = false;
+            onFeedback?.({
+              id: `explain-incorrect-${meta.id}-${Date.now()}`,
+              text: "Fill the clue correctly first",
+              level: "info",
+              autoVanishMs: 2500,
+            });
+            return;
+          }
+          if (status === 503) {
+            setExplainState({ kind: "error", message: "Explain isn't configured on this server." });
+            return;
+          }
+          setExplainState({
+            kind: "error",
+            message: status === 502
+              ? "The AI didn't return a usable explanation. Try again later."
+              : `Could not fetch explanation (${msg}).`,
+          });
+        },
+      );
+    },
+    [meta.id, meta.note, onFeedback],
+  );
+
   useEffect(() => {
     if (!actionsRef) return;
     const sc = identity.color;
@@ -762,6 +868,13 @@ export function PuzzleView({
         if (e.code === "KeyS") {
           e.preventDefault();
           setScratchpadOpen((cur) => !cur);
+          return;
+        }
+        if (e.code === "KeyX") {
+          e.preventDefault();
+          const dir = cursor.dir;
+          const num = activeClueNumber(cells, cursor.row, cursor.col, dir);
+          if (num != null) triggerExplainClue(num, dir);
           return;
         }
       }
@@ -1093,7 +1206,7 @@ export function PuzzleView({
         </div>
       )}
       <div className={styles.layout}>
-        <div className={styles.boardSlot}>
+        <div ref={explainAnchorRef} className={styles.boardSlot}>
           <Board
             ref={boardRef}
             cells={cells}
@@ -1136,6 +1249,13 @@ export function PuzzleView({
             </>
           ) : null}
         </div>
+        {explainState && explainAnchorRef.current && (
+          <ExplainPopover
+            anchor={explainAnchorRef.current}
+            state={explainState}
+            onClose={closeExplain}
+          />
+        )}
         <div className={styles.clues}>
           <ClueList
             title="Across"

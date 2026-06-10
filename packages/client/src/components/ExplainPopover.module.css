@@ -1,0 +1,86 @@
+/* Anchored popover for the Explain-clue feature. Sits over the
+ * active-clue strip so the relationship is obvious; never larger than
+ * the strip's column (so on narrow it shrinks to grid width). */
+
+.backdrop {
+  /* Captures outside clicks to dismiss. Transparent so the rest of the
+   * board stays visible; no scrim — the popover is an opt-in side
+   * panel, not a modal. */
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
+.popover {
+  position: fixed;
+  z-index: 61;
+  background: #fff;
+  border: 1px solid #999;
+  border-radius: 6px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
+  padding: 0.8rem 0.9rem;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: #111;
+  max-height: 70dvh;
+  overflow-y: auto;
+}
+
+.note {
+  font-size: 0.8rem;
+  color: #555;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px dashed #ccc;
+  white-space: pre-wrap;
+}
+
+.noteLabel {
+  font-weight: 700;
+  margin-right: 0.3rem;
+}
+
+.body {
+  white-space: pre-wrap;
+}
+
+.body strong {
+  display: inline;
+}
+
+.waiting {
+  font-style: italic;
+  color: #555;
+}
+
+.error {
+  color: #a00;
+}
+
+.toggle {
+  display: inline-block;
+  margin-top: 0.6rem;
+  background: none;
+  border: none;
+  padding: 0;
+  color: #06c;
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+
+.toggle:focus-visible {
+  outline: 2px solid #06c;
+  outline-offset: 2px;
+}
+
+.scratchpad {
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  background: #f4f4f4;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  color: #333;
+}
